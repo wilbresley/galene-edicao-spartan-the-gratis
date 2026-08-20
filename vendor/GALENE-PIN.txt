@@ -1,0 +1,11 @@
+# Fonte do Galene congelado neste repositório.
+# Não faz git clone na hora do build — assim um update no GitHub do Juliusz
+# não muda o binário na próxima compilação.
+
+commit: 9e03b36ba93f05e88fcfd6c3ea5468c16bcbae32
+date: 2026-07-28
+upstream: https://github.com/jech/galene
+message: Remove redundant error check.
+
+Este era o HEAD quando o stack foi implantado (20/08/2026).
+O volume ./static continua por cima da UI original na hora de rodar.

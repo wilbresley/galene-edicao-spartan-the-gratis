@@ -72,11 +72,12 @@ No log do Galene, `Relay test failed` no primeiro boot é normal **enquanto o 11
 
 ## 5. Containers e volumes
 
-Imagem do Galene: **`galene:local`**, compilada no Docker a partir do Git (`github.com/jech/galene`), Go 1.24, Alpine.
+Imagem do Galene: **`galene:local`**, compilada no Docker a partir do fonte **congelado** em `vendor/galene` (commit `9e03b36ba93f05e88fcfd6c3ea5468c16bcbae32`, 28/07/2026 — HEAD na data da implantação). Go 1.24, Alpine 3.21. Não faz `git clone` na hora do build.
 
 ```
 ~/docker/galene/
   Dockerfile
+  vendor/galene/           fonte do Galene congelado (não clona na hora do build)
   compose.yaml
   registry.py              → /app/registry.py no sidecar
   static/                  → /app/static:ro no Galene (UI Spartan)

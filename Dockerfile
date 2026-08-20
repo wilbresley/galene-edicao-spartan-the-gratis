@@ -1,7 +1,6 @@
 FROM golang:1.24-alpine AS build
-RUN apk add --no-cache git
 WORKDIR /src
-RUN git clone --depth 1 https://github.com/jech/galene.git .
+COPY vendor/galene/ .
 RUN CGO_ENABLED=0 go build -ldflags='-s -w' -o /out/galene .
 RUN mkdir -p /out/static && cp -a static/. /out/static/
 

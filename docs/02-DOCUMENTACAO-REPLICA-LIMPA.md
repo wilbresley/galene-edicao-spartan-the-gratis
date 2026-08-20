@@ -4,7 +4,7 @@ Este texto **não contém** domínio, IP, senha, nick de operador nem dado pesso
 
 Software de base: **[Galene](https://galene.org)** (Juliusz Chroboczek). A “Spartan” é só o estático (HTML/CSS/JS) e um sidecar Python na frente.
 
-O pacote deste repositório já traz `Dockerfile`, `compose.yaml`, `registry.py` e `static/`. Copie os `*.example.json`, preencha com **as contas dele** e suba.
+O pacote deste repositório já traz `Dockerfile`, `compose.yaml`, `registry.py`, `static/` e o fonte do Galene em `vendor/galene` (commit pinado). Copie os `*.example.json`, preencha com **as contas dele** e suba.
 
 ---
 

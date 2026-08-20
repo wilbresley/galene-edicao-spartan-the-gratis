@@ -8,7 +8,8 @@ Repositório **privado** de [wilbresley](https://github.com/wilbresley). Não co
 
 | Caminho | Função |
 |---|---|
-| `Dockerfile` | Compila o Galene atual a partir do Git oficial |
+| `Dockerfile` | Compila o Galene **congelado** em `vendor/galene` (commit `9e03b36`, 28/07/2026) |
+| `vendor/galene/` | Fonte do Galene usado na implantação — não baixa a versão nova na hora do build |
 | `compose.yaml` | Galene (`:8443`) + sidecar `spartan-reg` (`:8091`), `network_mode: host` |
 | `registry.py` | API `/spartan-api/` (salas, convites, beacon, purge) |
 | `static/` | Home, `/salas/`, `/admin/`, sala, wallpaper, CSS/JS |
@@ -56,6 +57,18 @@ No roteador: **1194 TCP+UDP** e **50000–50100 UDP** para o servidor. Sem TURN,
 - [Como gerar hashes / sidecar.auth](data/README.md)
 
 O zip de backup **privado** do Debian (`~/galene-backup-*.zip`) **não** entra neste repositório: ele tem `sidecar.auth` e hashes reais.
+
+## Por que não vai a imagem Docker no Git
+
+A imagem `galene:local` **não estava no zip** (o zip é a pasta `~/docker/galene`). Subir `docker save` no GitHub é pesado, só serve para amd64 e o GitHub corta arquivo grande.
+
+O que congela de verdade: o **fonte** em `vendor/galene` + `golang:1.24-alpine` / `alpine:3.21` no Dockerfile. Rebuild sempre gera o mesmo Galene, mesmo que o Juliusz publique versão nova.
+
+Se quiser um arquivo da imagem **só no servidor** (não no Git):
+
+```bash
+docker save galene:local | gzip > ~/galene-local-image.tgz
+```
 
 ## Créditos
 

@@ -1,0 +1,8 @@
+.git
+docs
+data
+groups
+recordings
+.env
+*.md
+*.zip
