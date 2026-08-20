@@ -1,6 +1,6 @@
-# Backup ZIP do Galene (estado atual do servidor)
+# Backup no Debian
 
-Rode **no Debian**, na pasta `~/docker`. O zip é backup **privado** (traz `sidecar.auth` e hashes). Não jogue no GitHub.
+## Pasta (zip privado — tem sidecar.auth e hashes)
 
 ```bash
 TS=$(date +%Y%m%d-%H%M)
@@ -12,9 +12,19 @@ sudo zip -r "$OUT" galene \
   -x "galene/.plain-bak/**"
 sudo chown "$USER:$USER" "$OUT"
 ls -lh "$OUT"
-echo "Backup em: $OUT"
 ```
 
-`sudo` entra porque `data/registry.json` pode ser do root (o sidecar grava como root).
+Não subas este zip ao GitHub.
 
-Gravações (`recordings/`) ficam de fora de propósito. Para incluí-las, tire as linhas `-x galene/recordings/*`.
+## Imagem Docker
+
+```bash
+docker save galene:local | gzip > "$HOME/galene-local-image.tgz"
+```
+
+No repo Git a cópia limpa está em `images/galene-local.tgz`. Noutro servidor:
+
+```bash
+docker load -i images/galene-local.tgz
+docker compose up -d
+```

@@ -1,7 +1,5 @@
 # Não grave senha em claro nos JSON finais.
 
-Copie os exemplos:
-
 ```bash
 cp .env.example .env
 cp data/config.example.json data/config.json
@@ -11,18 +9,25 @@ chmod 600 data/sidecar.auth
 cp groups/sala-principal.example.json groups/sala-principal.json
 ```
 
-Depois:
-
-1. Edite `.env` com o **IP público** (TURN).
-2. Em `data/config.json` e `groups/sala-principal.json`, troque `OPERADOR` e **não deixe** `"type": "wildcard"` na senha do admin. Gere hash:
+1. `.env` — **IP público** (`curl -4 ifconfig.me`).
+2. Hash do operador (a imagem não traz `galenectl`):
 
 ```bash
-docker compose run --rm --entrypoint /app/galene galene -hash-password
+python3 - << 'PY'
+import os, hashlib, json
+pw = input("Senha do operador: ").strip()
+salt = os.urandom(8)
+key = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt, 4096, dklen=32)
+print(json.dumps({
+  "type": "pbkdf2", "hash": "sha-256",
+  "key": key.hex(), "salt": salt.hex(), "iterations": 4096
+}, indent=2))
+PY
 ```
 
-(Se a flag mudar na sua versão, veja `galene -help`.) Cole o objeto hash no campo `password`.
+Cola o objeto em `data/config.json` e `groups/sala-principal.json`. Não uses `"type": "wildcard"` na senha do admin.
 
-3. `sidecar.auth` é `usuario:senha` **em claro**, a mesma conta admin do `config.json`, modo `0600`. Não commite.
+3. `sidecar.auth` — `usuario:senha` em claro, modo `0600`, a mesma conta admin. Não commites.
 
-4. Sala pública: wildcard `"password": {"type": "wildcard"}`.
-   Sala convite: wildcard com senha **hasheada**.
+4. Pública: wildcard `"password": {"type": "wildcard"}`.  
+   Convite: wildcard com objeto hash (senha dos amigos).

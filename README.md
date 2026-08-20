@@ -56,9 +56,10 @@ No roteador: **1194 TCP+UDP** e **50000–50100 UDP** para o servidor. Sem TURN,
 ## Documentação
 
 - [Implantação completa (servidor atual)](docs/01-DOCUMENTACAO-COMPLETA.md) — IPs/domínio desta instalação, **sem senhas**
-- [Guia limpo para replicar](docs/02-DOCUMENTACAO-REPLICA-LIMPA.md) — placeholders, para um amigo
-- [Backup ZIP no servidor](docs/03-COMANDO-BACKUP.md)
-- [Como gerar hashes / sidecar.auth](data/README.md)
+- [Guia para o amigo (instalar + customizar)](docs/02-DOCUMENTACAO-REPLICA-LIMPA.md) — placeholders, comandos, cores/imagens
+- [Backup ZIP e imagem](docs/03-COMANDO-BACKUP.md)
+- [Hashes / sidecar.auth](data/README.md)
+- [Como carregar a imagem](images/README.md)
 
 O zip de backup **privado** do Debian (`~/galene-backup-*.zip`) **não** entra neste repositório: ele tem `sidecar.auth` e hashes reais.
 

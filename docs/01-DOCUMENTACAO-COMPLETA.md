@@ -260,9 +260,13 @@ sudo chown "$USER:$USER" ~/docker/galene/data/registry.json
 
 ---
 
-## 14. Backup (estado atual)
+## 14. Backup e GitHub
 
-Ver `03-COMANDO-BACKUP.md`. O zip do servidor é a cópia fiel (inclui hashes e `sidecar.auth`). Este repositório Git **não** inclui esse zip.
+- Pasta do servidor: `03-COMANDO-BACKUP.md` (zip **privado**, tem hashes e `sidecar.auth`).
+- Imagem Docker: `docker save galene:local | gzip > ~/galene-local-image.tgz` — cópia no Git em `images/galene-local.tgz`.
+- Repo privado: https://github.com/wilbresley/galene-edicao-spartan — **sem** senhas. Clone + `docker load` + `compose up -d`.
+
+A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export do chat.
 
 ---
 
@@ -280,6 +284,9 @@ Ver `03-COMANDO-BACKUP.md`. O zip do servidor é a cópia fiel (inclui hashes e 
 10. Outras salas: busca, 5 por página, altura fixa.
 11. Sala main protegida; home apontável; `/admin/` e `/salas/` sem `.html`.
 12. Login com wallpaper/rodapé; rodapé sem cortar a arte.
+13. Documentação + repo Git privado `wilbresley/galene-edicao-spartan`.
+14. Fonte Galene congelado em `vendor/galene` (commit `9e03b36`).
+15. Imagem `galene:local` no repo (`images/galene-local.tgz`); compose **sem** `build`.
 
 ---
 
