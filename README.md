@@ -8,8 +8,9 @@ Repositório **privado** de [wilbresley](https://github.com/wilbresley). Não co
 
 | Caminho | Função |
 |---|---|
-| `Dockerfile` | Compila o Galene **congelado** em `vendor/galene` (commit `9e03b36`, 28/07/2026) |
-| `vendor/galene/` | Fonte do Galene usado na implantação — não baixa a versão nova na hora do build |
+| `images/galene-local.tgz` | Imagem Docker **exata** do servidor (`galene:local`, 20/08/2026) |
+| `Dockerfile` | Só se quiser recompilar (não é o caminho padrão) |
+| `vendor/galene/` | Fonte do Galene pinado (commit `9e03b36`, 28/07/2026) |
 | `compose.yaml` | Galene (`:8443`) + sidecar `spartan-reg` (`:8091`), `network_mode: host` |
 | `registry.py` | API `/spartan-api/` (salas, convites, beacon, purge) |
 | `static/` | Home, `/salas/`, `/admin/`, sala, wallpaper, CSS/JS |
@@ -29,8 +30,11 @@ cp data/sidecar.auth.example data/sidecar.auth
 chmod 600 data/sidecar.auth
 cp groups/sala-principal.example.json groups/sala-principal.json
 # hashes de senha: ver data/README.md
-docker compose up -d --build
+docker load -i images/galene-local.tgz
+docker compose up -d
 ```
+
+Não use `--build`. A imagem que sobe é a do arquivo `images/galene-local.tgz` (a mesma do teu Debian).
 
 Proxy HTTPS (Nginx Proxy Manager, Caddy, …) na frente:
 
@@ -58,17 +62,14 @@ No roteador: **1194 TCP+UDP** e **50000–50100 UDP** para o servidor. Sem TURN,
 
 O zip de backup **privado** do Debian (`~/galene-backup-*.zip`) **não** entra neste repositório: ele tem `sidecar.auth` e hashes reais.
 
-## Por que não vai a imagem Docker no Git
+## Imagem Docker neste repositório
 
-A imagem `galene:local` **não estava no zip** (o zip é a pasta `~/docker/galene`). Subir `docker save` no GitHub é pesado, só serve para amd64 e o GitHub corta arquivo grande.
+O GitHub **não** funciona como registry de `docker pull` para um `.tgz`. A imagem vai **dentro do clone**:
 
-O que congela de verdade: o **fonte** em `vendor/galene` + `golang:1.24-alpine` / `alpine:3.21` no Dockerfile. Rebuild sempre gera o mesmo Galene, mesmo que o Juliusz publique versão nova.
+1. `docker load -i images/galene-local.tgz` — vira `galene:local` na máquina
+2. `docker compose up -d` — o `compose.yaml` usa `image: galene:local` **sem** `build`
 
-Se quiser um arquivo da imagem **só no servidor** (não no Git):
-
-```bash
-docker save galene:local | gzip > ~/galene-local-image.tgz
-```
+É a imagem salva no Debian em 20/08/2026 (~10 MB). Rebuild (`--build` / `Dockerfile`) fica só se alguém quiser recompilar de `vendor/galene`.
 
 ## Créditos
 

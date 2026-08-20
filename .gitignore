@@ -11,6 +11,7 @@ recordings/*
 .plain-bak/
 *.zip
 *.tar.gz
+!images/galene-local.tgz
 static/_pack.tgz
 __pycache__/
 .DS_Store

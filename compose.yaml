@@ -1,6 +1,5 @@
 services:
   galene:
-    build: .
     image: galene:local
     container_name: galene
     restart: unless-stopped

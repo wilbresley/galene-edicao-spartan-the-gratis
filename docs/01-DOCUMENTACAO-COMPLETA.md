@@ -72,12 +72,13 @@ No log do Galene, `Relay test failed` no primeiro boot é normal **enquanto o 11
 
 ## 5. Containers e volumes
 
-Imagem do Galene: **`galene:local`**, compilada no Docker a partir do fonte **congelado** em `vendor/galene` (commit `9e03b36ba93f05e88fcfd6c3ea5468c16bcbae32`, 28/07/2026 — HEAD na data da implantação). Go 1.24, Alpine 3.21. Não faz `git clone` na hora do build.
+Imagem do Galene: **`galene:local`**, a mesma salva no Debian (`docker save`, 20/08/2026), no repo em `images/galene-local.tgz`. O `compose.yaml` **não** faz `build`: carrega essa imagem com `docker load`. Fonte pinado em `vendor/galene` (commit `9e03b36ba93f05e88fcfd6c3ea5468c16bcbae32`) só entra se alguém recompilar de propósito.
 
 ```
 ~/docker/galene/
   Dockerfile
-  vendor/galene/           fonte do Galene congelado (não clona na hora do build)
+  images/galene-local.tgz  imagem Docker exata (docker load)
+  vendor/galene/           fonte do Galene congelado (rebuild opcional)
   compose.yaml
   registry.py              → /app/registry.py no sidecar
   static/                  → /app/static:ro no Galene (UI Spartan)
@@ -239,13 +240,15 @@ curl -sS http://127.0.0.1:8091/spartan-api/health; echo
 curl -sS http://127.0.0.1:8091/spartan-api/site; echo
 ```
 
-Rebuild da imagem Galene (só se mudar o Dockerfile):
+Rebuild da imagem Galene **só se quiser sair da imagem congelada**:
 
 ```bash
 cd ~/docker/galene
 docker compose build --no-cache galene
 docker compose up -d
 ```
+
+No dia a dia: `docker load -i images/galene-local.tgz` e `docker compose up -d`, **sem** `--build`.
 
 Mudança só em `static/` ou `registry.py`: em geral **não** precisa rebuild; `docker restart spartan-reg` se o Python mudou. Estáticos: Ctrl+Shift+R (query `?v=`).
 
