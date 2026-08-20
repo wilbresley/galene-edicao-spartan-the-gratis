@@ -1,0 +1,16 @@
+.env
+data/sidecar.auth
+data/config.json
+data/registry.json
+data/site.json
+data/var/
+groups/*.json
+!groups/*.example.json
+recordings/*
+!recordings/.gitkeep
+.plain-bak/
+*.zip
+*.tar.gz
+static/_pack.tgz
+__pycache__/
+.DS_Store

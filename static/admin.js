@@ -1,0 +1,325 @@
+'use strict';
+function uiMsg(m){var t=document.getElementById('ui-toast'); if(!t) return; t.textContent=m; t.hidden=false; clearTimeout(window._uiT); window._uiT=setTimeout(function(){t.hidden=true;},3200);}
+function uiDlg(msg,kind){return new Promise(function(resolve){var d=document.getElementById('ui-dlg'),i=document.getElementById('ui-dlg-input'),c=document.getElementById('ui-dlg-cancel'); if(!d){resolve(kind==='prompt'?null:true);return;} document.getElementById('ui-dlg-msg').textContent=msg; i.value=''; i.classList.toggle('is-off', kind!=='prompt'); c.classList.toggle('is-off', kind==='ok'); d.hidden=false; document.getElementById('ui-dlg-ok').onclick=function(){d.hidden=true; resolve(kind==='prompt'?i.value:true);}; c.onclick=function(){d.hidden=true; resolve(kind==='prompt'?null:false);};});}
+function uiConfirm(m){return uiDlg(m,'confirm');}
+function uiPrompt(m){return uiDlg(m,'prompt');}
+
+const API='/galene-api/v0', REG='/spartan-api';
+let GROUP='spartan', user='', pass='', registry={}, SITE={main:'spartan',home:'spartan'};
+async function loadSite(){ try{ SITE=await (await fetch(REG+'/site',{cache:'no-store'})).json(); }catch(e){ SITE={main:'spartan',home:'spartan'}; } GROUP=SITE.main||'spartan'; var a=document.querySelector('.btn-back'); if(a) a.href='/group/'+encodeURIComponent(SITE.home||SITE.main||'spartan')+'/'; }
+function authHeader(){return 'Basic '+btoa(unescape(encodeURIComponent(user+':'+pass)));}
+async function api(path,opt){
+ opt=opt||{};
+ const r=await fetch(API+path,{method:opt.method||'GET',headers:Object.assign({'Authorization':authHeader()},opt.headers||{}),body:opt.body});
+ const text=await r.text();
+ if(r.status===401) throw new Error('Usuário ou senha inválidos');
+ if(!r.ok) throw new Error((text||r.statusText||String(r.status)).slice(0,220));
+ if(!text) return null;
+ try{return JSON.parse(text);}catch(e){return text;}
+}
+async function reg(path,body){
+ const r=await fetch(REG+path,{method:body?'POST':'GET',headers:{'Authorization':authHeader(),'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+ const text=await r.text();
+ let data=null; try{data=JSON.parse(text);}catch(e){data=text;}
+ if(!r.ok) throw new Error((data&&data.error)||text||r.statusText);
+ return data;
+}
+function $(id){return document.getElementById(id);}
+function permLabel(p){return ({op:'Admin da sala',admin:'Admin',present:'Pode transmitir',message:'Só chat',observe:'Só assistir'})[p]||p;}
+function bucket(){const d=registry[GROUP]||{};return {guests:d.guests||{},pending:d.pending||{},denied:d.denied||{},blocked:d.blocked||{},temps:d.temps||{},ipban:d.ipban||{},created:d.created||{},seen:d.seen||{}};}
+var SORT={users:"az",guests:"az",blocked:"az",temps:"az"};
+function recLast(b,n){var r=(b.seen&&b.seen[n])||(b.guests||{})[n]||(b.temps||{})[n]||(b.blocked||{})[n]||(b.pending||{})[n]||{}; return r.last||r.first||r.at||"";}
+function fmtSeen(name,gid,rec){rec=rec||{}; var bits=[]; if(gid) bits.push("sala "+gid); if(rec.ip) bits.push("IP "+rec.ip); var v=rec.last||rec.first||rec.at; if(v) bits.push("visto "+v); return bits.join(" · ");}
+function sortItems(list,tab){var mode=SORT[tab]||"az"; list.sort(function(a,c){if(mode==="time"){var ta=(a.rec&&(a.rec.last||a.rec.first||a.rec.at))||""; var tc=(c.rec&&(c.rec.last||c.rec.first||c.rec.at))||""; if(tc!==ta) return tc>ta?-1:1;} return String(a.name).localeCompare(String(c.name),"pt",{sensitivity:"base"});}); return list;}
+function sortNickList(names,b,tab){var mode=SORT[tab]||"az"; names.sort(function(a,c){if(mode==="time"){var d=recLast(b,c).localeCompare(recLast(b,a)); if(d) return d;} return a.localeCompare(c,"pt",{sensitivity:"base"});});}
+
+async function refreshReg(){try{registry=await reg('/registry')||{};}catch(e){registry={}; throw e;}}
+
+async function loadUsers(){
+ const boxOps=$('users-ops'), box=$('users');
+ try{await refreshReg();}catch(e){}
+ const b=bucket(), skip=new Set(Object.keys(b.denied).concat(Object.keys(b.blocked),Object.keys(b.pending)));
+ let names=(await api('/.groups/'+GROUP+'/.users/')||[]).filter(n=>!skip.has(n));
+ names.sort((a,c)=>a.localeCompare(c,'pt',{sensitivity:'base'}));
+ const rows=[];
+ for(const name of names){
+  let info={}; try{info=await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name));}catch(e){}
+  rows.push({name, perm:(info&&info.permissions)||'present', rec:(b.seen||{})[name]||{}});
+ }
+ sortItems(rows,'users');
+ const uk='u:'+SORT.users+':'+rows.map(r=>r.name+':'+r.perm).join('|');
+ if(uk===loadUsers._k) return; loadUsers._k=uk;
+ if(boxOps) boxOps.innerHTML='';
+ box.innerHTML='';
+ const ops=rows.filter(r=>r.perm==='op'||r.perm==='admin');
+ const rest=rows.filter(r=>r.perm!=='op'&&r.perm!=='admin');
+ function render(target, list, empty){
+  if(!target) return;
+  if(!list.length){target.textContent=empty;return;}
+  list.forEach(function(item){
+   const name=item.name, perm=item.perm;
+   const row=document.createElement('div'); row.className='user-row';
+   row.innerHTML='<div class="who"><b></b></div><select class="permset"><option value="op">Admin da sala</option><option value="present">Pode transmitir</option><option value="message">Só chat</option><option value="observe">Só assistir</option></select><input type="password" placeholder="Nova senha"/><button type="button" class="rst">Redefinir</button><button type="button" class="del">Excluir</button><button type="button" class="blk">Bloquear</button>';
+   row.querySelector('b').textContent=name;
+   var sm=document.createElement('span'); sm.className='hint'; sm.textContent=fmtSeen(name,GROUP,item.rec); row.querySelector('.who').appendChild(sm);
+   row.querySelector('.permset').value=['op','present','message','observe'].indexOf(perm)>=0?perm:'present';
+   row.querySelector('.permset').onchange=async function(){
+    try{
+     await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:this.value})});
+     loadUsers._k=null; uiMsg('Permissão de '+name+' atualizada. Se estiver na sala, a mudança vale na hora no servidor; o vídeo/chat dele atualiza na próxima ação.');
+     await loadUsers();
+    }catch(e){uiMsg(e.message);}
+   };
+   row.querySelector('.rst').onclick=async()=>{
+    const np=row.querySelector('input').value; if(!np){uiMsg('Digite a nova senha');return;}
+    try{await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name)+'/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:np}); row.querySelector('input').value=''; uiMsg('Senha de '+name+' atualizada');}
+    catch(e){uiMsg(e.message);}
+   };
+   row.querySelector('.del').onclick=async()=>{
+    if(!await uiConfirm('Excluir '+name+' por completo? A conta some e o nick fica livre de novo para qualquer um usar.')) return;
+    try{await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name),{method:'DELETE'}); try{await reg('/forget',{group:GROUP,user:name});}catch(e){} loadUsers._k=null; await loadUsers(); await loadGuests(); await loadBlocked();}
+    catch(e){uiMsg(e.message);}
+   };
+   row.querySelector('.blk').onclick=async()=>{
+    if(!await uiConfirm('Bloquear '+name+'? Ele cai da sala e não entra mais até você desbloquear. A conta não é apagada.')) return;
+    try{await reg('/block',{group:GROUP,user:name}); loadUsers._k=null; loadBlocked._k=null; await loadUsers(); await loadGuests(); await loadBlocked();}
+    catch(e){uiMsg(e.message);}
+   };
+   target.appendChild(row);
+  });
+ }
+ render(boxOps, ops, 'Nenhum admin além das contas do servidor.');
+ render(box, rest, 'Nenhum usuário próprio.');
+}
+
+async function loadRooms(){
+ const box=$('rooms');
+ const names=await api('/.groups/')||[];
+ await loadSite();
+ let meta={};
+ try{ (await (await fetch('/spartan-api/rooms')).json()).forEach(r=>meta[r.id]=r); }catch(e){}
+ const main=SITE.main||'spartan', home=SITE.home||main;
+ const key='r:'+main+':'+home+':'+names.join('|')+JSON.stringify(meta);
+ if(key===loadRooms._k) return; loadRooms._k=key;
+ box.innerHTML='';
+ const rest=names.filter(n=>n!==main).sort((x,y)=>x.localeCompare(y,'pt',{sensitivity:'base'}));
+ function paint(n, isMain){
+  const info=meta[n]||{};
+  const wrap=document.createElement('div');
+  if(isMain) wrap.className='room-main';
+  const row=document.createElement('div'); row.className='room-row room-row-wide';
+  row.innerHTML='<b></b><span class="sala-tag"></span><a class="btn-open" target="_blank" rel="noopener">Abrir</a>'+(isMain?'':'<button type="button" class="del">Apagar</button>');
+  row.querySelector('b').textContent=n+(n===home?' · home':'');
+  row.querySelector('.sala-tag').textContent=isMain?('principal · '+(info.open?'Pública':'Convite')):(info.open?'Pública':'Convite');
+  row.querySelector('a').href='/group/'+encodeURIComponent(n)+'/';
+  if(!isMain){
+   row.querySelector('.del').onclick=async()=>{
+    if(!await uiConfirm('Apagar a sala '+n+' por completo?')) return;
+    try{await api('/.groups/'+encodeURIComponent(n),{method:'DELETE'}); loadRooms._k=null; await loadRooms();}catch(e){uiMsg(e.message);}
+   };
+  }
+  wrap.appendChild(row);
+  if(isMain){
+   const ed=document.createElement('div'); ed.className='room-edit';
+   ed.innerHTML='<label>Título na home</label><input class="mtitle" type="text"/><label>Endereço (URL)</label><input class="mslug" type="text"/><button type="button" class="okbtn msave">Salvar nome e endereço</button>'+(info.open?'':'<label>Nova senha de amigos</label><input class="mpw" type="password" autocomplete="new-password"/><button type="button" class="rst mpws">Redefinir senha de amigos</button>');
+   ed.querySelector('.mtitle').value=info.title||n;
+   ed.querySelector('.mslug').value=n;
+   ed.querySelector('.msave').onclick=async()=>{
+    const title=ed.querySelector('.mtitle').value.trim();
+    const id=ed.querySelector('.mslug').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
+    if(!id){uiMsg('URL inválida');return;}
+    try{ SITE=await reg('/rename-main',{id:id,title:title||id}); loadRooms._k=null; uiMsg('Sala principal atualizada: /group/'+id+'/'); await loadSite(); await loadRooms(); }
+    catch(e){uiMsg(e.message);}
+   };
+   const pwbtn=ed.querySelector('.mpws');
+   if(pwbtn) pwbtn.onclick=async()=>{
+    const v=ed.querySelector('.mpw').value; if(!v){uiMsg('Digite a nova senha de amigos');return;}
+    try{
+     try{await api('/.groups/'+encodeURIComponent(n)+'/.wildcard-user',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:'present'})});}catch(e){}
+     await api('/.groups/'+encodeURIComponent(n)+'/.wildcard-user/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});
+     ed.querySelector('.mpw').value=''; uiMsg('Senha de amigos atualizada');
+    }catch(e){uiMsg(e.message);}
+   };
+   wrap.appendChild(ed);
+   const bar=document.createElement('div'); bar.className='room-pw';
+   bar.innerHTML=n===home?'<span class="home-on">Esta é a sala da home</span>':'<button type="button" class="okbtn sethome">Voltar esta para a home</button>';
+   const hb=bar.querySelector('.sethome');
+   if(hb) hb.onclick=async()=>{ try{ SITE=await reg('/site-home',{group:n}); loadRooms._k=null; uiMsg('Home voltou para a sala principal'); await loadRooms(); }catch(e){uiMsg(e.message);} };
+   wrap.appendChild(bar);
+  } else {
+   const bar=document.createElement('div'); bar.className='room-pw';
+   let extra=n===home?'<span class="home-on">Esta é a sala da home</span>':'<button type="button" class="okbtn sethome">Usar na home</button>';
+   if(!info.open) extra='<input type="password" placeholder="Nova senha de amigos" autocomplete="new-password"/><button type="button" class="rst">Redefinir senha da sala</button> '+extra;
+   bar.innerHTML=extra;
+   const rst=bar.querySelector('.rst');
+   if(rst) rst.onclick=async()=>{
+    const v=bar.querySelector('input').value; if(!v){uiMsg('Digite a nova senha de amigos');return;}
+    try{
+     try{await api('/.groups/'+encodeURIComponent(n)+'/.wildcard-user',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:'present'})});}catch(e){}
+     await api('/.groups/'+encodeURIComponent(n)+'/.wildcard-user/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});
+     bar.querySelector('input').value=''; uiMsg('Senha de amigos da sala '+n+' atualizada');
+    }catch(e){uiMsg(e.message);}
+   };
+   const sh=bar.querySelector('.sethome');
+   if(sh) sh.onclick=async()=>{ try{ SITE=await reg('/site-home',{group:n}); loadRooms._k=null; uiMsg('Home agora abre a sala '+n); await loadRooms(); }catch(e){uiMsg(e.message);} };
+   wrap.appendChild(bar);
+  }
+  box.appendChild(wrap);
+ }
+ if(names.indexOf(main)>=0) paint(main, true);
+ rest.forEach(n=>paint(n, false));
+}
+
+async function loadGuests(){
+ const box=$('guests'); if(!box) return;
+ try{await refreshReg();}catch(e){if(!box.dataset.ok) box.textContent='Serviço de convites ainda não está no ar.';return;}
+ const b=bucket();
+ let names=[...new Set(Object.keys(b.guests).concat(Object.keys(b.pending),Object.keys(b.denied),Object.keys(b.blocked)))];
+ const registered=new Set((await api('/.groups/'+GROUP+'/.users/'))||[]);
+ names=names.filter(n=>!b.blocked[n]&&(b.pending[n]||b.denied[n]||!registered.has(n))); sortNickList(names,b,'guests');
+ const gk='g:'+SORT.guests+':'+names.map(n=>(b.pending[n]&&'p'||b.denied[n]&&'d'||b.blocked[n]&&'b'||'g')+n).join('|');
+ if(gk===loadGuests._k) return; loadGuests._k=gk; box.dataset.ok='1';
+ box.innerHTML='';
+ if(!names.length){box.textContent='Ninguém entrou ainda com a senha dos amigos.';return;}
+ names.forEach(name=>{
+  let st='guest';
+  if(b.pending[name]) st='pending';
+  if(b.denied[name]) st='denied';
+  if(b.blocked[name]) st='blocked';
+  const row=document.createElement('div'); row.className='guest-row';
+  const lab=document.createElement('b'); lab.textContent=name;
+  const tag=document.createElement('span'); tag.className='tag tag-'+st;
+  tag.textContent={guest:'convite',pending:'cadastro pendente',denied:'negado',blocked:'bloqueado'}[st];
+  const acts=document.createElement('div'); acts.className='acts';
+  function add(cls,label,fn){const bt=document.createElement('button'); bt.type='button'; bt.className=cls; bt.textContent=label; bt.onclick=fn; acts.appendChild(bt);}
+  async function go(path){try{await reg(path,{group:GROUP,user:name}); loadUsers._k=null; loadGuests._k=null; if(loadBlocked) loadBlocked._k=null; await loadUsers(); await loadGuests(); await loadBlocked();}catch(e){uiMsg(e.message);}}
+  if(st==='guest'||st==='pending') add('reg','Cadastrar', async()=>{
+   const pw=await uiPrompt('Senha para '+name+' (mínimo 8):'); if(!pw||pw.length<8){uiMsg('Senha curta');return;}
+   try{await reg('/quick',{group:GROUP,user:name,password:pw,permissions:'present'}); loadUsers._k=null; loadGuests._k=null; if(loadBlocked) loadBlocked._k=null; await loadUsers(); await loadGuests(); await loadBlocked();}catch(e){uiMsg(e.message);}
+  });
+  if(st==='pending'){ add('okbtn','Aprovar',()=>go('/approve')); add('deny','Negar',async()=>{if(await uiConfirm('Negar e bloquear o nick '+name+'?')) go('/deny');}); }
+  if(st==='guest') add('blk','Bloquear',async()=>{if(await uiConfirm('Bloquear '+name+'? Ele não entra mais até desbloquear. A conta não é apagada.')) go('/block');});
+  add('ghost','Excluir',async()=>{if(await uiConfirm('Excluir '+name+' por completo? A conta some e o nick fica livre de novo.')) go('/forget');});
+  const meta=document.createElement('span'); meta.className='hint'; meta.textContent=fmtSeen(name,GROUP,Object.assign({},b.guests[name]||{},(b.seen||{})[name]||{}));
+  row.appendChild(lab); row.appendChild(tag); row.appendChild(meta); row.appendChild(acts); box.appendChild(row);
+ });
+}
+
+async function loadBlocked(){
+ const box=$('blocked'); if(!box) return;
+ try{await refreshReg();}catch(e){if(!box.dataset.ok) box.textContent='Serviço de convites ainda não está no ar.';return;}
+ const b=bucket();
+ const names=Object.keys(b.blocked||{}); sortNickList(names,b,'blocked');
+ const key='b:'+SORT.blocked+':'+names.join('|');
+ if(key===loadBlocked._k) return; loadBlocked._k=key; box.dataset.ok='1';
+ box.innerHTML='';
+ if(!names.length){box.textContent='Ninguém bloqueado.';return;}
+ names.forEach(name=>{
+  const row=document.createElement('div'); row.className='guest-row';
+  const lab=document.createElement('b'); lab.textContent=name;
+  const tag=document.createElement('span'); tag.className='tag tag-blocked'; tag.textContent='bloqueado';
+  const acts=document.createElement('div'); acts.className='acts';
+  const un=document.createElement('button'); un.type='button'; un.className='okbtn'; un.textContent='Desbloquear';
+  un.onclick=async()=>{ if(!await uiConfirm('Desbloquear '+name+'? A conta continua existindo e o nick segue reservado. Ele volta a poder entrar com a senha da conta.')) return;
+   try{await reg('/unblock',{group:GROUP,user:name}); loadUsers._k=null; loadBlocked._k=null; await loadUsers(); await loadGuests(); await loadBlocked();}catch(e){uiMsg(e.message);} };
+  acts.appendChild(un);
+  const bt=document.createElement('button'); bt.type='button'; bt.className='del'; bt.textContent='Excluir usuário';
+  bt.onclick=async()=>{ if(!await uiConfirm('Excluir '+name+' por completo? A conta some e o nick fica livre de novo para qualquer um usar.')) return;
+   try{await reg('/forget',{group:GROUP,user:name}); loadUsers._k=null; loadGuests._k=null; loadBlocked._k=null; loadUsers._k=null; loadGuests._k=null; if(loadBlocked) loadBlocked._k=null; await loadUsers(); await loadGuests(); await loadBlocked(); await loadBlocked();}catch(e){uiMsg(e.message);} };
+  acts.appendChild(bt);
+  const meta=document.createElement('span'); meta.className='hint'; meta.textContent=fmtSeen(name,GROUP,Object.assign({},b.blocked[name]||{},(b.seen||{})[name]||{}));
+  row.appendChild(lab); row.appendChild(tag); row.appendChild(meta); row.appendChild(acts); box.appendChild(row);
+ });
+}
+async function loadTemps(){
+ const box=$('temps'); if(!box) return;
+ try{await refreshReg();}catch(e){if(!box.dataset.ok) box.textContent='Serviço fora.';return;}
+ let openIds=null;
+ try{ const rooms=await fetch('/spartan-api/rooms',{cache:'no-store'}).then(function(r){return r.json();}); openIds={}; (rooms||[]).forEach(function(r){ if(r&&r.open) openIds[r.id]=1; }); }catch(e){}
+ const rows=[];
+ Object.keys(registry||{}).forEach(function(gid){ if(openIds && !openIds[gid]) return; const temps=(registry[gid]||{}).temps||{}; Object.keys(temps).forEach(function(name){rows.push({gid:gid,name:name,rec:temps[name]||{}});});});
+ sortItems(rows,'temps');
+ const key='t:'+SORT.temps+':'+rows.map(function(r){return r.gid+':'+r.name+':'+(r.rec.last||'')+':'+(r.rec.ip||'');}).join('|');
+ if(key===loadTemps._k) return; loadTemps._k=key; box.dataset.ok='1';
+ box.innerHTML='';
+ if(!rows.length){box.textContent='Ninguém entrou ainda em sala sem senha.';return;}
+ rows.forEach(function(item){
+  const name=item.name, rec=item.rec, gid=item.gid;
+  const el=document.createElement('div'); el.className='guest-row';
+  const lab=document.createElement('b'); lab.textContent=name;
+  const tag=document.createElement('span'); tag.className='tag tag-guest'; tag.textContent='temporário';
+  const meta=document.createElement('span'); meta.className='hint'; meta.textContent='sala '+gid+(rec.ip?(' · IP '+rec.ip):'')+' · visto '+(rec.last||rec.first||'');
+  el.appendChild(lab); el.appendChild(tag); el.appendChild(meta); box.appendChild(el);
+ });
+}
+async function afterLogin(){
+ await loadSite();
+ document.documentElement.classList.remove('admin-gate');
+ $('login-box').hidden=true; $('panel').hidden=false;
+ $('who').textContent='Logado: '+user;
+ await loadUsers(); await loadRooms(); await loadGuests(); await loadBlocked(); await loadTemps();
+}
+$('btn-login').onclick=async()=>{
+ user=$('u').value.trim(); pass=$('p').value; $('login-err').textContent='';
+ try{await api('/.groups/'+GROUP+'/.users/'); sessionStorage.setItem('spartanAdmin',JSON.stringify({user:user,pass:pass})); await afterLogin();}
+ catch(e){$('login-err').textContent=e.message;}
+};
+$('p').addEventListener('keydown',e=>{if(e.key==='Enter')$('btn-login').click();});
+$('btn-out').onclick=()=>{try{sessionStorage.removeItem('spartanAdmin');sessionStorage.removeItem('spartanPending');sessionStorage.removeItem('spartanSession');sessionStorage.setItem('spartanLoggedOut','1');Object.keys(sessionStorage).forEach(function(k){if(k.indexOf('spartanSession:')===0)sessionStorage.removeItem(k);});window._spartanCred='';}catch(e){} location.href='/';};
+$('btn-create').onclick=async()=>{
+ const n=$('nu').value.trim(), p=$('np').value, perm=$('nperm').value; $('create-msg').textContent='';
+ if(!n||!p){$('create-msg').textContent='Nome e senha obrigatórios';return;}
+ try{
+  await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(n),{method:'PUT',headers:{'Content-Type':'application/json','If-None-Match':'*'},body:JSON.stringify({permissions:perm})});
+  await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(n)+'/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:p});
+  $('nu').value=''; $('np').value=''; $('create-msg').textContent='Usuário '+n+' criado'; await loadUsers();
+ }catch(e){$('create-msg').textContent=e.message;}
+};
+$('btn-wild').onclick=async()=>{
+ const p=$('wp').value; $('wild-msg').textContent='';
+ if(!p){$('wild-msg').textContent='Digite a senha';return;}
+ try{
+  try{await api('/.groups/'+GROUP+'/.wildcard-user',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:'present'})});}catch(e){}
+  await api('/.groups/'+GROUP+'/.wildcard-user/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:p});
+  $('wp').value=''; $('wild-msg').textContent='Senha dos amigos atualizada';
+ }catch(e){$('wild-msg').textContent=e.message;}
+};
+$('ropen')&&($('ropen').onchange=()=>{ $('rp').disabled=$('ropen').checked; if($('ropen').checked) $('rp').value=''; });
+$('btn-room').onclick=async()=>{
+ let slug=$('rn').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
+ const title=$('rd').value.trim()||slug;
+ const open=$('ropen')&&$('ropen').checked;
+ const wp=$('rp')?$('rp').value:'';
+ $('room-msg').textContent='';
+ if(!slug){$('room-msg').textContent='Digite o nome da sala';return;}
+ if(!open && !wp){$('room-msg').textContent='Senha de amigos ou marque sala pública';return;}
+ try{
+  await api('/.groups/'+encodeURIComponent(slug)+'/',{method:'PUT',headers:{'Content-Type':'application/json','If-None-Match':'*'},body:JSON.stringify({public:true,displayName:title,description:'',codecs:['vp9','vp8','opus'],'unrestricted-tokens':true})});
+  try{await api('/.groups/'+encodeURIComponent(slug)+'/.wildcard-user',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:'present'})});}catch(e){}
+  if(open){
+    await api('/.groups/'+encodeURIComponent(slug)+'/.wildcard-user/.password',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'wildcard'})});
+  }else{
+    await api('/.groups/'+encodeURIComponent(slug)+'/.wildcard-user/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:wp});
+  }
+  $('rn').value=''; $('rd').value=''; if($('rp')) $('rp').value='';
+  $('room-msg').textContent=open?('Sala '+slug+' pública criada'):('Sala '+slug+' criada com senha de amigos');
+  await loadRooms();
+ }catch(e){$('room-msg').textContent=e.message;}
+};
+document.querySelectorAll('.tab').forEach(b=>{
+ b.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
+  $('tab-users').hidden=b.dataset.tab!=='users';
+  $('tab-guests').hidden=b.dataset.tab!=='guests';
+  $('tab-blocked').hidden=b.dataset.tab!=='blocked';
+  $('tab-temps').hidden=b.dataset.tab!=='temps';
+  $('tab-rooms').hidden=b.dataset.tab!=='rooms';
+ };
+});
+try{
+ const saved=JSON.parse(sessionStorage.getItem('spartanAdmin')||'null');
+ if(saved&&saved.user){user=saved.user;pass=saved.pass;afterLogin().catch(()=>sessionStorage.removeItem('spartanAdmin'));}
+}catch(e){}
+
+document.querySelectorAll('.list-tools').forEach(function(bar){bar.addEventListener('click',function(e){var btn=e.target.closest('[data-sort]'); if(!btn) return; var tab=bar.getAttribute('data-tab'); SORT[tab]=btn.getAttribute('data-sort'); bar.querySelectorAll('[data-sort]').forEach(function(x){x.classList.toggle('on',x===btn);}); loadUsers._k=loadGuests._k=loadBlocked._k=loadTemps._k=null; if(tab==='users') loadUsers(); else if(tab==='guests') loadGuests(); else if(tab==='blocked') loadBlocked(); else if(tab==='temps') loadTemps();});});
+setInterval(function(){ try{ if($('panel') && !$('panel').hidden){ loadUsers().catch(function(){}); loadGuests().catch(function(){}); loadBlocked().catch(function(){}); loadTemps().catch(function(){}); } }catch(e){} }, 8000);

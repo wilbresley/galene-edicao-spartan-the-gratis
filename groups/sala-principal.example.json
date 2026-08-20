@@ -1,0 +1,22 @@
+{
+  "public": true,
+  "displayName": "Sala principal",
+  "description": "",
+  "codecs": ["vp9", "vp8", "opus"],
+  "unrestricted-tokens": true,
+  "users": {
+    "OPERADOR": {
+      "password": {
+        "type": "bcrypt",
+        "key": "COLE_O_HASH_AQUI"
+      },
+      "permissions": "op"
+    }
+  },
+  "wildcard-user": {
+    "password": {
+      "type": "wildcard"
+    },
+    "permissions": "present"
+  }
+}
