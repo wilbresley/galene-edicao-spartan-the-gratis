@@ -356,8 +356,22 @@ class H(BaseHTTPRequestHandler):
             return True, internal_auth() or auth
         return False, auth
     def cip(self):
-        xff=(self.headers.get("X-Forwarded-For") or self.headers.get("X-Real-IP") or "").split(",")[0].strip()
-        return xff or (self.client_address[0] if self.client_address else "")
+        """IP do visitante (não o do Cloudflare/proxy)."""
+        # Cloudflare / proxies que mandam o cliente de verdade
+        for h in ("CF-Connecting-IP", "True-Client-IP", "X-Client-IP"):
+            v=(self.headers.get(h) or "").strip()
+            if v and not v.lower().startswith("unknown"):
+                return v.split(",")[0].strip()
+        xff=(self.headers.get("X-Forwarded-For") or "").strip()
+        if xff:
+            parts=[p.strip() for p in xff.split(",") if p.strip()]
+            # Em geral o 1º é o cliente; se só vier IP de CF, tenta o último
+            if parts:
+                return parts[0]
+        xri=(self.headers.get("X-Real-IP") or "").strip()
+        if xri:
+            return xri.split(",")[0].strip()
+        return self.client_address[0] if self.client_address else ""
     def handle_gapi(self, method):
         path,_=self.route()
         if not path.startswith("/gapi"):
