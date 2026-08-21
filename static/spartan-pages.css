@@ -6,8 +6,8 @@ h1,.navbar-brand{color:#dc2626!important;background:#000!important;margin:0;padd
 label{display:block;margin:.8rem 0 .25rem;color:#f2f3f5}
 input[type=password],input[type=text]{width:100%;box-sizing:border-box;background:#1e1f22;color:#f2f3f5;border:1px solid #7f1d1d;border-radius:6px;padding:.5rem .6rem}
 input[type=submit],.home-link{display:inline-block;margin-top:1rem;background:#dc2626;color:#fff!important;border:none;border-radius:8px;padding:.55rem 1.1rem;text-decoration:none;cursor:pointer;font-weight:700}
-#errormessage{color:#f87171;font-weight:700;min-height:1.2em}
-#message{color:#22c55e;font-weight:700;min-height:1.2em}
+#errormessage{color:#f87171;font-weight:700;min-height:1.2em;margin:.85rem 0 0;text-align:center}
+#message{color:#22c55e;font-weight:700;min-height:1.2em;margin:.85rem 0 0;text-align:center}
 .wrapper{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem}
 .landing-page{text-align:center}
 .landing-page h1{background:none!important;padding:.4rem 0}

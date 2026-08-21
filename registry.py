@@ -5,7 +5,7 @@ from urllib.parse import urlparse, parse_qs, quote
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from threading import Thread
-import json, secrets, time, urllib.request, urllib.error, base64, os, hashlib
+import json, secrets, time, urllib.request, urllib.error, base64, os, hashlib, hmac
 
 DATA, GROUPS, GALENE, PORT = Path("/data/registry.json"), Path("/groups"), "http://127.0.0.1:8443", 8091
 SITE=Path("/data/site.json")
@@ -54,11 +54,15 @@ def is_open(gid):
     except Exception: return False
     pw=(g.get("wildcard-user") or {}).get("password")
     return (not pw) or (isinstance(pw, dict) and pw.get("type")=="wildcard")
-def galene(method, path, auth, body=None, ctype="application/json"):
+def galene(method, path, auth, body=None, ctype="application/json", extra_headers=None):
     data=None if body is None else (body.encode() if isinstance(body, str) else body)
-    req=urllib.request.Request(GALENE+path, data=data, method=method, headers={"Authorization":auth or "","Content-Type":ctype})
+    headers={"Authorization":auth or "","Content-Type":ctype}
+    if extra_headers:
+        for k,v in extra_headers.items():
+            if v is not None: headers[k]=v
+    req=urllib.request.Request(GALENE+path, data=data, method=method, headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=8) as r: return r.status, r.read().decode()
+        with urllib.request.urlopen(req, timeout=8) as r: return r.status, r.read().decode(errors="replace")
     except urllib.error.HTTPError as e: return e.code, e.read().decode(errors="replace")
     except Exception as e: return 500, str(e)
 def internal_auth():
@@ -68,6 +72,117 @@ def internal_auth():
         if ":" in line:
             return "Basic "+base64.b64encode(line.encode()).decode()
     return ""
+def sidecar_plain():
+    sp=Path("/data/sidecar.auth")
+    if not sp.exists(): return None, None
+    line=sp.read_text(encoding="utf-8").strip()
+    if ":" not in line: return None, None
+    u,p=line.split(":",1); return u,p
+def parse_basic(auth):
+    if not auth or not auth.lower().startswith("basic "): return None, None
+    try:
+        raw=base64.b64decode(auth.split(" ",1)[1].strip()).decode("utf-8")
+        if ":" not in raw: return None, None
+        u,p=raw.split(":",1); return u,p
+    except Exception: return None, None
+def password_match(pwobj, password):
+    if password is None: return False
+    if isinstance(pwobj, str): return pwobj==password
+    if not isinstance(pwobj, dict): return False
+    t=pwobj.get("type")
+    if t=="plain" or (not t and pwobj.get("key") and not pwobj.get("salt")):
+        key=pwobj.get("key")
+        return isinstance(key,str) and key==password
+    if t=="wildcard": return True
+    if t=="pbkdf2":
+        try:
+            key=bytes.fromhex(pwobj.get("key") or "")
+            salt=bytes.fromhex(pwobj.get("salt") or "")
+            iters=int(pwobj.get("iterations") or 4096)
+            if iters < 1 or not key or not salt: return False
+            their=hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iters, dklen=len(key))
+            return hmac.compare_digest(their, key)
+        except Exception: return False
+    if t=="bcrypt":
+        try:
+            import bcrypt
+            raw=(pwobj.get("key") or "")
+            if isinstance(raw,str): raw=raw.encode("utf-8")
+            return bcrypt.checkpw(password.encode("utf-8"), raw)
+        except Exception: return False
+    return False
+def load_group(gid):
+    p=GROUPS/f"{gid}.json"
+    if not p.exists(): return None
+    try: return json.loads(p.read_text(encoding="utf-8"))
+    except Exception: return None
+def find_group_user(gid, user):
+    """Retorna (nome_exato, registro) com match case-insensitive."""
+    g=load_group(gid)
+    if not g: return None, None
+    users=g.get("users") or {}
+    if user in users: return user, users[user]
+    ul=(user or "").lower()
+    for k,v in users.items():
+        if str(k).lower()==ul: return k, v
+    return None, None
+def user_perm_name_from(rec):
+    if not rec: return None
+    perm=rec.get("permissions")
+    if isinstance(perm, str): return perm
+    if isinstance(perm, list):
+        if "admin" in perm: return "admin"
+        if "op" in perm: return "op"
+    return None
+def user_perm_name(gid, user):
+    _,rec=find_group_user(gid, user)
+    return user_perm_name_from(rec)
+def user_password_ok(gid, user, password):
+    _,rec=find_group_user(gid, user)
+    if not rec: return False
+    return password_match(rec.get("password"), password)
+def galene_user_auth_ok(gid, user, password):
+    """Valida nick+senha como o Galene (endpoint de senha aceita a própria conta)."""
+    auth="Basic "+base64.b64encode(f"{user}:{password}".encode("utf-8")).decode()
+    qg,qu=quote(gid,safe=""), quote(user,safe="")
+    # Auth correto + body inválido → 415/400. Auth errado → 401.
+    code,_=galene("PUT", f"/galene-api/v0/.groups/{qg}/.users/{qu}/.password", auth, "x", "text/plain")
+    if code==401: return False
+    return code in (400, 415, 200, 204, 201)
+def config_admin_ok(user, password):
+    cfg=Path("/data/config.json")
+    if not cfg.exists(): return False
+    try: d=json.loads(cfg.read_text(encoding="utf-8"))
+    except Exception: return False
+    users=d.get("users") or {}
+    rec=users.get(user)
+    if not rec:
+        ul=(user or "").lower()
+        for k,v in users.items():
+            if str(k).lower()==ul:
+                rec=v; break
+    if not rec: return False
+    perm=rec.get("permissions")
+    ok_perm=(perm=="admin") or (isinstance(perm, list) and "admin" in perm)
+    return ok_perm and password_match(rec.get("password"), password)
+def panel_login_ok(user, password):
+    user=(user or "").strip()
+    if not user or password is None: return False
+    su,spw=sidecar_plain()
+    if su is not None and user.lower()==su.lower() and password==spw: return True
+    if config_admin_ok(user, password): return True
+    site=load_site(); main=site.get("main") or "spartan"
+    seen=set()
+    for gid in [main]+[fp.stem for fp in GROUPS.glob("*.json")]:
+        if gid in seen: continue
+        seen.add(gid)
+        real, rec=find_group_user(gid, user)
+        if not real: continue
+        perm=user_perm_name_from(rec)
+        if perm not in ("op","admin"): continue
+        if password_match(rec.get("password"), password): return True
+        if galene_user_auth_ok(gid, real, password): return True
+    return False
 def hash_plain(pw):
     salt=os.urandom(8)
     key=hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), salt, 4096, dklen=32)
@@ -128,6 +243,15 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Content-Type","application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(b)))
         self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(b)
+    def send_raw(self, code, body, ctype="text/plain; charset=utf-8"):
+        if body is None: body=b""
+        if isinstance(body, str): body=body.encode()
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control","no-store")
+        self.end_headers()
+        if body: self.wfile.write(body)
     def read_json(self):
         n=int(self.headers.get("Content-Length") or 0)
         try: return json.loads(self.rfile.read(n) if n else b"{}")
@@ -138,14 +262,55 @@ class H(BaseHTTPRequestHandler):
         if not path.startswith("/"): path="/"+path
         return path, parse_qs(u.query)
     def admin_ok(self):
-        auth=self.headers.get("Authorization") or ""
-        code,_=galene("GET","/galene-api/v0/.groups/", auth)
-        return code==200, auth
+        auth=self.headers.get("Authorization") or self.headers.get("X-Spartan-Auth") or ""
+        user, password=parse_basic(auth)
+        if panel_login_ok(user, password):
+            return True, internal_auth() or auth
+        return False, auth
     def cip(self):
         xff=(self.headers.get("X-Forwarded-For") or self.headers.get("X-Real-IP") or "").split(",")[0].strip()
         return xff or (self.client_address[0] if self.client_address else "")
+    def handle_gapi(self, method):
+        """Proxy /gapi/* → Galene /galene-api/v0/* com auth do sidecar (ops da sala entram no painel)."""
+        path,_=self.route()
+        if not path.startswith("/gapi"):
+            self.send_json(404, {"error":"not found"}); return
+        rest=path[len("/gapi"):] or "/"
+        if not rest.startswith("/"): rest="/"+rest
+        gpath="/galene-api/v0"+rest
+        auth=self.headers.get("Authorization") or self.headers.get("X-Spartan-Auth") or ""
+        user, password=parse_basic(auth)
+        if not panel_login_ok(user, password):
+            self.send_raw(401, '{"error":"Usuário ou senha inválidos"}', "application/json; charset=utf-8")
+            return
+        galene_auth=internal_auth()
+        if not galene_auth:
+            self.send_raw(500, '{"error":"sidecar.auth ausente ou inválido no servidor"}', "application/json; charset=utf-8")
+            return
+        ctype=self.headers.get("Content-Type") or "application/json"
+        n=int(self.headers.get("Content-Length") or 0)
+        raw=None
+        if method not in ("GET","HEAD","DELETE") and n>0:
+            raw=self.rfile.read(n)
+        elif n>0:
+            self.rfile.read(n)
+        extra={}
+        inm=self.headers.get("If-None-Match")
+        if inm: extra["If-None-Match"]=inm
+        im=self.headers.get("If-Match")
+        if im: extra["If-Match"]=im
+        if method in ("GET","HEAD","DELETE"):
+            ctype_send="application/json"
+        else:
+            ctype_send=ctype
+        code, text=galene(method, gpath, galene_auth, raw, ctype_send, extra)
+        out_ctype="application/json; charset=utf-8"
+        if text and text[:1] not in "{[" and not (ctype or "").startswith("application/json"):
+            out_ctype="text/plain; charset=utf-8"
+        self.send_raw(code, text, out_ctype)
     def do_GET(self):
         path,q=self.route()
+        if path.startswith("/gapi"): self.handle_gapi("GET"); return
         if path in ("/","/health"): self.send_json(200, {"ok":True}); return
         if path=="/site":
             self.send_json(200, load_site()); return
@@ -172,8 +337,18 @@ class H(BaseHTTPRequestHandler):
         if path=="/registry":
             ok,_=self.admin_ok(); self.send_json(200 if ok else 401, load() if ok else {"error":"nao autorizado"}); return
         self.send_json(404, {"error":"not found"})
+    def do_PUT(self):
+        path,_=self.route()
+        if path.startswith("/gapi"): self.handle_gapi("PUT"); return
+        self.send_json(404, {"error":"not found"})
+    def do_DELETE(self):
+        path,_=self.route()
+        if path.startswith("/gapi"): self.handle_gapi("DELETE"); return
+        self.send_json(404, {"error":"not found"})
     def do_POST(self):
-        path,_=self.route(); body=self.read_json()
+        path,_=self.route()
+        if path.startswith("/gapi"): self.handle_gapi("POST"); return
+        body=self.read_json()
         g=(body.get("group") or "spartan").strip() or "spartan"; user=(body.get("user") or "").strip()
         if path=="/beacon":
             if not ok_nick(user): self.send_json(400, {"error":"nick invalido"}); return
@@ -202,6 +377,15 @@ class H(BaseHTTPRequestHandler):
                 galene("PUT", f"/galene-api/v0/.groups/{qg}/.users/{qu}", ia, '{"permissions":"observe"}')
                 galene("POST", f"/galene-api/v0/.groups/{qg}/.users/{qu}/.password", ia, pw, "text/plain"); harden_group(g)
             self.send_json(200, {"ok":True}); return
+        if path=="/panel-login":
+            u=(body.get("user") or user or "").strip()
+            pw=body.get("password") if "password" in body else body.get("pass")
+            if pw is None: pw=""
+            if panel_login_ok(u, pw):
+                self.send_json(200, {"ok":True})
+            else:
+                self.send_json(401, {"error":"Usuário ou senha inválidos. Use a conta op/admin da sala (a mesma da entrada), não a senha de amigos."})
+            return
         ok,auth=self.admin_ok()
         if not ok: self.send_json(401, {"error":"nao autorizado"}); return
         if path=="/site-home":

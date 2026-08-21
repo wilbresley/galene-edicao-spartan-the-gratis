@@ -4,13 +4,14 @@ function uiDlg(msg,kind){return new Promise(function(resolve){var d=document.get
 function uiConfirm(m){return uiDlg(m,'confirm');}
 function uiPrompt(m){return uiDlg(m,'prompt');}
 
-const API='/galene-api/v0', REG='/spartan-api';
+const API='/spartan-api/gapi', REG='/spartan-api';
 let GROUP='spartan', user='', pass='', registry={}, SITE={main:'spartan',home:'spartan'};
 async function loadSite(){ try{ SITE=await (await fetch(REG+'/site',{cache:'no-store'})).json(); }catch(e){ SITE={main:'spartan',home:'spartan'}; } GROUP=SITE.main||'spartan'; var a=document.querySelector('.btn-back'); if(a) a.href='/group/'+encodeURIComponent(SITE.home||SITE.main||'spartan')+'/'; }
 function authHeader(){return 'Basic '+btoa(unescape(encodeURIComponent(user+':'+pass)));}
 async function api(path,opt){
  opt=opt||{};
- const r=await fetch(API+path,{method:opt.method||'GET',headers:Object.assign({'Authorization':authHeader()},opt.headers||{}),body:opt.body});
+ const hdr=Object.assign({'Authorization':authHeader(),'X-Spartan-Auth':authHeader()},opt.headers||{});
+ const r=await fetch(API+path,{method:opt.method||'GET',headers:hdr,body:opt.body});
  const text=await r.text();
  if(r.status===401) throw new Error('Usuário ou senha inválidos');
  if(!r.ok) throw new Error((text||r.statusText||String(r.status)).slice(0,220));
@@ -18,7 +19,7 @@ async function api(path,opt){
  try{return JSON.parse(text);}catch(e){return text;}
 }
 async function reg(path,body){
- const r=await fetch(REG+path,{method:body?'POST':'GET',headers:{'Authorization':authHeader(),'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+ const r=await fetch(REG+path,{method:body?'POST':'GET',headers:{'Authorization':authHeader(),'X-Spartan-Auth':authHeader(),'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
  const text=await r.text();
  let data=null; try{data=JSON.parse(text);}catch(e){data=text;}
  if(!r.ok) throw new Error((data&&data.error)||text||r.statusText);
@@ -254,6 +255,7 @@ async function loadTemps(){
 }
 async function afterLogin(){
  await loadSite();
+ await api('/.groups/'+GROUP+'/.users/');
  document.documentElement.classList.remove('admin-gate');
  $('login-box').hidden=true; $('panel').hidden=false;
  $('who').textContent='Logado: '+user;
@@ -261,11 +263,16 @@ async function afterLogin(){
 }
 $('btn-login').onclick=async()=>{
  user=$('u').value.trim(); pass=$('p').value; $('login-err').textContent='';
- try{await api('/.groups/'+GROUP+'/.users/'); sessionStorage.setItem('spartanAdmin',JSON.stringify({user:user,pass:pass})); await afterLogin();}
- catch(e){$('login-err').textContent=e.message;}
+ try{
+  const r=await fetch(REG+'/panel-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:user,password:pass})});
+  let data=null; try{data=await r.json();}catch(e){data={};}
+  if(!r.ok) throw new Error((data&&data.error)||'Usuário ou senha inválidos');
+  sessionStorage.setItem('spartanAdmin',JSON.stringify({user:user,pass:pass}));
+  await afterLogin();
+ }catch(e){$('login-err').textContent=e.message;}
 };
 $('p').addEventListener('keydown',e=>{if(e.key==='Enter')$('btn-login').click();});
-$('btn-out').onclick=()=>{try{sessionStorage.removeItem('spartanAdmin');sessionStorage.removeItem('spartanPending');sessionStorage.removeItem('spartanSession');sessionStorage.setItem('spartanLoggedOut','1');Object.keys(sessionStorage).forEach(function(k){if(k.indexOf('spartanSession:')===0)sessionStorage.removeItem(k);});window._spartanCred='';}catch(e){} location.href='/';};
+$('btn-out').onclick=()=>{try{sessionStorage.removeItem('spartanAdmin');}catch(e){} location.href='/';};
 $('btn-create').onclick=async()=>{
  const n=$('nu').value.trim(), p=$('np').value, perm=$('nperm').value; $('create-msg').textContent='';
  if(!n||!p){$('create-msg').textContent='Nome e senha obrigatórios';return;}
@@ -318,7 +325,17 @@ document.querySelectorAll('.tab').forEach(b=>{
 });
 try{
  const saved=JSON.parse(sessionStorage.getItem('spartanAdmin')||'null');
- if(saved&&saved.user){user=saved.user;pass=saved.pass;afterLogin().catch(()=>sessionStorage.removeItem('spartanAdmin'));}
+ if(saved&&saved.user){
+  user=saved.user;pass=saved.pass;
+  afterLogin().catch(function(e){
+   try{sessionStorage.removeItem('spartanAdmin');}catch(err){}
+   user='';pass='';
+   document.documentElement.classList.add('admin-gate');
+   if($('login-box')) $('login-box').hidden=false;
+   if($('panel')) $('panel').hidden=true;
+   if($('login-err')) $('login-err').textContent=(e&&e.message)||'Não autenticou. Entre com o usuário admin (op da sala).';
+  });
+ }
 }catch(e){}
 
 document.querySelectorAll('.list-tools').forEach(function(bar){bar.addEventListener('click',function(e){var btn=e.target.closest('[data-sort]'); if(!btn) return; var tab=bar.getAttribute('data-tab'); SORT[tab]=btn.getAttribute('data-sort'); bar.querySelectorAll('[data-sort]').forEach(function(x){x.classList.toggle('on',x===btn);}); loadUsers._k=loadGuests._k=loadBlocked._k=loadTemps._k=null; if(tab==='users') loadUsers(); else if(tab==='guests') loadGuests(); else if(tab==='blocked') loadBlocked(); else if(tab==='temps') loadTemps();});});

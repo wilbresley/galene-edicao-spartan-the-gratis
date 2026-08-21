@@ -107,7 +107,12 @@ function reflectSettings() {
     let settings = getSettings();
     let store = false;
 
-    setLocalMute(settings.localMute);
+    if(typeof settings.localMute !== 'boolean') {
+        settings.localMute = true;
+        store = true;
+    }
+    settings.localMute = true;
+    setLocalMute(true, false);
 
     let videoselect = getSelectElement('videoselect');
     if(!settings.hasOwnProperty('video') ||
@@ -180,7 +185,15 @@ function reflectSettings() {
     if(settings.hasOwnProperty('displayAll')) {
         getInputElement('displayallbox').checked = settings.displayAll;
     } else {
-        settings.displayAll = getInputElement('displayallbox').checked;
+        settings.displayAll = false;
+        getInputElement('displayallbox').checked = false;
+        store = true;
+    }
+
+    if(settings.hasOwnProperty('hideSelf')) {
+        getInputElement('hideselfbox').checked = settings.hideSelf;
+    } else {
+        settings.hideSelf = getInputElement('hideselfbox').checked;
         store = true;
     }
 
@@ -217,8 +230,7 @@ function isMobileLayout() {
  * @param {boolean} [force]
  */
 function hideVideo(force) {
-    let mediadiv = document.getElementById('peers');
-    if(mediadiv.childElementCount > 0 && !force)
+    if(spartanVisibleCount() > 0 && !force)
         return;
     setVisibility('video-container', false);
     scheduleReconsiderDownRate();
@@ -228,7 +240,7 @@ function hideVideo(force) {
  * Show the video pane.
  */
 function showVideo() {
-    let hasmedia = document.getElementById('peers').childElementCount > 0;
+    let hasmedia = spartanVisibleCount() > 0;
     if(isMobileLayout()) {
         setVisibility('show-video', false);
         setVisibility('collapse-video', hasmedia);
@@ -251,6 +263,404 @@ function isSafari() {
 function isFirefox() {
     let ua = navigator.userAgent.toLowerCase();
     return ua.indexOf('firefox') >= 0;
+}
+
+const SPARTAN_GRID_MAX = 50;
+/** @type {Record<string, boolean>} */
+let spartanWatch = {};
+/** @type {Record<string, boolean>} */
+let spartanHasVideo = {};
+/** @type {Record<string, boolean>} */
+let spartanUserMuted = {};
+let spartanHideOwn = false;
+/** @type {Record<string, boolean>} ocultar cada live própria (por id) */
+let spartanHideOwnStream = {};
+
+/**
+ * @param {MediaStream} [stream]
+ * @returns {boolean}
+ */
+function streamHasRealVideo(stream) {
+    if(!stream)
+        return false;
+    let tracks = stream.getVideoTracks();
+    for(let i = 0; i < tracks.length; i++) {
+        let t = tracks[i];
+        if(t.readyState === 'ended' || !t.enabled)
+            continue;
+        try {
+            let s = t.getSettings && t.getSettings();
+            if(s && ((s.width === 0) || (s.height === 0)))
+                continue;
+        } catch(e) {}
+        return true;
+    }
+    return false;
+}
+
+function spartanVisibleCount() {
+    return document.querySelectorAll('#peers .peer:not(.peer-hidden)').length;
+}
+
+/**
+ * @param {string} userId
+ * @param {string} label
+ * @returns {Stream|null}
+ */
+function spartanFindStream(userId, label) {
+    if(!serverConnection)
+        return null;
+    let map = (userId === serverConnection.id) ?
+        serverConnection.up : serverConnection.down;
+    for(let id in map) {
+        let c = map[id];
+        if(c.label !== label)
+            continue;
+        if(userId === serverConnection.id || c.source === userId)
+            return c;
+    }
+    return null;
+}
+
+/**
+ * @param {Stream} c
+ */
+function spartanApplyUserMute(c) {
+    if(!c || c.up || !c.stream)
+        return;
+    let muted = !!(c.source && spartanUserMuted[c.source]);
+    c.stream.getAudioTracks().forEach(function(t) {
+        t.enabled = !muted;
+    });
+}
+
+/**
+ * @param {Stream} c
+ */
+function spartanApplyDownRequest(c) {
+    if(!c || c.up || typeof c.request !== 'function')
+        return;
+    if(spartanWatch[c.id])
+        c.request(['audio', 'video']);
+    else
+        // Mantém a stream viva (botões Tela 1/2…) sem baixar vídeo cheio.
+        // audio-only costumava fechar screenshare sem áudio → sumiam os botões.
+        c.request(['audio', 'video-low']);
+}
+
+/**
+ * findByLocalId do protocol só olha up; aqui cobre up e down.
+ * @param {string} localId
+ * @returns {Stream|null}
+ */
+function spartanFindByLocalId(localId) {
+    if(!serverConnection || !localId)
+        return null;
+    let c = serverConnection.findByLocalId(localId);
+    if(c)
+        return c;
+    for(let id in serverConnection.down) {
+        if(serverConnection.down[id].localId === localId)
+            return serverConnection.down[id];
+    }
+    for(let id in serverConnection.up) {
+        if(serverConnection.up[id].localId === localId)
+            return serverConnection.up[id];
+    }
+    return null;
+}
+
+/**
+ * Lives de um usuário (mesma ordem dos botões Tela/Câmera).
+ * @param {string} userId
+ * @returns {Stream[]}
+ */
+function spartanUserLives(userId) {
+    if(!serverConnection || !userId)
+        return [];
+    let map = (userId === serverConnection.id) ?
+        serverConnection.up : serverConnection.down;
+    /** @type {Stream[]} */
+    let lives = [];
+    for(let id in map) {
+        let c = map[id];
+        if(userId !== serverConnection.id && c.source !== userId)
+            continue;
+        if(!spartanStreamShowsLiveBtn(c))
+            continue;
+        lives.push(c);
+    }
+    lives.sort(function(a, b) {
+        if(a.label === b.label)
+            return String(a.id).localeCompare(String(b.id));
+        if(a.label === 'camera')
+            return -1;
+        if(b.label === 'camera')
+            return 1;
+        return String(a.label || '').localeCompare(String(b.label || ''));
+    });
+    return lives;
+}
+
+/**
+ * Lives do mesmo tipo (tela/câmera) do mesmo usuário, ordenadas.
+ * @param {Stream} c
+ * @returns {Stream[]}
+ */
+function spartanSameKindLives(c) {
+    if(!c || !serverConnection)
+        return [];
+    let userId = c.up ? serverConnection.id : c.source;
+    let wantTela = c.label === 'screenshare';
+    let lives = spartanUserLives(userId);
+    /** @type {Stream[]} */
+    let out = [];
+    for(let i = 0; i < lives.length; i++) {
+        if((lives[i].label === 'screenshare') === wantTela)
+            out.push(lives[i]);
+    }
+    return out;
+}
+
+/**
+ * @param {Stream} c
+ * @returns {string}
+ */
+function spartanLiveKindCaption(c) {
+    let list = spartanSameKindLives(c);
+    let idx = 0;
+    for(let i = 0; i < list.length; i++) {
+        if(list[i].id === c.id) {
+            idx = i + 1;
+            break;
+        }
+    }
+    let total = list.length;
+    if(total < 1)
+        total = 1;
+    if(idx < 1)
+        idx = 1;
+    if(c.label === 'screenshare')
+        return total <= 1 ? 'Tela' : ('Tela ' + idx);
+    return total <= 1 ? 'Câmera' : ('Câmera ' + idx);
+}
+
+function spartanRefreshHideOwnButton() {
+    let btn = document.getElementById('hideownbutton');
+    if(!btn)
+        return;
+    let hasUpVideo = false;
+    if(serverConnection) {
+        for(let id in serverConnection.up) {
+            if(streamHasRealVideo(serverConnection.up[id].stream) ||
+               serverConnection.up[id].label === 'screenshare') {
+                hasUpVideo = true;
+                break;
+            }
+        }
+    }
+    if(hasUpVideo)
+        btn.classList.remove('invisible');
+    else
+        btn.classList.add('invisible');
+    let icon = btn.querySelector('.fas');
+    let lab = btn.querySelector('label');
+    if(spartanHideOwn) {
+        btn.classList.add('hiding');
+        if(icon) {
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+        }
+        if(lab)
+            lab.textContent = 'Mostrar o meu';
+    } else {
+        btn.classList.remove('hiding');
+        if(icon) {
+            icon.classList.add('fa-eye');
+            icon.classList.remove('fa-eye-slash');
+        }
+        if(lab)
+            lab.textContent = 'Ocultar o meu';
+    }
+}
+
+function spartanRefreshAllMedia() {
+    if(!serverConnection)
+        return;
+    function walk(map) {
+        for(let id in map) {
+            let c = map[id];
+            let elt = document.getElementById('peer-' + c.localId);
+            if(elt)
+                showHideMedia(c, elt);
+            setLabel(c);
+            spartanApplyUserMute(c);
+        }
+    }
+    walk(serverConnection.down);
+    walk(serverConnection.up);
+    spartanRefreshHideOwnButton();
+    if(serverConnection.users) {
+        for(let uid in serverConnection.users) {
+            let row = document.getElementById('user-' + uid);
+            if(row)
+                spartanFillUserLives(uid, row);
+        }
+    }
+    resizePeers();
+    showVideo();
+}
+
+/**
+ * @param {Stream} c
+ * @returns {boolean}
+ */
+function spartanStreamShowsLiveBtn(c) {
+    if(!c)
+        return false;
+    if(spartanHasVideo[c.id])
+        return true;
+    if(c.label === 'screenshare')
+        return true;
+    return streamHasRealVideo(c.stream);
+}
+
+/**
+ * @param {string} userId
+ * @param {HTMLElement} elt
+ */
+function spartanFillUserLives(userId, elt) {
+    let box = elt.querySelector('.user-lives');
+    if(!box)
+        return;
+    box.textContent = '';
+    if(!serverConnection)
+        return;
+    let lives = spartanUserLives(userId);
+    let telaTotal = 0;
+    let camTotal = 0;
+    for(let i = 0; i < lives.length; i++) {
+        if(lives[i].label === 'screenshare')
+            telaTotal++;
+        else
+            camTotal++;
+    }
+    let telaIdx = 0;
+    let camIdx = 0;
+    for(let i = 0; i < lives.length; i++) {
+        let c = lives[i];
+        let b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'user-live-btn';
+        if(c.label === 'screenshare') {
+            telaIdx++;
+            b.textContent = telaTotal <= 1 ? 'Tela' : ('Tela ' + telaIdx);
+        } else {
+            camIdx++;
+            b.textContent = camTotal <= 1 ? 'Câmera' : ('Câmera ' + camIdx);
+        }
+        if(c.up) {
+            if(!spartanHideOwn && !spartanHideOwnStream[c.id])
+                b.classList.add('on');
+        } else if(spartanWatch[c.id]) {
+            b.classList.add('on');
+        }
+        b.addEventListener('click', (function(stream) {
+            return function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                spartanToggleLive(stream);
+            };
+        })(c));
+        box.appendChild(b);
+    }
+    let muteBtn = elt.querySelector('.user-mute-btn');
+    if(muteBtn) {
+        if(spartanUserMuted[userId])
+            muteBtn.classList.add('on');
+        else
+            muteBtn.classList.remove('on');
+    }
+}
+
+/**
+ * @param {Stream} c
+ */
+function spartanToggleLive(c) {
+    if(!c)
+        return;
+    if(c.up) {
+        spartanHideOwnStream[c.id] = !spartanHideOwnStream[c.id];
+        spartanRefreshAllMedia();
+        return;
+    }
+    if(spartanWatch[c.id]) {
+        delete spartanWatch[c.id];
+        spartanApplyDownRequest(c);
+        let div = document.getElementById('peer-' + c.localId);
+        if(div) {
+            div.classList.remove('peer-focus');
+            div.classList.remove('peer-fs');
+        }
+        document.body.classList.remove('spartan-peer-fs');
+        let vc = document.getElementById('video-container');
+        if(vc)
+            vc.classList.remove('peer-focus-mode');
+        spartanRefreshAllMedia();
+        return;
+    }
+    if(spartanVisibleCount() >= SPARTAN_GRID_MAX) {
+        displayMessage('Limite de 50 lives nesta tela.');
+        return;
+    }
+    spartanWatch[c.id] = true;
+    spartanApplyDownRequest(c);
+    spartanRefreshAllMedia();
+}
+
+/**
+ * @param {string} userId
+ */
+function spartanToggleUserMute(userId) {
+    spartanUserMuted[userId] = !spartanUserMuted[userId];
+    if(serverConnection) {
+        for(let id in serverConnection.down) {
+            let c = serverConnection.down[id];
+            if(c.source === userId)
+                spartanApplyUserMute(c);
+        }
+    }
+    let row = document.getElementById('user-' + userId);
+    if(row)
+        spartanFillUserLives(userId, row);
+}
+
+function spartanSetChatOpen(open) {
+    let chat = document.getElementById('chat');
+    let btn = document.getElementById('channel-chat-btn');
+    if(!chat)
+        return;
+    if(open) {
+        chat.hidden = false;
+        chat.classList.add('spartan-chat-open');
+        if(btn)
+            btn.classList.add('on');
+    } else {
+        chat.hidden = true;
+        chat.classList.remove('spartan-chat-open');
+        if(btn)
+            btn.classList.remove('on');
+    }
+}
+
+function openNav() {
+    document.getElementById('sidebarnav').classList.add('spartan-settings-open');
+    document.body.classList.add('spartan-settings-on');
+}
+
+function closeNav() {
+    document.getElementById('sidebarnav').classList.remove('spartan-settings-open');
+    document.body.classList.remove('spartan-settings-on');
 }
 
 /**
@@ -423,15 +833,28 @@ function gotClose(code, reason) {
  */
 function gotDownStream(c) {
     c.onclose = function(replace) {
+        delete spartanWatch[c.id];
+        delete spartanHasVideo[c.id];
+        delete spartanHideOwnStream[c.id];
         if(!replace)
             delMedia(c.localId);
+        if(c.source)
+            spartanRefreshAllMedia();
     };
     c.onerror = function(e) {
         console.error(e);
         displayError(e);
     };
     c.ondowntrack = function(track, transceiver, stream) {
+        spartanApplyUserMute(c);
+        if(c.label === 'screenshare')
+            spartanHasVideo[c.id] = true;
+        if(track && track.kind === 'video' && streamHasRealVideo(c.stream))
+            spartanHasVideo[c.id] = true;
         setMedia(c);
+        // Não rebaixa para audio-only aqui — isso fechava screenshare e sumia o botão.
+        if(c.source)
+            spartanRefreshAllMedia();
     };
     c.onnegotiationcompleted = function() {
         resetMedia(c);
@@ -440,10 +863,13 @@ function gotDownStream(c) {
         setMediaStatus(c);
     };
     c.onstats = gotDownStats;
-    if(getSettings().activityDetection)
-        c.setStatsInterval(activityDetectionInterval);
+    c.setStatsInterval(activityDetectionInterval);
 
+    if(c.label === 'screenshare')
+        spartanHasVideo[c.id] = true;
     setMedia(c);
+    if(!spartanWatch[c.id])
+        spartanApplyDownRequest(c);
 }
 
 // Store current browser viewport height in css variable
@@ -526,11 +952,20 @@ function setButtonsVisibility() {
     let mediacount = document.getElementById('peers').childElementCount;
     let mobilelayout = isMobileLayout();
 
-    // don't allow multiple presentations
-    setVisibility('presentbutton', canPresent && !local);
-    setVisibility('unpresentbutton', local);
+    setVisibility('presentbutton', false);
+    setVisibility('unpresentbutton', false);
+    setVisibility('camerabutton', canPresent);
 
     setVisibility('mutebutton', !connected || canPresent);
+    let camBtn = document.getElementById('camerabutton');
+    if(camBtn) {
+        let cam = findUpMedia('camera');
+        let camOn = !!(cam && cam.stream && cam.stream.getVideoTracks().length);
+        if(camOn)
+            camBtn.classList.add('cam-on');
+        else
+            camBtn.classList.remove('cam-on');
+    }
 
     // allow multiple shared documents
     setVisibility('sharebutton', canShare);
@@ -541,6 +976,7 @@ function setButtonsVisibility() {
  else
  shareBtn.classList.remove('sharing');
  }
+    spartanRefreshHideOwnButton();
 
     setVisibility('mediaoptions', canPresent);
     setVisibility('sendform', canPresent);
@@ -559,7 +995,8 @@ function setLocalMute(mute, reflect) {
     muteLocalTracks(mute);
     let button = document.getElementById('mutebutton');
     let icon = button.querySelector("span .fas");
-    if(mute){
+    let live = !!findUpMedia('camera') && !mute;
+    if(!live){
         icon.classList.add('fa-microphone-slash');
         icon.classList.remove('fa-microphone');
         button.classList.add('muted');
@@ -570,6 +1007,8 @@ function setLocalMute(mute, reflect) {
     }
     if(reflect)
         updateSettings({localMute: mute});
+    if(mute && serverConnection)
+        spartanSetUserTalking(serverConnection.id, false);
 }
 
 getSelectElement('videoselect').onchange = function(e) {
@@ -621,14 +1060,32 @@ getInputElement('hqaudiobox').onchange = function(e) {
     replaceCameraStream();
 };
 
-document.getElementById('mutebutton').onclick = function(e) {
+document.getElementById('mutebutton').onclick = async function(e) {
     e.preventDefault();
-    let localMute = getSettings().localMute;
-    if (localMute && !findUpMedia('camera')) {
-        displayMessage('Use Ativar para ligar a câmera ou o microfone.');
-    } else {
-        localMute = !localMute;
-        setLocalMute(localMute, true);
+    if(!findUpMedia('camera')) {
+        try {
+            await addLocalMedia(undefined, true);
+            setLocalMute(false, true);
+        } catch(err) {
+            console.error(err);
+            displayError(err);
+        }
+        return;
+    }
+    setLocalMute(!getSettings().localMute, true);
+};
+
+document.getElementById('camerabutton').onclick = async function(e) {
+    e.preventDefault();
+    let cam = findUpMedia('camera');
+    try {
+        if(!cam)
+            await addLocalMedia();
+        else if(!cam.stream || cam.stream.getVideoTracks().length === 0)
+            replaceCameraStream();
+    } catch(err) {
+        console.error(err);
+        displayError(err);
     }
 };
 
@@ -735,6 +1192,10 @@ getSelectElement('requestselect').onchange = function(e) {
         throw new Error('Unexpected type for this');
     updateSettings({request: this.value});
     serverConnection.request(mapRequest(this.value));
+    if(serverConnection && serverConnection.down) {
+        for(let id in serverConnection.down)
+            spartanApplyDownRequest(serverConnection.down[id]);
+    }
     reconsiderDownRate();
 };
 
@@ -751,21 +1212,39 @@ getInputElement('activitybox').onchange = function(e) {
         if(this.checked)
             c.setStatsInterval(activityDetectionInterval);
         else {
-            c.setStatsInterval(0);
             setActive(c, false);
         }
     }
 };
 
+function refreshAllMediaVisibility() {
+    if(!serverConnection)
+        return;
+    function refresh(map) {
+        for(let id in map) {
+            let c = map[id];
+            let elt = document.getElementById('peer-' + c.localId);
+            if(elt)
+                showHideMedia(c, elt);
+        }
+    }
+    refresh(serverConnection.down);
+    refresh(serverConnection.up);
+    resizePeers();
+}
+
 getInputElement('displayallbox').onchange = function(e) {
     if(!(this instanceof HTMLInputElement))
         throw new Error('Unexpected type for this');
     updateSettings({displayAll: this.checked});
-    for(let id in serverConnection.down) {
-        let c = serverConnection.down[id];
-        let elt = document.getElementById('peer-' + c.localId);
-        showHideMedia(c, elt);
-    }
+    refreshAllMediaVisibility();
+};
+
+getInputElement('hideselfbox').onchange = function(e) {
+    if(!(this instanceof HTMLInputElement))
+        throw new Error('Unexpected type for this');
+    updateSettings({hideSelf: this.checked});
+    refreshAllMediaVisibility();
 };
 
 
@@ -774,27 +1253,8 @@ getInputElement('displayallbox').onchange = function(e) {
  * @param {Record<string,any>} stats
  */
 function gotUpStats(stats) {
-    let c = this;
-
-    let values = [];
-
-    for(let id in stats) {
-        if(stats[id] && stats[id]['outbound-rtp']) {
-            let rate = stats[id]['outbound-rtp'].rate;
-            if(typeof rate === 'number') {
-                values.push(rate);
-            }
-        }
-    }
-
-    if(values.length === 0) {
-        setLabel(c, '');
-    } else {
-        values.sort((x,y) => x - y);
-        setLabel(c, values
-                 .map(x => Math.round(x / 1000).toString())
-                 .reduce((x, y) => x + '+' + y));
-    }
+    // Spartan: não mostra bitrate no tile; o rótulo é "Minha Live" / nome.
+    setLabel(this);
 }
 
 /**
@@ -803,6 +1263,8 @@ function gotUpStats(stats) {
  */
 function setActive(c, value) {
     let peer = document.getElementById('peer-' + c.localId);
+    if(!peer)
+        return;
     if(value)
         peer.classList.add('peer-active');
     else
@@ -810,13 +1272,79 @@ function setActive(c, value) {
 }
 
 /**
+ * @param {string} userId
+ * @param {boolean} on
+ */
+function spartanSetUserTalking(userId, on) {
+    let elt = document.getElementById('user-' + userId);
+    if(!elt)
+        return;
+    if(on)
+        elt.classList.add('user-talking');
+    else
+        elt.classList.remove('user-talking');
+}
+
+let spartanTalkCtx = null;
+let spartanTalkAnalyser = null;
+let spartanTalkSource = null;
+let spartanTalkTimer = null;
+
+/**
+ * @param {MediaStream} [stream]
+ */
+function spartanHookLocalTalk(stream) {
+    try {
+        if(spartanTalkSource) {
+            try { spartanTalkSource.disconnect(); } catch(e) {}
+            spartanTalkSource = null;
+        }
+        if(!stream || !stream.getAudioTracks().length)
+            return;
+        let AC = window.AudioContext || window.webkitAudioContext;
+        if(!AC)
+            return;
+        if(!spartanTalkCtx)
+            spartanTalkCtx = new AC();
+        if(spartanTalkCtx.state === 'suspended')
+            spartanTalkCtx.resume();
+        spartanTalkAnalyser = spartanTalkCtx.createAnalyser();
+        spartanTalkAnalyser.fftSize = 512;
+        spartanTalkSource = spartanTalkCtx.createMediaStreamSource(stream);
+        spartanTalkSource.connect(spartanTalkAnalyser);
+        if(!spartanTalkTimer)
+            spartanTalkTimer = setInterval(spartanTickLocalTalk, 200);
+    } catch(e) {}
+}
+
+function spartanTickLocalTalk() {
+    if(!serverConnection)
+        return;
+    let on = false;
+    let c = findUpMedia('camera');
+    if(c && c.stream && !getSettings().localMute && spartanTalkAnalyser) {
+        let live = c.stream.getAudioTracks().some(function(t) {
+            return t.enabled && t.readyState === 'live';
+        });
+        if(live) {
+            let data = new Uint8Array(spartanTalkAnalyser.fftSize);
+            spartanTalkAnalyser.getByteTimeDomainData(data);
+            let sum = 0;
+            for(let i = 0; i < data.length; i++) {
+                let v = (data[i] - 128) / 128;
+                sum += v * v;
+            }
+            on = Math.sqrt(sum / data.length) > 0.045;
+        }
+    }
+    spartanSetUserTalking(serverConnection.id, on);
+}
+
+/**
  * @this {Stream}
  * @param {Record<string,any>} stats
  */
 function gotDownStats(stats) {
-    if(!getInputElement('activitybox').checked)
-        return;
-
     let c = this;
 
     let maxEnergy = 0;
@@ -829,16 +1357,24 @@ function gotDownStats(stats) {
             maxEnergy = Math.max(maxEnergy, energy);
     });
 
-    // totalAudioEnergy is defined as the integral of the square of the
-    // volume, so square the threshold.
-    if(maxEnergy > activityDetectionThreshold * activityDetectionThreshold) {
+    let talking = maxEnergy > activityDetectionThreshold * activityDetectionThreshold;
+    if(talking)
         c.userdata.lastVoiceActivity = Date.now();
-        setActive(c, true);
-    } else {
+    let still = talking;
+    if(!still) {
         let last = c.userdata.lastVoiceActivity;
-        if(!last || Date.now() - last > activityDetectionPeriod)
-            setActive(c, false);
+        still = !!(last && Date.now() - last <= activityDetectionPeriod);
     }
+    if(c.label === 'camera' || !c.label)
+        spartanSetUserTalking(c.source, still);
+
+    if(!getInputElement('activitybox').checked)
+        return;
+
+    if(talking)
+        setActive(c, true);
+    else if(!still)
+        setActive(c, false);
 }
 
 /**
@@ -967,7 +1503,7 @@ async function setMediaChoices(done) {
  */
 function newUpStream(localId) {
     if(!serverConnection)
-        throw new Error("Not connected");
+        throw new Error("Sem conexão");
     let c = serverConnection.newUpStream(localId);
     c.onstatus = function(status) {
         setMediaStatus(c);
@@ -1270,16 +1806,19 @@ function replaceCameraStream() {
 
 /**
  * @param {string} [localId]
+ * @param {boolean} [audioOnly]
  */
-async function addLocalMedia(localId) {
+async function addLocalMedia(localId, audioOnly) {
     let settings = getSettings();
 
     /** @type{boolean|MediaTrackConstraints} */
-    let audio = settings.audio ? {deviceId: settings.audio} : false;
+    let audio = settings.audio ? {deviceId: settings.audio} : true;
     /** @type{boolean|MediaTrackConstraints} */
-    let video = settings.video ? {deviceId: settings.video} : false;
+    let video = audioOnly ? false : (settings.video ? {deviceId: settings.video} : true);
+    if(audioOnly && !audio)
+        audio = true;
 
-    if(video) {
+    if(video && typeof video === 'object') {
         let resolution = settings.resolution;
         if(resolution) {
             video.width = { ideal: resolution[0] };
@@ -1292,7 +1831,7 @@ async function addLocalMedia(localId) {
         }
     }
 
-    if(audio) {
+    if(audio && typeof audio === 'object') {
         if(!settings.preprocessing) {
             audio.echoCancellation = false;
             audio.noiseSuppression = false;
@@ -1313,8 +1852,13 @@ async function addLocalMedia(localId) {
     try {
         stream = await navigator.mediaDevices.getUserMedia(constraints);
     } catch(e) {
-        displayError(e);
-        return;
+        let retry = {audio: true, video: !audioOnly};
+        try {
+            stream = await navigator.mediaDevices.getUserMedia(retry);
+        } catch(e2) {
+            displayError(e2);
+            return;
+        }
     }
 
     setMediaChoices(true);
@@ -1342,6 +1886,7 @@ async function addLocalMedia(localId) {
     try {
         await setUpStream(c, stream);
         await setMedia(c, settings.mirrorView);
+        spartanHookLocalTalk(stream);
     } catch(e) {
         console.error(e);
         displayError(e);
@@ -1356,10 +1901,8 @@ async function addShareMedia() {
     if(!safariScreenshareDone) {
         if(isSafari()) {
             let ok = confirm(
-                'Screen sharing in Safari is broken.  ' +
-                    'It will work at first, ' +
-                    'but then your video will randomly freeze.  ' +
-                    'Are you sure that you wish to enable screensharing?'
+                'No Safari a partilha de tela costuma travar depois de um tempo. ' +
+                    'Quer tentar mesmo assim?'
             );
             if(!ok)
                 return
@@ -1371,11 +1914,29 @@ async function addShareMedia() {
     let stream = null;
     try {
         if(!('getDisplayMedia' in navigator.mediaDevices))
-            throw new Error('Your browser does not support screen sharing');
-        stream = await navigator.mediaDevices.getDisplayMedia({
+            throw new Error('Este navegador não compartilha tela');
+        /** @type {any} */
+        let shareOpts = {
             video: true,
             audio: true,
-        });
+            systemAudio: 'include',
+        };
+        try {
+            stream = await navigator.mediaDevices.getDisplayMedia(shareOpts);
+        } catch(e) {
+            if(e && (e.name === 'NotAllowedError' || e.name === 'AbortError'))
+                throw e;
+            stream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                audio: true,
+            });
+        }
+        if(!window._spartanShareHint) {
+            window._spartanShareHint = true;
+            displayMessage(
+                'No Windows, marque compartilhar áudio e escolha tela inteira ou aba (não uma janela).'
+            );
+        }
     } catch(e) {
         console.error(e);
         displayError(e);
@@ -1640,10 +2201,14 @@ async function setMedia(c, mirror, video) {
         media.classList.add('media');
         media.autoplay = true;
         media.playsInline = true;
+        media.controls = false;
         media.id = 'media-' + c.localId;
         div.appendChild(media);
         addCustomControls(media, div, c, !!video);
+        spartanBindPeerUi(div, media);
     }
+
+    media.controls = false;
 
     if(mirror)
         media.classList.add('mirror');
@@ -1672,7 +2237,104 @@ async function setMedia(c, mirror, video) {
 
     showVideo();
     resizePeers();
+    spartanRefreshHideOwnButton();
+    if(c.source || c.up) {
+        let uid = c.up ? serverConnection.id : c.source;
+        let row = uid && document.getElementById('user-' + uid);
+        if(row)
+            spartanFillUserLives(uid, row);
+    }
 }
+
+/**
+ * Clique foca a live; loadedmetadata marca retrato.
+ * @param {HTMLElement} div
+ * @param {HTMLVideoElement} media
+ */
+function spartanBindPeerUi(div, media) {
+    if(div.dataset.spartanUi === '1')
+        return;
+    div.dataset.spartanUi = '1';
+    media.addEventListener('loadedmetadata', function() {
+        if(media.videoWidth > 0 && media.videoWidth < media.videoHeight)
+            div.classList.add('peer-portrait');
+        else
+            div.classList.remove('peer-portrait');
+        if(media.videoWidth > 0 && serverConnection) {
+            let localId = media.id.replace(/^media-/, '');
+            let c = spartanFindByLocalId(localId);
+            if(c) {
+                spartanHasVideo[c.id] = true;
+            }
+            spartanRefreshAllMedia();
+            return;
+        }
+        resizePeers();
+    });
+    div.addEventListener('click', function(e) {
+        let t = /** @type{HTMLElement} */(e.target);
+        if(t.closest && t.closest('.video-controls, .top-video-controls'))
+            return;
+        if(div.classList.contains('peer-fs'))
+            return;
+        let vc = document.getElementById('video-container');
+        if(!vc)
+            return;
+        if(div.classList.contains('peer-focus')) {
+            div.classList.remove('peer-focus');
+            vc.classList.remove('peer-focus-mode');
+        } else {
+            document.querySelectorAll('#peers .peer-focus').forEach(function(p) {
+                p.classList.remove('peer-focus');
+            });
+            div.classList.add('peer-focus');
+            vc.classList.add('peer-focus-mode');
+        }
+        resizePeers();
+    });
+}
+
+document.addEventListener('keydown', function(e) {
+    if(e.key !== 'Escape')
+        return;
+    let nav = document.getElementById('sidebarnav');
+    if(nav && nav.classList.contains('spartan-settings-open')) {
+        closeNav();
+        e.preventDefault();
+        return;
+    }
+    let chat = document.getElementById('chat');
+    if(chat && chat.classList.contains('spartan-chat-open')) {
+        spartanSetChatOpen(false);
+        e.preventDefault();
+        return;
+    }
+    let fs = document.querySelector('.peer.peer-fs');
+    if(fs) {
+        fs.classList.remove('peer-fs');
+        document.body.classList.remove('spartan-peer-fs');
+        e.preventDefault();
+        return;
+    }
+    let focus = document.querySelector('#peers .peer.peer-focus');
+    let vc = document.getElementById('video-container');
+    if(focus && vc && vc.classList.contains('peer-focus-mode')) {
+        focus.classList.remove('peer-focus');
+        vc.classList.remove('peer-focus-mode');
+        resizePeers();
+    }
+});
+
+function spartanSyncNativeFs() {
+    if(document.fullscreenElement || document.webkitFullscreenElement)
+        return;
+    document.querySelectorAll('.peer-fs').forEach(function(p) {
+        p.classList.remove('peer-fs');
+    });
+    document.body.classList.remove('spartan-peer-fs');
+}
+document.addEventListener('fullscreenchange', spartanSyncNativeFs);
+document.addEventListener('webkitfullscreenchange', spartanSyncNativeFs);
 
 
 /**
@@ -1680,16 +2342,15 @@ async function setMedia(c, mirror, video) {
  * @param {HTMLElement} elt
  */
 function showHideMedia(c, elt) {
-    let display = c.up || getSettings().displayAll;
-    if(!display && c.stream) {
-        let tracks = c.stream.getTracks();
-        for(let i = 0; i < tracks.length; i++) {
-            let t = tracks[i];
-            if(t.kind === 'video') {
-                display = true;
-                break;
-            }
-        }
+    let real = streamHasRealVideo(c.stream) || c.label === 'screenshare';
+    if(real)
+        spartanHasVideo[c.id] = true;
+    let display = false;
+    if(real) {
+        if(c.up)
+            display = !spartanHideOwn && !spartanHideOwnStream[c.id];
+        else
+            display = !!spartanWatch[c.id];
     }
     if(display)
         elt.classList.remove('peer-hidden');
@@ -1749,7 +2410,7 @@ function addCustomControls(media, container, c, toponly) {
         container.appendChild(controls);
     }
 
-    if(c.up && !document.getElementById('topcontrols-' + c.localId)) {
+    if(!document.getElementById('topcontrols-' + c.localId)) {
         let toptemplate =
             document.getElementById('topvideocontrols-template').firstElementChild;
         let topcontrols = cloneHTMLElement(toptemplate);
@@ -1792,23 +2453,29 @@ function setVolumeButton(muted, button, slider) {
  * @param {HTMLElement} container
  */
 function registerControlHandlers(localId, media, container) {
-    let play = getVideoButton(container, 'video-play');
-    if(play) {
-        play.onclick = function(event) {
-            event.preventDefault();
-            media.play();
-        };
-    }
-
     let stop = getVideoButton(container, 'video-stop');
     if(stop) {
         stop.onclick = function(event) {
             event.preventDefault();
+            event.stopPropagation();
             try {
-                let c = serverConnection.findByLocalId(localId);
-                if(!c)
-                    throw new Error('Closing unknown stream');
-                c.close();
+                if(document.fullscreenElement && document.exitFullscreen)
+                    document.exitFullscreen();
+                else if(document.webkitFullscreenElement && document.webkitExitFullscreen)
+                    document.webkitExitFullscreen();
+            } catch(e) {}
+            container.classList.remove('peer-fs');
+            document.body.classList.remove('spartan-peer-fs');
+            container.classList.remove('peer-focus');
+            let vc = document.getElementById('video-container');
+            if(vc)
+                vc.classList.remove('peer-focus-mode');
+            try {
+                let c = spartanFindByLocalId(localId);
+                if(c)
+                    spartanToggleLive(c);
+                else
+                    container.classList.add('peer-hidden');
             } catch(e) {
                 console.error(e);
                 displayError(e);
@@ -1824,6 +2491,7 @@ function registerControlHandlers(localId, media, container) {
                 // if click on volume slider, do nothing
                 return;
             event.preventDefault();
+            event.stopPropagation();
             media.muted = !media.muted;
             setVolumeButton(media.muted, target,
                             getVideoButton(volume, "volume-slider"));
@@ -1840,6 +2508,7 @@ function registerControlHandlers(localId, media, container) {
         if(HTMLVideoElement.prototype.requestPictureInPicture) {
             pip.onclick = function(e) {
                 e.preventDefault();
+                e.stopPropagation();
                 if(media.requestPictureInPicture) {
                     media.requestPictureInPicture();
                 } else {
@@ -1851,26 +2520,57 @@ function registerControlHandlers(localId, media, container) {
         }
     }
 
+    let rotate = getVideoButton(container, 'rotate');
+    if(rotate) {
+        rotate.onclick = function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            let cur = parseInt(media.dataset.spartanRot || '0', 10);
+            cur = (cur + 90) % 360;
+            media.dataset.spartanRot = String(cur);
+            media.style.transform = 'rotate(' + cur + 'deg)';
+        };
+    }
+
     let fs = getVideoButton(container, 'fullscreen');
     if(fs) {
-        if(HTMLVideoElement.prototype.requestFullscreen ||
-           /** @ts-ignore */
-           HTMLVideoElement.prototype.webkitRequestFullscreen) {
-            fs.onclick = function(e) {
-                e.preventDefault();
-                if(media.requestFullscreen) {
-                    media.requestFullscreen();
-                /** @ts-ignore */
-                } else if(media.webkitRequestFullscreen) {
-                    /** @ts-ignore */
-                    media.webkitRequestFullscreen();
-                } else {
-                    displayWarning('Tela cheia não é suportada!');
+        fs.onclick = function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            let nativeFs = document.fullscreenElement || document.webkitFullscreenElement;
+            let on = !container.classList.contains('peer-fs') && !nativeFs;
+            document.querySelectorAll('.peer-fs').forEach(function(p) {
+                p.classList.remove('peer-fs');
+            });
+            if(on) {
+                container.classList.add('peer-fs');
+                document.body.classList.add('spartan-peer-fs');
+                let target = media || container;
+                let req = target.requestFullscreen || target.webkitRequestFullscreen ||
+                    container.requestFullscreen || container.webkitRequestFullscreen;
+                if(req) {
+                    try {
+                        let p = req.call(target);
+                        if(p && p.catch)
+                            p.catch(function() {
+                                try {
+                                    let r2 = container.requestFullscreen || container.webkitRequestFullscreen;
+                                    if(r2) r2.call(container);
+                                } catch(err2) {}
+                            });
+                    } catch(err) {}
                 }
-            };
-        } else {
-            fs.style.display = 'none';
-        }
+            } else {
+                document.body.classList.remove('spartan-peer-fs');
+                try {
+                    if(document.fullscreenElement && document.exitFullscreen)
+                        document.exitFullscreen();
+                    else if(document.webkitFullscreenElement &&
+                            document.webkitExitFullscreen)
+                        document.webkitExitFullscreen();
+                } catch(err) {}
+            }
+        };
     }
 }
 
@@ -1885,6 +2585,14 @@ function delMedia(localId) {
 
     let media = /** @type{HTMLVideoElement} */
         (document.getElementById('media-' + localId));
+
+    if(peer.classList.contains('peer-focus')) {
+        let vc = document.getElementById('video-container');
+        if(vc)
+            vc.classList.remove('peer-focus-mode');
+    }
+    peer.classList.remove('peer-fs');
+    document.body.classList.remove('spartan-peer-fs');
 
     media.srcObject = null;
     mediadiv.removeChild(peer);
@@ -1937,55 +2645,55 @@ function setLabel(c, fallback) {
     let label = document.getElementById('label-' + c.localId);
     if(!label)
         return;
-    let l = c.username;
-    if(l) {
-        label.textContent = l;
+    let kind = spartanLiveKindCaption(c);
+    if(c.up) {
+        let same = spartanSameKindLives(c);
+        label.textContent = same.length <= 1 ? 'Minha Live' : ('Minha Live - ' + kind);
         label.classList.remove('label-fallback');
-    } else if(fallback) {
-        label.textContent = fallback;
+        return;
+    }
+    let name = c.username ? spartanDisplayName(c.username) : '';
+    if(name) {
+        label.textContent = name + ' - ' + kind;
+        label.classList.remove('label-fallback');
+    } else if(fallback && !/^\d/.test(String(fallback))) {
+        label.textContent = String(fallback) + ' - ' + kind;
         label.classList.add('label-fallback');
     } else {
-        label.textContent = '';
+        label.textContent = kind;
         label.classList.remove('label-fallback');
     }
 }
 
 function resizePeers() {
-    // Window resize can call this method too early
     if (!serverConnection)
         return;
-    let count =
-        Object.keys(serverConnection.up).length +
-        Object.keys(serverConnection.down).length;
     let peers = document.getElementById('peers');
-    let columns = Math.ceil(Math.sqrt(count));
+    if(!peers)
+        return;
+    peers.classList.remove('peers-split');
+    let tiles = Array.prototype.slice.call(
+        peers.querySelectorAll('.peer:not(.peer-hidden)')
+    );
+    let count = tiles.length;
+    let container = document.getElementById('video-container');
+    tiles.forEach(function(t) {
+        let m = t.querySelector('.media');
+        if(m)
+            m.style.maxHeight = '';
+    });
+    if(container && container.classList.contains('peer-focus-mode')) {
+        peers.style.gridTemplateColumns = '';
+        peers.style.gridTemplateRows = '';
+        return;
+    }
     if (!count)
-        // No video, nothing to resize.
         return;
-    let container = document.getElementById("video-container");
-    // Peers div has total padding of 40px, we remove 40 on offsetHeight
-    // Grid has row-gap of 5px
-    let rows = Math.ceil(count / columns);
-    let margins = (rows - 1) * 5 + 40;
-
-    if (count <= 2 && container.offsetHeight > container.offsetWidth) {
-        peers.style['grid-template-columns'] = "repeat(1, 1fr)";
-        rows = count;
-    } else {
-        peers.style['grid-template-columns'] = `repeat(${columns}, 1fr)`;
-    }
-    if (count === 1)
-        return;
-    let max_video_height = (peers.offsetHeight - margins) / rows;
-    let media_list = peers.querySelectorAll(".media");
-    for(let i = 0; i < media_list.length; i++) {
-        let media = media_list[i];
-        if(!(media instanceof HTMLMediaElement)) {
-            console.warn('Unexpected media');
-            continue;
-        }
-        media.style['max-height'] = max_video_height + "px";
-    }
+    let slots = count <= 1 ? 1 : Math.min(SPARTAN_GRID_MAX, Math.ceil(count / 2) * 2);
+    let columns = slots === 1 ? 1 : 2;
+    let rows = Math.ceil(slots / columns);
+    peers.style.gridTemplateColumns = columns === 1 ? '1fr' : '1fr 1fr';
+    peers.style.gridTemplateRows = 'repeat(' + rows + ', 1fr)';
 }
 
 /**
@@ -2218,31 +2926,60 @@ function changeUser(id, userinfo) {
  * @param {user} userinfo
  */
 function setUserStatus(id, elt, userinfo) {
-    elt.textContent = userinfo.username ? userinfo.username : '(anônimo)';
+    let name = elt.querySelector('.user-name');
+    if(!name) {
+        elt.textContent = '';
+        let row = document.createElement('div');
+        row.className = 'user-row';
+        let avatar = document.createElement('span');
+        avatar.className = 'user-avatar';
+        avatar.setAttribute('aria-hidden', 'true');
+        row.appendChild(avatar);
+        let dot = document.createElement('span');
+        dot.className = 'user-talk-dot';
+        dot.setAttribute('aria-hidden', 'true');
+        row.appendChild(dot);
+        name = document.createElement('span');
+        name.className = 'user-name';
+        row.appendChild(name);
+        let muteBtn = document.createElement('button');
+        muteBtn.type = 'button';
+        muteBtn.className = 'user-mute-btn';
+        muteBtn.textContent = 'Mudo';
+        muteBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            spartanToggleUserMute(id);
+        });
+        row.appendChild(muteBtn);
+        elt.appendChild(row);
+        let lives = document.createElement('div');
+        lives.className = 'user-lives';
+        elt.appendChild(lives);
+    } else {
+        let row = elt.querySelector('.user-row');
+        if(row && !row.querySelector('.user-avatar')) {
+            let avatar = document.createElement('span');
+            avatar.className = 'user-avatar';
+            avatar.setAttribute('aria-hidden', 'true');
+            row.insertBefore(avatar, row.firstChild);
+        }
+        if(row && !row.querySelector('.user-talk-dot')) {
+            let dot = document.createElement('span');
+            dot.className = 'user-talk-dot';
+            dot.setAttribute('aria-hidden', 'true');
+            let nm = row.querySelector('.user-name');
+            row.insertBefore(dot, nm || null);
+        }
+    }
+    name.textContent = userinfo.username ? spartanDisplayName(userinfo.username) : '(anônimo)';
     if(userinfo.data.raisehand)
         elt.classList.add('user-status-raisehand');
     else
         elt.classList.remove('user-status-raisehand');
-
-    let microphone=false, camera = false;
-    for(let label in userinfo.streams) {
-        for(let kind in userinfo.streams[label]) {
-            if(kind === 'audio')
-                microphone = true;
-            else
-                camera = true;
-        }
-    }
-    if(camera) {
-        elt.classList.remove('user-status-microphone');
-        elt.classList.add('user-status-camera');
-    } else if(microphone) {
-        elt.classList.add('user-status-microphone');
-        elt.classList.remove('user-status-camera');
-    } else {
-        elt.classList.remove('user-status-microphone');
-        elt.classList.remove('user-status-camera');
-    }
+    elt.classList.remove('user-status-microphone');
+    elt.classList.remove('user-status-camera');
+    spartanFillUserLives(id, elt);
 }
 
 /**
@@ -2280,7 +3017,7 @@ function gotUser(id, kind) {
 }
 
 function displayUsername() {
-    document.getElementById('userspan').textContent = serverConnection.username;
+    document.getElementById('userspan').textContent = spartanDisplayName(serverConnection.username);
     let op = serverConnection.permissions.indexOf('op') >= 0;
     let present = serverConnection.permissions.indexOf('present') >= 0;
     let text = '';
@@ -2302,6 +3039,18 @@ function capitalise(s) {
     if(s.length <= 0)
         return s;
     return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Primeira letra de cada palavra, só para mostrar na UI.
+ * @param {string} [s]
+ */
+function spartanDisplayName(s) {
+    if(!s)
+        return '(anônimo)';
+    return String(s).replace(/\S+/g, function(w) {
+        return w.charAt(0).toLocaleUpperCase('pt-BR') + w.slice(1);
+    });
 }
 
 /**
@@ -2418,7 +3167,7 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
 
     let input = /** @type{HTMLTextAreaElement} */
         (document.getElementById('input'));
-    input.placeholder = 'Type /help for help';
+    input.placeholder = 'Digite /help para ajuda';
     setTimeout(() => {input.placeholder = '';}, 8000);
 
     if(status.locked)
@@ -2427,7 +3176,9 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
     if(typeof RTCPeerConnection === 'undefined')
         displayWarning("Este navegador não tem WebRTC");
     else
-        this.request(mapRequest(getSettings().request));
+        this.request({'': ['audio', 'video']});
+
+    setLocalMute(true, true);
 
     if(('mediaDevices' in navigator) &&
        ('getUserMedia' in navigator.mediaDevices) &&
@@ -2443,13 +3194,14 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
             let button = getButtonElement('presentbutton');
             button.disabled = true;
             try {
-                await addLocalMedia();
+                await addLocalMedia(undefined, present === 'mike');
             } finally {
                 button.disabled = false;
             }
+            setLocalMute(true, true);
         } else {
             displayMessage(
-                "Aperte Ativar para ligar a câmera ou o microfone"
+                "Clique no microfone para falar"
             );
         }
     }
@@ -2913,8 +3665,8 @@ function addToChatbox(id, peerId, dest, nick, time, privileged, history, kind, m
             let u = dest && serverConnection.users[dest];
             let name = (u && u.username);
             user.textContent = dest ?
-                `${nick || '(anônimo)'} \u2192 ${name || '(anônimo)'}` :
-                (nick || '(anônimo)');
+                `${spartanDisplayName(nick)} \u2192 ${spartanDisplayName(name)}` :
+                spartanDisplayName(nick);
             user.classList.add('message-user');
             header.appendChild(user);
             header.classList.add('message-header');
@@ -3162,7 +3914,7 @@ commands.leave = {
     description: "sair da sala",
     f: (c, r) => {
         if(!serverConnection)
-            throw new Error('Not connected');
+            throw new Error('Sem conexão');
         serverConnection.close();
     }
 };
@@ -3445,10 +4197,10 @@ commands.msg = {
     f: (c, r) => {
         let p = parseCommand(r);
         if(!p[0])
-            throw new Error('/msg requires parameters');
+            throw new Error('/msg precisa de parâmetros');
         let id = findUserId(p[0]);
         if(!id)
-            throw new Error(`Unknown user ${p[0]}`);
+            throw new Error(`Usuário desconhecido: ${p[0]}`);
         serverConnection.chat('', id, p[1]);
         addToChatbox(serverConnection.id, null, id, serverConnection.username,
                      new Date(), false, false, '', p[1]);
@@ -3465,7 +4217,7 @@ function userCommand(c, r) {
         throw new Error(`/${c} requires parameters`);
     let id = findUserId(p[0]);
     if(!id)
-        throw new Error(`Unknown user ${p[0]}`);
+            throw new Error(`Usuário desconhecido: ${p[0]}`);
     serverConnection.userAction(c, id, p[1]);
 }
 
@@ -3475,7 +4227,7 @@ function userMessage(c, r) {
         throw new Error(`/${c} requires parameters`);
     let id = findUserId(p[0]);
     if(!id)
-        throw new Error(`Unknown user ${p[0]}`);
+            throw new Error(`Usuário desconhecido: ${p[0]}`);
     serverConnection.userMessage(c, id, p[1]);
 }
 
@@ -3565,7 +4317,7 @@ commands.wall = {
     predicate: operatorPredicate,
     f: (c, r) => {
         if(!r)
-            throw new Error('empty message');
+            throw new Error('mensagem vazia');
         serverConnection.userMessage('warning', '', r);
     },
 };
@@ -3663,7 +4415,7 @@ commands.sendfile = {
             throw new Error(`/${c} requires parameters`);
         let id = findUserId(p[0]);
         if(!id)
-            throw new Error(`Unknown user ${p[0]}`);
+            throw new Error(`Usuário desconhecido: ${p[0]}`);
         sendFile(id);
     },
 };
@@ -3675,7 +4427,7 @@ commands.sendfile = {
  */
 async function relayTest() {
     if(!serverConnection)
-        throw new Error('not connected');
+        throw new Error('sem conexão');
     let conf = Object.assign({}, serverConnection.getRTCConfiguration());
     conf.iceTransportPolicy = 'relay';
     let pc1 = new RTCPeerConnection(conf);
@@ -3855,10 +4607,42 @@ document.getElementById('resizer').addEventListener('mousedown', chatResizer, fa
  * @param {string} [level]
  */
 function spartanErr(message){
- if(message instanceof Error) message=message.message;
+ if(message instanceof Error){
+  let n=message.name||'';
+  let m=message.message||String(message);
+  if(n==='NotFoundError' || /Requested device not found/i.test(m))
+   return 'Microfone ou câmera não encontrados. Confere se estão conectados e liberados no sistema.';
+  if(n==='NotAllowedError' || /Permission denied|NotAllowedError/i.test(m))
+   return 'Permissão negada. Libera o microfone/câmera neste site nas configurações do navegador.';
+  if(n==='NotReadableError' || /Could not start|NotReadableError/i.test(m))
+   return 'Não deu para usar o dispositivo. Fecha outros apps que estejam usando o microfone ou a câmera.';
+  if(n==='OverconstrainedError')
+   return 'Este dispositivo não bate com as opções escolhidas. Tenta outro microfone/câmera em Configurações.';
+  if(n==='AbortError')
+   return 'Pedido de mídia cancelado.';
+  if(n==='SecurityError')
+   return 'O navegador bloqueou a mídia por segurança (precisa HTTPS).';
+  if(/At least one of audio and video must be requested/i.test(m))
+   return 'Precisa pedir microfone ou câmera. Tenta de novo pelo botão Microfone ou Câmera.';
+  if(/getUserMedia/i.test(m))
+   return 'Não deu para acessar microfone/câmera. Confere permissões e se o dispositivo existe.';
+  message=m;
+ }
  let s=String(message==null?'':message);
- const pairs=[['not authorised','sem permissão para entrar. Confere o nick e a senha.'],['not authorized','sem permissão para entrar. Confere o nick e a senha.'],['need-username','digite um nome de usuário'],['failed to join','não deu para entrar na sala'],['permission denied','permissão negada'],['bad password','senha incorreta']];
- for(const [en,pt] of pairs){ if(s.toLowerCase().indexOf(en)>=0) s=s.replace(new RegExp(en,'ig'), pt); }
+ const pairs=[
+  ['not authorised','sem permissão para entrar. Confere o nick e a senha.'],
+  ['not authorized','sem permissão para entrar. Confere o nick e a senha.'],
+  ['need-username','digite um nome de usuário'],
+  ['failed to join','não deu para entrar na sala'],
+  ['permission denied','permissão negada'],
+  ['bad password','senha incorreta'],
+  ['Requested device not found','Microfone ou câmera não encontrados'],
+  ['Could not start video source','Não deu para iniciar a câmera'],
+  ['Could not start audio source','Não deu para iniciar o microfone'],
+  ['Your browser does not support screen sharing','Este navegador não compartilha tela'],
+  ['Screen sharing in Safari is broken','No Safari a partilha de tela falha depois de um tempo'],
+ ];
+ for(const [en,pt] of pairs){ if(s.toLowerCase().indexOf(en.toLowerCase())>=0) return pt; }
  return s;
 }
 function displayError(message, level) {
@@ -3940,14 +4724,6 @@ document.getElementById('disconnectbutton').onclick = function(e) {
     location.href='/';
 };
 
-function openNav() {
-    document.getElementById("sidebarnav").style.width = "340px";
-}
-
-function closeNav() {
-    document.getElementById("sidebarnav").style.width = "0";
-}
-
 document.getElementById('sidebarCollapse').onclick = function(e) {
     document.getElementById("left-sidebar").classList.toggle("active");
     document.getElementById("mainrow").classList.toggle("full-width-active");
@@ -3955,20 +4731,48 @@ document.getElementById('sidebarCollapse').onclick = function(e) {
 
 document.getElementById('openside').onclick = function(e) {
       e.preventDefault();
-      let sidewidth = document.getElementById("sidebarnav").style.width;
-      if (sidewidth !== "0px" && sidewidth !== "") {
+      let nav = document.getElementById('sidebarnav');
+      if(nav.classList.contains('spartan-settings-open'))
           closeNav();
-          return;
-      } else {
+      else
           openNav();
-      }
 };
 
+document.getElementById('sidebarnav').addEventListener('click', function(e) {
+    if(e.target === this)
+        closeNav();
+});
+
+let chatEl = document.getElementById('chat');
+if(chatEl) {
+    chatEl.addEventListener('click', function(e) {
+        if(e.target === this)
+            spartanSetChatOpen(false);
+    });
+}
 
 document.getElementById('clodeside').onclick = function(e) {
     e.preventDefault();
     closeNav();
 };
+
+let hideOwnBtn = document.getElementById('hideownbutton');
+if(hideOwnBtn) {
+    hideOwnBtn.onclick = function(e) {
+        e.preventDefault();
+        spartanHideOwn = !spartanHideOwn;
+        spartanRefreshAllMedia();
+    };
+}
+
+let chatBtn = document.getElementById('channel-chat-btn');
+if(chatBtn) {
+    chatBtn.onclick = function(e) {
+        e.preventDefault();
+        let chat = document.getElementById('chat');
+        spartanSetChatOpen(!(chat && chat.classList.contains('spartan-chat-open')));
+    };
+}
 
 document.getElementById('collapse-video').onclick = function(e) {
     e.preventDefault();
@@ -3986,16 +4790,12 @@ document.getElementById('show-video').onclick = function(e) {
 
 document.getElementById('close-chat').onclick = function(e) {
     e.preventDefault();
-    setVisibility('left', false);
-    setVisibility('show-chat', true);
-    resizePeers();
+    spartanSetChatOpen(false);
 };
 
 document.getElementById('show-chat').onclick = function(e) {
     e.preventDefault();
-    setVisibility('left', true);
-    setVisibility('show-chat', false);
-    resizePeers();
+    spartanSetChatOpen(true);
 };
 
 async function serverConnect() {

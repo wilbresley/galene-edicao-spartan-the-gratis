@@ -282,7 +282,7 @@ Iguais à secção 4.4 e 4.6.
 - `BAN_IP = False` no Python; `True` se quiseres suspender IP 24 h após o purge.
 - `writableGroups: true` no `config.json` para o painel criar/apagar salas.
 
-API do sidecar (prefixo `/spartan-api`): `health`, `rooms`, `site`, `beacon`, `status`, `temp-status`, `registry`, `site-home`, `rename-main`, convites (`register`, `approve`, `quick`, `deny`, `block`, `unblock`, `forget`).
+API do sidecar (prefixo `/spartan-api`): `health`, `rooms`, `site`, `beacon`, `status`, `temp-status`, `registry`, `site-home`, `rename-main`, convites (`register`, `approve`, `quick`, `deny`, `block`, `unblock`, `forget`), **`/panel-login`** (valida op/admin da sala ou `sidecar.auth`) e **`/gapi/*`** (proxy da API admin do Galene). O painel aceita a **mesma conta op** com que entras na sala (não a senha de amigos); as chamadas ao Galene usam o `sidecar.auth` por baixo.
 
 ---
 
@@ -317,7 +317,7 @@ Cores típicas a procurar e trocar:
 - `#111` / `#1a0a0a` — fundo dos botões
 - `#000` — fundo da página
 
-Não apagues as regras do rodapé `footer.signature` (`position: fixed`, **sem** `border-top` grosso, fundo `rgba(0,0,0,.32)`), senão a barra **corta** o wallpaper.
+Não apagues as regras do rodapé `footer.signature` (`position: fixed`, **sem** `border-top` grosso, fundo `rgba(0,0,0,.32)`), senão a barra **corta** o wallpaper. No celular o rodapé vai para **coluna** (Galene, o teu nome, o botão), para não encavalar.
 
 ### 7.3 Textos da home
 
@@ -345,6 +345,14 @@ Slug: minúsculas, letras, números, hífen, até 32 caracteres.
 No topo de `registry.py`: `TZ = ZoneInfo("America/Sao_Paulo")`. Muda para o teu fuso. `BAN_IP = False` ou `True`.
 
 Depois: `docker restart spartan-reg`.
+
+### 7.6 Sala — microfone, tela e som do PC
+
+Na sala, o microfone começa **desligado** (vermelho) em cada entrada — inclusive ao voltar do admin. O primeiro clique pede o microfone; os seguintes só mutam. A câmera fica num botão à parte. Ativar/Desativar da barra original estão escondidos.
+
+Lives com imagem **não** entram sozinhas no ecrã: aparece um botão verde (Câmera / Tela) sob o nick; o clique abre no teu grid, outro clique tira. Só áudio não ganha botão nem tile. Cada pessoa tem **Mudo** na lista (só no teu cliente). À esquerda do nome há uma bolinha **cinza** que fica **verde** enquanto essa pessoa está falando (energia do áudio, não reconhecimento de fala). A grelha é de pares (1, 2, 4, 6… até 50). **Ocultar o meu** esconde as tuas imagens só para ti. Chat e definições abrem em janela por cima da sala (engrenagem, sem menu a deslizar).
+
+Quem partilha o ecrã e quer que os outros ouçam **o jogo e a voz** precisa dos **dois** ao mesmo tempo: microfone ligado **e** partilha com áudio. No Chrome/Edge no **Windows**, no popup: escolhe **ecrã inteiro** ou **aba**, e marca **partilhar áudio**. Partilhar só uma janela quase nunca traz o som do PC. No Linux o browser muitas vezes só captura áudio de aba; no Safari/iPhone não há áudio de sistema.
 
 ---
 
