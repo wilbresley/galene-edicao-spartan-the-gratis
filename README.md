@@ -80,3 +80,15 @@ O GitHub **não** funciona como registry de `docker pull` para um `.tgz`. A imag
 - Interface Spartan — [wilbresley](https://github.com/wilbresley)
 
 Terceiros em `static/third-party/` (Font Awesome, Toastify, Contextual) conservam a licença original de cada pasta.
+
+
+## Instalador completo (espelho do repo público)
+
+O pacote público tem o fluxo polido. Aqui no privado também:
+
+```bash
+chmod +x scripts/instalar-completo.sh && ./scripts/instalar-completo.sh
+```
+
+Sempre cria **sala convite**. Guia para IA: [INSTALACAO-PARA-IA.md](INSTALACAO-PARA-IA.md).
+Exports de conversa: docs/exports/.
