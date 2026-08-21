@@ -10,7 +10,7 @@
     <link rel="icon" type="image/jpeg" href="/icone-separtan.jpg"/>
     <link rel="stylesheet" type="text/css" href="/common.css"/>
     <link rel="stylesheet" type="text/css" href="/galene.css"/>
-    <link rel="stylesheet" type="text/css" href="/galene-spartan.css?v=37"/>
+    <link rel="stylesheet" type="text/css" href="/galene-spartan.css?v=39"/>
     <link rel="author" href="https://www.irif.fr/~jch/"/>
     <link rel="stylesheet" type="text/css" href="/third-party/fontawesome/css/fontawesome.min.css"/>
     <link rel="stylesheet" type="text/css" href="/third-party/fontawesome/css/solid.min.css"/>
@@ -28,6 +28,16 @@
 <p id="spartan-reg-err"></p>
 <button type="button" id="spartan-reg-ok">Enviar pedido</button>
 <button type="button" id="spartan-reg-cancel">Cancelar</button>
+</div></div>
+<div id="spartan-first-modal" hidden><div class="spartan-reg-card">
+<h2>Primeiro acesso</h2>
+<p>Troque a senha do admin e a senha dos convidados da sala. Não use a senha de fábrica.</p>
+<label for="spartan-first-admin">Nova senha do admin</label>
+<input id="spartan-first-admin" type="password" minlength="8" autocomplete="new-password"/>
+<label for="spartan-first-friends">Nova senha dos convidados</label>
+<input id="spartan-first-friends" type="password" minlength="8" autocomplete="new-password"/>
+<p id="spartan-first-err"></p>
+<button type="button" id="spartan-first-ok">Salvar e continuar</button>
 </div></div>
 
     <div id="main" class="app">
@@ -359,7 +369,7 @@
     <script src="/third-party/contextual/contextual.js" defer></script>
     <script src="/settings.js" defer></script>
     <script src="/filter.js" defer></script>
-    <script src="/galene.js?v=38" defer></script>
+    <script src="/galene.js?v=39" defer></script>
   <div id="spartan-toast" hidden></div>
 <div id="spartan-dlg" hidden><div class="spartan-reg-card">
 <p id="spartan-dlg-msg"></p>

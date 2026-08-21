@@ -450,12 +450,13 @@ fieldset {
 /* spartan-v14 */
 #spartan-reg-wrap{position:fixed;left:50%;top:46%;transform:translate(-50%,-50%);z-index:4000}
 #spartan-reg-btn{background:#dc2626;color:#fff;border:none;border-radius:12px;padding:.85rem 1.4rem;font-weight:800;font-size:1.05rem;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,.55)}
-#spartan-reg-modal{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:4001;display:flex;align-items:center;justify-content:center}
-#spartan-reg-modal[hidden]{display:none!important}
+#spartan-reg-modal,#spartan-first-modal{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:4001;display:flex;align-items:center;justify-content:center}
+#spartan-reg-modal[hidden],#spartan-first-modal[hidden]{display:none!important}
 .spartan-reg-card{background:#2b2d31;border:1px solid #3f4147;border-radius:14px;padding:1.2rem 1.3rem;width:min(420px,92vw);color:#dbdee1}
 .spartan-reg-card h2{margin:0 0 .5rem;color:#f2f3f5}
 .spartan-reg-card input{width:100%;box-sizing:border-box;background:#1e1f22;color:#f2f3f5;border:1px solid #7f1d1d;border-radius:8px;padding:.5rem .6rem;margin:.4rem 0 .8rem}
 .spartan-reg-card button{background:#dc2626;color:#fff;border:none;border-radius:8px;padding:.45rem .8rem;font-weight:700;margin-right:.4rem;cursor:pointer}
+.spartan-reg-card label{display:block;font-size:.9rem;color:#b5bac1}
 #spartan-reg-cancel{background:#383a40}
 #spartan-reg-err{color:#f87171;font-weight:700;min-height:1.2em}
 

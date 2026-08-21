@@ -4907,10 +4907,51 @@ function spartanOnJoin(){
  try{
   const u=serverConnection&&serverConnection.username; if(!u) return;
   fetch('/spartan-api/beacon',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({group:group,user:u})}).catch(function(){});
+  spartanMaybeFirstSetup(u);
   const p=serverConnection.permissions||[];
   if(p.indexOf('op')>=0||p.indexOf('admin')>=0) return;
   spartanCheck(u);
   if(!window._spartanPoll) window._spartanPoll=setInterval(function(){spartanCheck(serverConnection&&serverConnection.username);},4000);
+ }catch(e){}
+}
+async function spartanMaybeFirstSetup(u){
+ try{
+  const r=await fetch('/spartan-api/must-change?user='+encodeURIComponent(u),{cache:'no-store'});
+  const j=await r.json();
+  if(!j||!j.must_change) return;
+  const modal=document.getElementById('spartan-first-modal');
+  if(!modal) return;
+  modal.hidden=false;
+  const ok=document.getElementById('spartan-first-ok');
+  if(!ok||ok.dataset.bound) return;
+  ok.dataset.bound='1';
+  ok.onclick=async function(){
+   const err=document.getElementById('spartan-first-err');
+   const a=document.getElementById('spartan-first-admin').value;
+   const f=document.getElementById('spartan-first-friends').value;
+   err.textContent='';
+   if(!a||a.length<8||!f||f.length<8){ err.textContent='Mínimo 8 caracteres em cada senha.'; return; }
+   if(a==='Mudar@123'||f==='Mudar@123'){ err.textContent='Não use a senha de fábrica.'; return; }
+   let old='';
+   try{
+    const s=JSON.parse(sessionStorage.getItem('spartanSession:'+group)||'null');
+    old=(s&&s.pass)||window._spartanCred||'';
+   }catch(e){}
+   if(!old){ err.textContent='Sessão sem senha. Saia e entre de novo com Mudar@123.'; return; }
+   try{
+    const rr=await fetch('/spartan-api/first-setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:u,old:old,admin_password:a,friends_password:f})});
+    const jj=await rr.json();
+    if(!rr.ok) throw new Error((jj&&jj.error)||'falhou');
+    try{
+     const hand={user:String(u).toLowerCase(),pass:a};
+     sessionStorage.setItem('spartanSession:'+group,JSON.stringify({user:u,pass:a,group:group}));
+     sessionStorage.setItem('spartanAdmin',JSON.stringify(hand));
+     localStorage.setItem('spartanAdminHandoff',JSON.stringify(hand));
+    }catch(e){}
+    modal.hidden=true;
+    spartanToast('Senhas atualizadas. Guarde as novas senhas.');
+   }catch(e){ err.textContent=e.message||String(e); }
+  };
  }catch(e){}
 }
 async function spartanCheck(u){

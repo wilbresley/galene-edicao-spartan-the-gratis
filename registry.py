@@ -424,6 +424,15 @@ class H(BaseHTTPRequestHandler):
             ok,_=self.admin_ok()
             if not ok: self.send_json(401, {"error":"nao autorizado"}); return
             self.send_json(200, load_accounts()); return
+        if path=="/must-change":
+            user=norm_nick((q.get("user") or [""])[0])
+            d=load_accounts()
+            uid=d["by_nick"].get(user)
+            must=False
+            if uid is not None:
+                rec=d["by_id"].get(str(uid)) or {}
+                must=bool(rec.get("must_change"))
+            self.send_json(200, {"user":user,"must_change":must}); return
         if path=="/rooms":
             rooms=[]
             for fp in sorted(GROUPS.glob("*.json")):
@@ -496,6 +505,61 @@ class H(BaseHTTPRequestHandler):
             else:
                 self.send_json(401, {"error":"Usuário ou senha inválidos. Use a conta op/admin da sala (a mesma da entrada), não a senha de amigos."})
             return
+        if path=="/first-setup":
+            # Primeiro login: troca senha do admin + senha de convidados da sala principal
+            u=norm_nick(body.get("user") or "")
+            old=body.get("old") or body.get("password") or ""
+            new_admin=body.get("admin_password") or body.get("new") or ""
+            new_friends=body.get("friends_password") or body.get("room_password") or ""
+            if not ok_nick(u) or len(new_admin)<8 or len(new_friends)<8:
+                self.send_json(400, {"error":"senha minimo 8"}); return
+            if new_admin==old or new_friends==old or new_admin=="Mudar@123" or new_friends=="Mudar@123":
+                self.send_json(400, {"error":"escolha senhas novas (diferentes de Mudar@123)"}); return
+            if not panel_login_ok(u, old):
+                self.send_json(401, {"error":"senha atual invalida"}); return
+            d=load_accounts()
+            uid=d["by_nick"].get(u)
+            if uid is None:
+                self.send_json(404, {"error":"conta nao encontrada"}); return
+            rec=d["by_id"].get(str(uid)) or {}
+            if not rec.get("must_change"):
+                self.send_json(400, {"error":"ja configurado"}); return
+            site=load_site(); main=site.get("main") or "spartan"
+            ia=internal_auth()
+            if not ia:
+                self.send_json(500, {"error":"sidecar.auth ausente"}); return
+            qg,qu=quote(main,safe=""), quote(u,safe="")
+            # senha do admin na sala
+            code,err=galene("POST", f"/galene-api/v0/.groups/{qg}/.users/{qu}/.password", ia, new_admin, "text/plain")
+            if code>=400: self.send_json(code, {"error":(err or "")[:200]}); return
+            harden_group(main)
+            # senha dos convidados
+            try: galene("PUT", f"/galene-api/v0/.groups/{qg}/.wildcard-user", ia, '{"permissions":"present"}')
+            except Exception: pass
+            code2,err2=galene("POST", f"/galene-api/v0/.groups/{qg}/.wildcard-user/.password", ia, new_friends, "text/plain")
+            if code2>=400: self.send_json(code2, {"error":(err2 or "")[:200]}); return
+            harden_group(main)
+            # config.json + sidecar.auth
+            cfgp=Path("/data/config.json")
+            if cfgp.exists():
+                try:
+                    cfg=json.loads(cfgp.read_text(encoding="utf-8"))
+                    users=cfg.setdefault("users", {})
+                    urec=users.get(u) or {"permissions":"admin"}
+                    urec["password"]=hash_plain(new_admin)
+                    urec["permissions"]=urec.get("permissions") or "admin"
+                    users[u]=urec
+                    cfg["users"]=users
+                    cfgp.write_text(json.dumps(cfg, indent=2, ensure_ascii=False)+chr(10), encoding="utf-8")
+                except Exception: pass
+            Path("/data/sidecar.auth").write_text(f"{u}:{new_admin}\n", encoding="utf-8")
+            try: os.chmod("/data/sidecar.auth", 0o600)
+            except Exception: pass
+            rec["must_change"]=False
+            rec["setup_at"]=now()
+            d["by_id"][str(uid)]=rec
+            save_accounts(d)
+            self.send_json(200, {"ok":True}); return
         ok,auth=self.admin_ok()
         if not ok: self.send_json(401, {"error":"nao autorizado"}); return
         if path=="/site-home":
