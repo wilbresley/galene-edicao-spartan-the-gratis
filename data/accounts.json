@@ -1,0 +1,14 @@
+{
+  "next_id": 1,
+  "by_id": {
+    "0": {
+      "nick": "admin",
+      "active": true,
+      "created": "factory",
+      "must_change": true
+    }
+  },
+  "by_nick": {
+    "admin": 0
+  }
+}

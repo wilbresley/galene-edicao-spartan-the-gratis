@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta http-equiv="Cache-Control" content="no-store"/>
+    <script src="/spartan-boot.js?v=6"></script>
+    <title>Spartan</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="ScreenOrientation" content="autoRotate:disabled">
+    <link rel="icon" type="image/jpeg" href="/icone-separtan.jpg"/>
+    <link rel="stylesheet" type="text/css" href="/common.css"/>
+    <link rel="stylesheet" type="text/css" href="/galene.css"/>
+    <link rel="stylesheet" type="text/css" href="/galene-spartan.css?v=40"/>
+    <link rel="author" href="https://www.irif.fr/~jch/"/>
+    <link rel="stylesheet" type="text/css" href="/third-party/fontawesome/css/fontawesome.min.css"/>
+    <link rel="stylesheet" type="text/css" href="/third-party/fontawesome/css/solid.min.css"/>
+    <link rel="stylesheet" type="text/css" href="/third-party/fontawesome/css/regular.min.css"/>
+    <link rel="stylesheet" type="text/css" href="/third-party/toastify/toastify.css"/>
+    <link rel="stylesheet" type="text/css" href="/third-party/contextual/contextual.css"/>
+  </head>
+
+  <body>
+<div id="spartan-reg-modal" hidden><div class="spartan-reg-card">
+<h2>Criar senha da sua conta</h2>
+<p>Mínimo 8 caracteres. Um admin precisa aprovar.</p>
+<label for="spartan-reg-pw">Senha</label>
+<input id="spartan-reg-pw" type="password" minlength="8" autocomplete="new-password"/>
+<p id="spartan-reg-err"></p>
+<button type="button" id="spartan-reg-ok">Enviar pedido</button>
+<button type="button" id="spartan-reg-cancel">Cancelar</button>
+</div></div>
+<div id="spartan-first-modal" hidden><div class="spartan-reg-card">
+<h2>Primeiro acesso</h2>
+<p>Troque a senha do admin e a senha dos convidados da sala. Não use a senha de fábrica.</p>
+<label for="spartan-first-admin">Nova senha do admin</label>
+<input id="spartan-first-admin" type="password" minlength="8" autocomplete="new-password"/>
+<label for="spartan-first-friends">Nova senha dos convidados</label>
+<input id="spartan-first-friends" type="password" minlength="8" autocomplete="new-password"/>
+<p id="spartan-first-err"></p>
+<button type="button" id="spartan-first-ok">Salvar e continuar</button>
+</div></div>
+
+    <div id="main" class="app">
+      <div class="row full-height">
+        <nav id="left-sidebar">
+          <div class="users-header">
+            <div class="galene-header">Spartan</div>
+          </div>
+          <div class="header-sep"></div>
+          <button type="button" id="channel-chat-btn" class="channel-chat-btn">Chat do canal</button>
+          <div id="users"></div>
+        </nav>
+        <div class="container">
+          <header>
+            <nav class="topnav navbar navbar-expand navbar-light fixed-top">
+              <div id="header">
+                <div class="collapse" title="Recolher lista" id="sidebarCollapse">
+                  <i class="fas fa-align-left" aria-hidden="true"></i>
+                </div>
+                <h1 id="title" class="header-title">Spartan</h1>
+                <button type="button" id="spartan-reg-btn" hidden>Solicitar registro</button>
+              </div>
+
+              <ul class="nav-menu">
+                <li class="spartan-hide-nav">
+                  <button id="presentbutton" class="invisible btn btn-success">
+                    <i class="fas fa-play" aria-hidden="true"></i><span class="nav-text"> Ativar</span>
+                  </button>
+                </li>
+                <li class="spartan-hide-nav">
+                  <button id="unpresentbutton" class="invisible btn btn-cancel">
+                    <i class="fas fa-stop" aria-hidden="true"></i><span class="nav-text"> Desativar</span>
+                  </button>
+                </li>
+                <li>
+                  <div id="hideownbutton" class="invisible nav-link nav-button">
+                    <span><i class="fas fa-eye" aria-hidden="true"></i></span>
+                    <label>Ocultar o meu</label>
+                  </div>
+                </li>
+                <li>
+                  <div id="mutebutton" class="nav-link nav-button muted">
+                    <span><i class="fas fa-microphone-slash" aria-hidden="true"></i></span>
+                    <label>Microfone</label>
+                  </div>
+                </li>
+                <li>
+                  <div id="camerabutton" class="invisible nav-link nav-button">
+                    <span><i class="fas fa-video" aria-hidden="true"></i></span>
+                    <label>Câmera</label>
+                  </div>
+                </li>
+                <li>
+                  <div id="sharebutton" class="invisible nav-link nav-button">
+                    <span><i class="fas fa-share-square" aria-hidden="true"></i></span>
+                    <label>Compartilhar tela</label>
+                  </div>
+                </li>
+                <li>
+                  <div class="nav-button nav-link nav-more" id="openside">
+                    <span><i class="fas fa-cog" aria-hidden="true"></i></span>
+                  </div>
+                </li>
+              </ul>
+            </nav>
+          </header>
+          <div class="row full-width" id="mainrow">
+            <div class="coln-left invisible" id="left"></div>
+            <div id="resizer"></div>
+            <div class="coln-right" id="right">
+              <span class="show-video blink invisible" id="show-video">
+                <i class="fas fa-exchange-alt" aria-hidden="true"></i>
+              </span>
+              <div class="chat-btn show-chat invisible" id="show-chat">
+                <i class="far fa-comment-alt icon-chat" title="Mostrar chat"></i>
+              </div>
+              <div class="chat-btn collapse-video invisible" id="collapse-video">
+                <i class="far fa-comment-alt icon-chat" title="Ocultar vídeo e mostrar chat"></i>
+              </div>
+              <div class="video-container invisible" id="video-container">
+                <div id="expand-video" class="expand-video">
+                  <div id="peers"></div>
+                </div>
+              </div>
+              <div id="captions-container" class="invisible">
+                <div id="captions"></div>
+              </div>
+              <div class="login-container invisible" id="login-container">
+                <div class="login-box">
+                  <div class="spartan-login-brand">Spartan</div>
+                  <p class="spartan-login-tag">Cade a Live?</p>
+                  <form id="loginform" class="loginform" autocomplete="off">
+                    <div id="userform">
+                      <label for="username">Usuário</label>
+                      <input id="username" type="text" name="spartan-nick" autocomplete="off" autocapitalize="none" spellcheck="false" data-lpignore="true"class="form-control"/>
+                    </div>
+                    <div id="passwordform">
+                      <label for="password">Senha</label>
+                      <input id="password" type="password" name="spartan-key" autocomplete="new-password" data-lpignore="true"class="form-control"/>
+                    </div>
+                    <label>Ao entrar:</label>
+                    <div class="present-switch">
+                      <p class="switch-radio">
+                        <input id="presentoff" type="radio" name="presentradio" value="" checked/>
+                        <label for="presentoff">Nada</label>
+                      </p>
+                      <p class="switch-radio">
+                        <input id="presentmike" type="radio" name="presentradio" value="mike"/>
+                        <label for="presentmike">Microfone</label>
+                      </p>
+                      <p class="switch-radio">
+                        <input id="presentboth" type="radio" name="presentradio" value="both"/>
+                        <label for="presentboth">Câmera e microfone</label>
+                      </p>
+                    </div>
+                    <div class="clear"></div>
+                    <div class="connect">
+                      <input id="connectbutton" type="submit" class="btn btn-blue" value="Entrar"/>
+                    </div>
+                  </form>
+                  <div class="clear"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="chat" hidden>
+      <div id="chatbox">
+        <div class="chat-overlay-bar">
+          <span>Chat do canal</span>
+          <button type="button" class="close-chat" id="close-chat" title="Ocultar chat">
+            <span class="close-icon"></span>
+          </button>
+        </div>
+        <div id="box"></div>
+        <div class="reply">
+          <form id="inputform">
+            <textarea id="input" class="form-reply"></textarea>
+            <input id="inputbutton" type="submit" value="&#10148;" class="btn btn-default"/>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div id="sidebarnav" class="sidenav">
+      <div class="sidenav-panel">
+      <div class="sidenav-header">
+        <h2>Configurações</h2>
+        <a class="closebtn" id="clodeside"><i class="fas fa-times" aria-hidden="true"></i></a>
+      </div>
+      <div class="sidenav-content" id="optionsdiv">
+        <div id="profile" class="profile invisible">
+          <div class="profile-user">
+            <div class="profile-logo">
+              <span><i class="fas fa-user" aria-hidden="true"></i></span>
+            </div>
+            <div class="profile-info">
+              <span id="userspan"></span>
+              <span id="permspan"></span>
+            </div>
+            <div class="user-logout">
+              <a id="disconnectbutton">
+                <span class="logout-icon"><i class="fas fa-sign-out-alt"></i></span>
+                <span class="logout-text">Sair</span>
+              </a>
+            </div>
+          </div>
+          <div class="side-actions">
+            <span id="chpwspan" class="invisible"><a id="change-password" class="side-btn">Trocar senha</a></span>
+            <span id="adminspan" class="invisible"><a id="admin-link" class="side-btn" href="/admin/" target="_blank" rel="noopener">Painel Admin</a></span>
+          </div>
+        </div>
+        <div id="mediaoptions" class="invisible">
+          <fieldset>
+            <legend>Dispositivos</legend>
+            <label for="videoselect" class="sidenav-label-first">Câmera:</label>
+            <select id="videoselect" class="select select-inline">
+              <option value="">desligado</option>
+            </select>
+            <p class="set-help">Qual câmera enviar. “Desligado” manda só áudio se o microfone estiver ligado.</p>
+  
+            <label for="audioselect" class="sidenav-label">Microfone:</label>
+            <select id="audioselect" class="select select-inline">
+              <option value="">desligado</option>
+            </select>
+            <p class="set-help">Qual microfone usar quando você fala. “Desligado” não captura voz.</p>
+
+            <form>
+              <input id="mirrorbox" type="checkbox" checked/>
+              <label for="mirrorbox">Espelhar vídeo</label>
+            </form>
+            <p class="set-help">Mostra a sua câmera em espelho só para você. Os outros continuam a ver o lado real.</p>
+
+            <form>
+              <input id="blackboardbox" type="checkbox"/>
+              <label for="blackboardbox">Modo quadro</label>
+            </form>
+            <p class="set-help">Pede mais nitidez (texto/quadro). Usa mais dados. Desligue em chamadas normais.</p>
+  
+            <form>
+              <input id="preprocessingbox" type="checkbox" checked/>
+              <label for="preprocessingbox">Supressão de ruído</label>
+            </form>
+            <p class="set-help">O navegador corta eco e ruído. Desligue se usar mesa de som ou Easy Effects.</p>
+
+            <form>
+              <input id="hqaudiobox" type="checkbox" checked/>
+              <label for="hqaudiobox">Áudio em alta qualidade</label>
+            </form>
+            <p class="set-help">Voz mais nítida; gasta mais banda. Desligue em redes fracas.</p>
+
+          </fieldset>
+        </div>
+
+        <fieldset>
+          <legend>Envio e recepção</legend>
+
+          <form id="filterform">
+            <label for="filterselect" class="sidenav-label-first">Filtro:</label>
+            <select id="filterselect" class="select select-inline">
+              <option value="" selected>nenhum</option>
+            </select>
+          </form>
+          <p class="set-help">Efeito visual na sua câmera (desfocar fundo, etc.). “Nenhum” é o mais leve.</p>
+
+          <form id="sendform">
+            <label for="sendselect" class="sidenav-label-first">Enviar:</label>
+            <select id="sendselect" class="select select-inline">
+              <option value="lowest">mínimo</option>
+              <option value="low">baixo</option>
+              <option value="normal">normal</option>
+              <option value="unlimited" selected>ilimitado</option>
+            </select>
+          </form>
+          <p class="set-help">Teto de qualidade que você envia. Mínimo/baixo economizam rede; normal é o equilíbrio; ilimitado manda o máximo que a conexão aguentar.</p>
+
+          <form id="simulcastform">
+            <label for="simulcastselect" class="sidenav-label-first">Duas qualidades:</label>
+            <select id="simulcastselect" class="select select-inline">
+              <option value="off">desligado</option>
+              <option value="auto" selected>automático</option>
+              <option value="on">ligado</option>
+            </select>
+          </form>
+          <p class="set-help">Envia uma versão leve e outra nítida. Automático deixa o servidor escolher o que cada um recebe. Desligado = uma só qualidade.</p>
+
+          <form id="requestform">
+            <label for="requestselect" class="sidenav-label">Receber:</label>
+            <select id="requestselect" class="select select-inline">
+              <option value="">nada</option>
+              <option value="audio">só áudio</option>
+              <option value="screenshare">só tela</option>
+              <option value="everything-low">qualidade baixa</option>
+              <option value="everything" selected>tudo</option>
+            </select>
+          </form>
+          <p class="set-help">O que você pede por padrão. As lives na tela só aparecem quando você clica nos botões da lista; isso não substitui esses botões. “Nada” não recebe; “só áudio” você ouve sem imagem; “tudo” permite vídeo quando abre uma live.</p>
+  
+          <form>
+            <input id="activitybox" type="checkbox"/>
+            <label for="activitybox">Detectar atividade</label>
+          </form>
+          <p class="set-help">Destaca quem está falando. Pode usar um pouco mais de CPU.</p>
+
+          <form class="spartan-hide-setting">
+            <input id="displayallbox" type="checkbox"/>
+            <label for="displayallbox">Mostrar quem só tem áudio</label>
+          </form>
+          <form class="spartan-hide-setting">
+            <input id="hideselfbox" type="checkbox"/>
+            <label for="hideselfbox">Ocultar a minha imagem</label>
+          </form>
+        </fieldset>
+      </div>
+      </div>
+    </div>
+
+    <div id="videocontrols-template" class="invisible">
+      <div class="video-controls vc-overlay">
+        <div class="controls-button controls-left">
+          <span class="volume" title="Volume">
+            <i class="fas fa-volume-up volume-mute" aria-hidden="true"></i>
+            <input class="volume-slider" type="range" max="100" value="100" min="0" step="5" >
+          </span>
+        </div>
+        <div class="controls-button controls-right">
+          <span class="rotate" title="Rodar">
+            <i class="fas fa-redo" aria-hidden="true"></i>
+          </span>
+          <span class="pip" title="Miniplayer">
+            <i class="far fa-clone" aria-hidden="true"></i>
+          </span>
+          <span class="fullscreen" title="Tela cheia">
+            <i class="fas fa-expand" aria-hidden="true"></i>
+          </span>
+        </div>
+      </div>
+    </div>
+    <div id="topvideocontrols-template" class="invisible">
+      <div class="top-video-controls">
+        <div class="controls-button controls-right">
+          <span class="close-icon video-stop" title="Fechar">
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <dialog id="invite-dialog">
+      <form method="dialog">
+        <label for="invite-username">Usuário (opcional):</label>
+        <input id="invite-username" type="text"/>
+        <br>
+        <label for="invite-not-before">A partir de:</label>
+        <input id="invite-not-before" type="datetime-local"/>
+        <br>
+        <label for="invite-expires">Expira em:</label>
+        <input id="invite-expires" type="datetime-local"/>
+        <br>
+        <button id="invite-cancel" value="cancel" type="button">Cancelar</button>
+        <button value="invite">Convidar</button>
+      </form>
+    </dialog>
+
+    <script src="/protocol.js" defer></script>
+    <script src="/third-party/toastify/toastify.js" defer></script>
+    <script src="/third-party/contextual/contextual.js" defer></script>
+    <script src="/settings.js" defer></script>
+    <script src="/filter.js" defer></script>
+    <script src="/galene.js?v=40" defer></script>
+  <div id="spartan-toast" hidden></div>
+<div id="spartan-dlg" hidden><div class="spartan-reg-card">
+<p id="spartan-dlg-msg"></p>
+<input id="spartan-dlg-input" type="text" hidden/>
+<div class="spartan-dlg-acts">
+<button type="button" id="spartan-dlg-ok">OK</button>
+<button type="button" id="spartan-dlg-cancel" hidden>Cancelar</button>
+</div></div></div>
+<footer class="signature">
+  <span class="foot-left"><a href="https://galene.org">Galene</a> by <a href="https://www.irif.fr/~jch/">Juliusz Chroboczek</a></span>
+  <span class="foot-mid">Interface refeita por <a href="https://github.com/wilbresley" target="_blank" rel="noopener">wilbresley</a></span>
+  <span class="foot-right"><a class="btn-salas" href="/salas/">Outras salas</a></span>
+</footer>
+</body>
+</html>

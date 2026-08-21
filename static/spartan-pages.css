@@ -1,0 +1,16 @@
+
+html,body{min-height:100%;margin:0;background:#1e1f22!important;color:#dbdee1!important;font-family:system-ui,sans-serif}
+a{color:#22c55e}
+h1,.navbar-brand{color:#dc2626!important;background:#000!important;margin:0;padding:.7rem 1rem;font-size:1.3rem}
+#passwordform,.landing-page{max-width:420px;margin:2rem auto;padding:1.5rem;background:#2b2d31;border:1px solid #3f4147;border-radius:12px}
+label{display:block;margin:.8rem 0 .25rem;color:#f2f3f5}
+input[type=password],input[type=text]{width:100%;box-sizing:border-box;background:#1e1f22;color:#f2f3f5;border:1px solid #7f1d1d;border-radius:6px;padding:.5rem .6rem}
+input[type=submit],.home-link{display:inline-block;margin-top:1rem;background:#dc2626;color:#fff!important;border:none;border-radius:8px;padding:.55rem 1.1rem;text-decoration:none;cursor:pointer;font-weight:700}
+#errormessage{color:#f87171;font-weight:700;min-height:1.2em;margin:.85rem 0 0;text-align:center}
+#message{color:#22c55e;font-weight:700;min-height:1.2em;margin:.85rem 0 0;text-align:center}
+.wrapper{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem}
+.landing-page{text-align:center}
+.landing-page h1{background:none!important;padding:.4rem 0}
+.logo{font-size:4rem;color:#dc2626}
+#stats-table{max-width:960px;width:94%;margin:2rem auto;border-collapse:collapse;background:#2b2d31;border-radius:12px;padding:1rem;display:block}
+#stats-table td{padding:.35rem .5rem;border-bottom:1px solid #3f4147;color:#dbdee1}

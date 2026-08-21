@@ -1,0 +1,39 @@
+services:
+  galene:
+    image: galene:local
+    container_name: galene
+    restart: unless-stopped
+    network_mode: host
+    user: "1000:1000"
+    volumes:
+      - ./data:/data
+      - ./groups:/groups
+      - ./recordings:/recordings
+      - ./static:/app/static:ro
+    command:
+      - -http
+      - :8443
+      - -insecure
+      - -turn
+      - ${TURN_PUBLIC_IP}:1194
+      - -udp-range
+      - 50000-50100
+      - -data
+      - /data
+      - -groups
+      - /groups
+      - -recordings
+      - /recordings
+      - -static
+      - /app/static
+
+  spartan-reg:
+    image: python:3.12-alpine
+    container_name: spartan-reg
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./registry.py:/app/registry.py:ro
+      - ./data:/data
+      - ./groups:/groups
+    command: ["python3", "/app/registry.py"]

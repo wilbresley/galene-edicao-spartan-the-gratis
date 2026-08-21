@@ -1,0 +1,29 @@
+{
+  "public": true,
+  "displayName": "Spartan",
+  "description": "",
+  "codecs": ["vp9", "vp8", "opus"],
+  "unrestricted-tokens": true,
+  "users": {
+    "admin": {
+      "password": {
+        "type": "pbkdf2",
+        "hash": "sha-256",
+        "key": "66a48684ce49b4eefb59f8b89de4f136a5146419246f927c3b14488126ec8ec7",
+        "salt": "a1b2c3d4e5f60718",
+        "iterations": 4096
+      },
+      "permissions": "op"
+    }
+  },
+  "wildcard-user": {
+    "password": {
+      "type": "pbkdf2",
+      "hash": "sha-256",
+      "key": "66a48684ce49b4eefb59f8b89de4f136a5146419246f927c3b14488126ec8ec7",
+      "salt": "a1b2c3d4e5f60718",
+      "iterations": 4096
+    },
+    "permissions": "present"
+  }
+}

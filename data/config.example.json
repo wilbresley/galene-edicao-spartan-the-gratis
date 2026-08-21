@@ -1,0 +1,14 @@
+{
+  "proxyURL": "https://SEU_DOMINIO/",
+  "canonicalHost": "SEU_DOMINIO",
+  "writableGroups": true,
+  "users": {
+    "OPERADOR": {
+      "password": {
+        "type": "bcrypt",
+        "key": "COLE_O_HASH_AQUI"
+      },
+      "permissions": "admin"
+    }
+  }
+}

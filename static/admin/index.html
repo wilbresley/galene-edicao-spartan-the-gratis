@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="admin-gate">
+<head>
+<meta http-equiv="Cache-Control" content="no-store"/>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Painel Admin — Spartan</title>
+<link rel="icon" type="image/jpeg" href="/icone-separtan.jpg"/>
+<link rel="stylesheet" href="/common.css"/>
+<link rel="stylesheet" href="/spartan-pages.css?v=5"/>
+<link rel="stylesheet" href="/admin.css?v=19"/>
+<link rel="stylesheet" href="/spartan.css?v=22"/>
+<script src="/admin.js?v=27" defer></script>
+</head>
+<body>
+<header class="admin-top">
+<h1>Spartan · Painel Admin</h1>
+<div class="admin-top-right">
+<span id="who"></span>
+<div class="admin-top-actions"><a class="btn-back" href="/group/spartan/">Voltar à sala</a><button type="button" id="btn-out">Sair</button></div>
+</div>
+</header>
+<div id="login-box" class="admin-card login-card">
+
+<label for="u">Usuário</label>
+<input id="u" type="text" name="spartan-admin-user" autocomplete="off" data-lpignore="true"/>
+<label for="p">Senha</label>
+<input id="p" type="password" name="spartan-admin-key" autocomplete="new-password" data-lpignore="true"/>
+<button type="button" id="btn-login">Entrar</button>
+<p id="login-err" class="err"></p>
+</div>
+<div id="panel" hidden>
+<nav class="tabs">
+<button type="button" class="tab on" data-tab="users">Usuários</button>
+<button type="button" class="tab" data-tab="guests">Convidados</button>
+<button type="button" class="tab" data-tab="blocked">Bloqueados</button>
+<button type="button" class="tab" data-tab="temps">Temporários</button>
+<button type="button" class="tab" data-tab="logs">Logs</button>
+<button type="button" class="tab" data-tab="rooms">Salas</button>
+</nav>
+<div id="tab-users" class="tab-page">
+<div class="split">
+<section class="admin-card">
+<h2>Com login próprio</h2>
+<div class="list-tools" data-tab="users"><button type="button" class="sort-btn on" data-sort="az">A–Z</button><button type="button" class="sort-btn" data-sort="time">Recentes</button></div>
+
+<h3 class="subh">Admins</h3>
+<div id="users-ops"></div>
+<h3 class="subh">Usuários</h3>
+<div id="users"></div>
+</section>
+<div class="stack">
+<section class="admin-card">
+<h2>Novo usuário</h2>
+<label for="nu">Nome</label>
+<input id="nu" type="text"/>
+<label for="np">Senha</label>
+<input id="np" type="password"/>
+<label for="nperm">Cargo</label>
+<select id="nperm">
+<option value="present">Verificado</option>
+<option value="op">Admin</option>
+<option value="ouvinte">Ouvinte</option>
+</select>
+<button type="button" id="btn-create">Criar</button>
+<p id="create-msg" class="ok"></p>
+<p class="hint">Admin: moderar e tudo. Verificado: lives, transmitir e chats. Ouvinte: só voz (sem lives, sem texto, sem transmitir).</p>
+</section>
+<section class="admin-card">
+<h2>Senha dos amigos (qualquer nick)</h2>
+<p class="hint">Quem não tem usuário próprio entra com qualquer nome e esta senha.</p>
+<label for="wp">Nova senha compartilhada</label>
+<input id="wp" type="password"/>
+<button type="button" id="btn-wild">Salvar senha dos amigos</button>
+<p id="wild-msg" class="ok"></p>
+</section>
+</div>
+</div>
+</div>
+<div id="tab-guests" class="tab-page" hidden>
+<section class="admin-card">
+<h2>Quem entrou com a senha dos amigos</h2>
+<div class="list-tools" data-tab="guests"><button type="button" class="sort-btn on" data-sort="az">A–Z</button><button type="button" class="sort-btn" data-sort="time">Recentes</button></div>
+
+<p class="hint">Pendente: pediu conta. Negado: nick bloqueado até você apagar o histórico. Clique em Cadastrar para criar na hora.</p>
+<div id="guests"></div>
+</section>
+</div>
+<div id="tab-blocked" class="tab-page" hidden>
+<section class="admin-card">
+<h2>Bloqueados</h2>
+<div class="list-tools" data-tab="blocked"><button type="button" class="sort-btn on" data-sort="az">A–Z</button><button type="button" class="sort-btn" data-sort="time">Recentes</button></div>
+
+<p class="hint">Esses nicks não entram na sala. Apagar histórico libera o nome de novo.</p>
+<div id="blocked"></div>
+</section>
+</div>
+<div id="tab-temps" class="tab-page" hidden>
+<section class="admin-card">
+<h2>Temporários (salas sem senha)</h2>
+<div class="list-tools" data-tab="temps"><button type="button" class="sort-btn on" data-sort="az">A–Z</button><button type="button" class="sort-btn" data-sort="time">Recentes</button></div>
+
+<p class="hint">Quem entra só com nick. A cada hora cheia a sala esvazia e o IP fica 24h fora. Estes nomes não misturam com convidados nem contas.</p>
+<div id="temps"></div>
+</section>
+</div>
+<div id="tab-logs" class="tab-page" hidden>
+<section class="admin-card">
+<h2>Logs de conexão</h2>
+<p class="hint">Últimas conexões (cadastrado, convidado e temporário). Horário de Brasília. Arquivo no servidor: data/access.log (até 1 ano).</p>
+<div class="log-filters">
+<select id="log-tipo">
+<option value="">Todos os tipos</option>
+<option value="cadastrado">Cadastrado</option>
+<option value="admin">Admin (painel)</option>
+<option value="convidado">Convidado</option>
+<option value="temporario">Temporário</option>
+</select>
+<input id="log-nick" type="text" placeholder="Filtrar por nick"/>
+<input id="log-ip" type="text" placeholder="Filtrar por IP"/>
+</div>
+<div id="logs"></div>
+</section>
+</div>
+<div id="tab-rooms" class="tab-page" hidden>
+<div class="split">
+<section class="admin-card">
+<h2>Salas existentes</h2>
+<p class="hint">A sala principal fica no topo e não pode ser apagada. Dá para mudar o nome, o endereço e a senha de amigos. Outra sala pode ser marcada para aparecer na home.</p>
+<div id="rooms"></div>
+</section>
+<section class="admin-card">
+<h2>Criar sala</h2>
+<label for="rn">Nome na URL (minúsculo, sem espaço)</label>
+<input id="rn" type="text" placeholder="ex: jogos"/>
+<label for="rd">Título na home</label>
+<input id="rd" type="text" placeholder="ex: Jogos"/>
+<label class="chk"><input id="ropen" type="checkbox"/> Sala pública (entra só com o nick, sem senha)</label>
+<label for="rp">Senha de amigos desta sala</label>
+<input id="rp" type="password" placeholder="obrigatória se não for pública"/>
+<button type="button" id="btn-room">Criar sala</button>
+<p id="room-msg" class="ok"></p>
+</section>
+</div>
+</div>
+</div>
+<div id="ui-toast" hidden></div>
+<div id="ui-dlg" hidden><div class="admin-card dlg-card">
+<p id="ui-dlg-msg"></p>
+<input id="ui-dlg-input" type="password"/>
+<div class="dlg-acts">
+<button type="button" id="ui-dlg-ok">OK</button>
+<button type="button" id="ui-dlg-cancel" class="ghost">Cancelar</button>
+</div></div></div>
+<footer class="signature">
+  <span class="foot-left"><a href="https://galene.org">Galene</a> by <a href="https://www.irif.fr/~jch/">Juliusz Chroboczek</a></span>
+  <span class="foot-mid">Interface refeita por <a href="https://github.com/wilbresley" target="_blank" rel="noopener">wilbresley</a></span>
+  <span class="foot-right"><a class="btn-salas" href="/salas/">Outras salas</a></span>
+</footer>
+</body>
+</html>
