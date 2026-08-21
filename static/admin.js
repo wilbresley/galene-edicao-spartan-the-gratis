@@ -276,11 +276,32 @@ async function loadTemps(){
   const el=document.createElement('div'); el.className='guest-row';
   const lab=document.createElement('b'); lab.textContent=name;
   const tag=document.createElement('span'); tag.className='tag tag-guest'; tag.textContent='temporário';
-  const meta=document.createElement('span'); meta.className='hint'; meta.textContent='sala '+gid+(rec.ip?(' · IP '+rec.ip):'')+' · visto '+(rec.last||rec.first||'');
+  const meta=document.createElement('span'); meta.className='hint'; meta.textContent='sala '+gid+(rec.ip?(' · IP '+rec.ip):'')+' · visto '+fmtQuando(rec.last||rec.first||'');
   el.appendChild(lab); el.appendChild(tag); el.appendChild(meta); box.appendChild(el);
  });
 }
- async function afterLogin(){
+async function loadLogs(){
+ const box=$('logs'); if(!box) return;
+ try{
+  const data=await reg('/access-log?limit=400');
+  const entries=(data&&data.entries)||[];
+  const key='L:'+entries.length+':'+(entries[0]&&(entries[0].quando+entries[0].nick+entries[0].ip)||'');
+  if(key===loadLogs._k) return; loadLogs._k=key;
+  box.innerHTML='';
+  if(!entries.length){box.textContent='Nenhum log ainda. Assim que alguém entrar na sala, aparece aqui.';return;}
+  entries.forEach(function(e){
+   const el=document.createElement('div'); el.className='guest-row';
+   const lab=document.createElement('b'); lab.textContent=e.nick||'(sem nick)';
+   const tag=document.createElement('span'); tag.className='tag tag-guest'; tag.textContent=tipoLabel(e.tipo);
+   const meta=document.createElement('span'); meta.className='hint';
+   meta.textContent=fmtQuando(e.quando)+(e.sala?(' · sala '+e.sala):'')+(e.ip?(' · IP '+e.ip):'');
+   el.appendChild(lab); el.appendChild(tag); el.appendChild(meta); box.appendChild(el);
+  });
+ }catch(e){
+  if(!box.dataset.ok) box.textContent='Não deu para ler os logs.';
+ }
+}
+async function afterLogin(){
  await loadSite();
  await api('/.groups/'+GROUP+'/.users/');
  document.documentElement.classList.remove('admin-gate');
