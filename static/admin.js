@@ -30,7 +30,16 @@ function permLabel(p){return ({op:'Admin da sala',admin:'Admin',present:'Pode tr
 function bucket(){const d=registry[GROUP]||{};return {guests:d.guests||{},pending:d.pending||{},denied:d.denied||{},blocked:d.blocked||{},temps:d.temps||{},ipban:d.ipban||{},created:d.created||{},seen:d.seen||{}};}
 var SORT={users:"az",guests:"az",blocked:"az",temps:"az"};
 function recLast(b,n){var r=(b.seen&&b.seen[n])||(b.guests||{})[n]||(b.temps||{})[n]||(b.blocked||{})[n]||(b.pending||{})[n]||{}; return r.last||r.first||r.at||"";}
-function fmtSeen(name,gid,rec){rec=rec||{}; var bits=[]; if(gid) bits.push("sala "+gid); if(rec.ip) bits.push("IP "+rec.ip); var v=rec.last||rec.first||rec.at; if(v) bits.push("visto "+v); return bits.join(" · ");}
+function fmtQuando(iso){
+ if(!iso) return "";
+ try{
+  var d=new Date(iso);
+  if(isNaN(d.getTime())) return String(iso);
+  return d.toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+ }catch(e){return String(iso);}
+}
+function fmtSeen(name,gid,rec){rec=rec||{}; var bits=[]; if(gid) bits.push("sala "+gid); if(rec.ip) bits.push("IP "+rec.ip); var v=rec.last||rec.first||rec.at; if(v) bits.push("visto "+fmtQuando(v)); return bits.join(" · ");}
+function tipoLabel(t){return ({cadastrado:"Cadastrado",convidado:"Convidado",temporario:"Temporário",pedido_cadastro:"Pedido de cadastro",conta_aprovada:"Conta aprovada",conta_criada:"Conta criada",painel_admin:"Painel admin"})[t]||t||"—";}
 function sortItems(list,tab){var mode=SORT[tab]||"az"; list.sort(function(a,c){if(mode==="time"){var ta=(a.rec&&(a.rec.last||a.rec.first||a.rec.at))||""; var tc=(c.rec&&(c.rec.last||c.rec.first||c.rec.at))||""; if(tc!==ta) return tc>ta?-1:1;} return String(a.name).localeCompare(String(c.name),"pt",{sensitivity:"base"});}); return list;}
 function sortNickList(names,b,tab){var mode=SORT[tab]||"az"; names.sort(function(a,c){if(mode==="time"){var d=recLast(b,c).localeCompare(recLast(b,a)); if(d) return d;} return a.localeCompare(c,"pt",{sensitivity:"base"});});}
 
@@ -271,13 +280,13 @@ async function loadTemps(){
   el.appendChild(lab); el.appendChild(tag); el.appendChild(meta); box.appendChild(el);
  });
 }
-async function afterLogin(){
+ async function afterLogin(){
  await loadSite();
  await api('/.groups/'+GROUP+'/.users/');
  document.documentElement.classList.remove('admin-gate');
  $('login-box').hidden=true; $('panel').hidden=false;
  $('who').textContent='Logado: '+user;
- await loadUsers(); await loadRooms(); await loadGuests(); await loadBlocked(); await loadTemps();
+ await loadUsers(); await loadRooms(); await loadGuests(); await loadBlocked(); await loadTemps(); await loadLogs();
 }
 $('btn-login').onclick=async()=>{
  user=($('u').value||'').trim().toLowerCase(); $('u').value=user; pass=$('p').value; $('login-err').textContent='';
@@ -339,7 +348,9 @@ document.querySelectorAll('.tab').forEach(b=>{
   $('tab-guests').hidden=b.dataset.tab!=='guests';
   $('tab-blocked').hidden=b.dataset.tab!=='blocked';
   $('tab-temps').hidden=b.dataset.tab!=='temps';
+  if($('tab-logs')) $('tab-logs').hidden=b.dataset.tab!=='logs';
   $('tab-rooms').hidden=b.dataset.tab!=='rooms';
+  if(b.dataset.tab==='logs'){ loadLogs._k=null; loadLogs(); }
  };
 });
 try{
@@ -364,4 +375,4 @@ try{
 }catch(e){}
 
 document.querySelectorAll('.list-tools').forEach(function(bar){bar.addEventListener('click',function(e){var btn=e.target.closest('[data-sort]'); if(!btn) return; var tab=bar.getAttribute('data-tab'); SORT[tab]=btn.getAttribute('data-sort'); bar.querySelectorAll('[data-sort]').forEach(function(x){x.classList.toggle('on',x===btn);}); loadUsers._k=loadGuests._k=loadBlocked._k=loadTemps._k=null; if(tab==='users') loadUsers(); else if(tab==='guests') loadGuests(); else if(tab==='blocked') loadBlocked(); else if(tab==='temps') loadTemps();});});
-setInterval(function(){ try{ if($('panel') && !$('panel').hidden){ loadUsers().catch(function(){}); loadGuests().catch(function(){}); loadBlocked().catch(function(){}); loadTemps().catch(function(){}); } }catch(e){} }, 8000);
+setInterval(function(){ try{ if($('panel') && !$('panel').hidden){ loadUsers().catch(function(){}); loadGuests().catch(function(){}); loadBlocked().catch(function(){}); loadTemps().catch(function(){}); if($('tab-logs') && !$('tab-logs').hidden) loadLogs().catch(function(){}); } }catch(e){} }, 8000);

@@ -10,8 +10,17 @@ import json, secrets, time, urllib.request, urllib.error, base64, os, hashlib, h
 DATA, GROUPS, GALENE, PORT = Path("/data/registry.json"), Path("/groups"), "http://127.0.0.1:8443", 8091
 SITE=Path("/data/site.json")
 ACCOUNTS=Path("/data/accounts.json")
+ACCESS_LOG=Path("/data/access.log")
 TZ = ZoneInfo("America/Sao_Paulo")
 BAN_IP = False
+_ACCESS_WRITE = 0
+_LAST_ACCESS = {}
+# Prefixos comuns da Cloudflare — evita gravar hop do CDN como "IP do usuário"
+_CF_PREFIXES = (
+    "104.16.","104.17.","104.18.","104.19.","104.20.","104.21.","104.22.","104.23.",
+    "104.24.","104.25.","104.26.","104.27.","104.28.","172.64.","172.65.","172.66.",
+    "172.67.","172.68.","172.69.","172.70.","172.71.","198.41.","162.158.","141.101.",
+)
 
 
 def load_site():
@@ -26,6 +35,67 @@ def save_site(d):
     SITE.write_text(json.dumps(d, indent=2, ensure_ascii=False)+chr(10), encoding="utf-8")
 def now():
     return datetime.now(TZ).isoformat(timespec="seconds")
+def _looks_cf(ip):
+    ip=(ip or "").strip()
+    return any(ip.startswith(p) for p in _CF_PREFIXES)
+def access_log(kind, group, user, ip, **extra):
+    """Append JSONL em /data/access.log (retenção ~1 ano). Dedupa 5 min por nick+ip+sala+tipo."""
+    global _ACCESS_WRITE
+    user=norm_nick(user); group=(group or "").strip() or "spartan"; ip=(ip or "").strip()
+    if not user: return
+    key=(group, user, ip, kind)
+    tnow=datetime.now(TZ)
+    prev=_LAST_ACCESS.get(key)
+    if prev and (tnow-prev).total_seconds() < 300:
+        return
+    _LAST_ACCESS[key]=tnow
+    rec={"quando":now(),"tipo":kind,"sala":group,"nick":user,"ip":ip}
+    for k,v in extra.items():
+        if v is not None: rec[k]=v
+    try:
+        ACCESS_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with ACCESS_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False)+"\n")
+        _ACCESS_WRITE += 1
+        if _ACCESS_WRITE % 40 == 0:
+            prune_access_log()
+    except Exception:
+        pass
+def prune_access_log():
+    if not ACCESS_LOG.exists(): return
+    try:
+        cutoff=datetime.now(TZ)-timedelta(days=365)
+        keep=[]
+        with ACCESS_LOG.open("r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line=line.strip()
+                if not line: continue
+                try:
+                    o=json.loads(line)
+                    ts=datetime.fromisoformat(o.get("quando") or "")
+                    if ts.tzinfo is None: ts=ts.replace(tzinfo=TZ)
+                    if ts >= cutoff: keep.append(line)
+                except Exception:
+                    keep.append(line)
+        tmp=ACCESS_LOG.with_suffix(".tmp")
+        tmp.write_text(("\n".join(keep)+("\n" if keep else "")), encoding="utf-8")
+        tmp.replace(ACCESS_LOG)
+    except Exception:
+        pass
+def read_access_log(limit=300):
+    if not ACCESS_LOG.exists(): return []
+    try:
+        lines=ACCESS_LOG.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return []
+    out=[]
+    for line in reversed(lines):
+        line=line.strip()
+        if not line: continue
+        try: out.append(json.loads(line))
+        except Exception: continue
+        if len(out) >= limit: break
+    return out
 def load_accounts():
     d={"next_id":1,"by_id":{},"by_nick":{}}
     if ACCOUNTS.exists():
@@ -357,17 +427,22 @@ class H(BaseHTTPRequestHandler):
         return False, auth
     def cip(self):
         """IP do visitante (não o do Cloudflare/proxy)."""
-        # Cloudflare / proxies que mandam o cliente de verdade
         for h in ("CF-Connecting-IP", "True-Client-IP", "X-Client-IP"):
             v=(self.headers.get(h) or "").strip()
             if v and not v.lower().startswith("unknown"):
-                return v.split(",")[0].strip()
+                cand=v.split(",")[0].strip()
+                if cand and not _looks_cf(cand):
+                    return cand
+                if cand:
+                    return cand
         xff=(self.headers.get("X-Forwarded-For") or "").strip()
         if xff:
             parts=[p.strip() for p in xff.split(",") if p.strip()]
-            # Em geral o 1º é o cliente; se só vier IP de CF, tenta o último
-            if parts:
-                return parts[0]
+            for p in parts:
+                if not _looks_cf(p): return p
+            for p in reversed(parts):
+                if not _looks_cf(p): return p
+            if parts: return parts[0]
         xri=(self.headers.get("X-Real-IP") or "").strip()
         if xri:
             return xri.split(",")[0].strip()
@@ -447,6 +522,13 @@ class H(BaseHTTPRequestHandler):
                 rec=d["by_id"].get(str(uid)) or {}
                 must=bool(rec.get("must_change"))
             self.send_json(200, {"user":user,"must_change":must}); return
+        if path=="/access-log":
+            ok,_=self.admin_ok()
+            if not ok: self.send_json(401, {"error":"nao autorizado"}); return
+            try: lim=int((q.get("limit") or ["300"])[0])
+            except Exception: lim=300
+            lim=max(1, min(lim, 2000))
+            self.send_json(200, {"entries": read_access_log(lim)}); return
         if path=="/rooms":
             rooms=[]
             for fp in sorted(GROUPS.glob("*.json")):
@@ -489,11 +571,14 @@ class H(BaseHTTPRequestHandler):
             if ip_banned(b, ip): self.send_json(403, {"error":"IP suspenso nesta sala por 24h"}); return
             rec=b.setdefault("seen",{}).setdefault(user, {"first":t,"last":t,"ip":ip}); rec["last"]=t; rec["ip"]=ip
             if user in named(g):
+                access_log("cadastrado", g, user, ip)
                 save(d); self.send_json(200, {"ok":True,"named":True}); return
             if is_open(g):
                 rec=b.setdefault("temps",{}).setdefault(user, {"first":t,"last":t,"ip":ip}); rec["last"]=t; rec["ip"]=ip
+                access_log("temporario", g, user, ip)
             else:
                 rec=b["guests"].setdefault(user, {"first":t,"last":t,"ip":ip}); rec["last"]=t; rec["ip"]=ip
+                access_log("convidado", g, user, ip)
             save(d); self.send_json(200, {"ok":True}); return
         if path=="/register":
             pw=body.get("password") or ""
@@ -509,12 +594,14 @@ class H(BaseHTTPRequestHandler):
                 qg,qu=quote(g,safe=""), quote(user,safe="")
                 galene("PUT", f"/galene-api/v0/.groups/{qg}/.users/{qu}", ia, '{"permissions":"observe"}')
                 galene("POST", f"/galene-api/v0/.groups/{qg}/.users/{qu}/.password", ia, pw, "text/plain"); harden_group(g)
+            access_log("pedido_cadastro", g, user, self.cip())
             self.send_json(200, {"ok":True}); return
         if path=="/panel-login":
             u=norm_nick(body.get("user") or user or "")
             pw=body.get("password") if "password" in body else body.get("pass")
             if pw is None: pw=""
             if panel_login_ok(u, pw):
+                access_log("painel_admin", "painel", u, self.cip())
                 self.send_json(200, {"ok":True})
             else:
                 self.send_json(401, {"error":"Usuário ou senha inválidos. Use a conta op/admin da sala (a mesma da entrada), não a senha de amigos."})
@@ -647,7 +734,9 @@ class H(BaseHTTPRequestHandler):
             harden_group(g)
             account_ensure(user)
             b["pending"].pop(user,None); b["denied"].pop(user,None); b["blocked"].pop(user,None); b["guests"].pop(user,None)
-            b.setdefault("created",{})[user]=now(); save(d); self.send_json(200, {"ok":True}); return
+            b.setdefault("created",{})[user]=now(); save(d)
+            access_log("conta_aprovada", g, user, self.cip())
+            self.send_json(200, {"ok":True}); return
         if path=="/quick":
             pw=body.get("password") or ""; perm=body.get("permissions") or "present"
             if len(pw)<8: self.send_json(400, {"error":"senha minimo 8"}); return
@@ -656,7 +745,9 @@ class H(BaseHTTPRequestHandler):
             harden_group(g)
             account_ensure(user)
             b["pending"].pop(user,None); b["denied"].pop(user,None); b["blocked"].pop(user,None); b["guests"].pop(user,None)
-            b.setdefault("created",{})[user]=now(); save(d); self.send_json(200, {"ok":True}); return
+            b.setdefault("created",{})[user]=now(); save(d)
+            access_log("conta_criada", g, user, self.cip())
+            self.send_json(200, {"ok":True}); return
         if path in ("/deny","/block"):
             tt=now(); kind="named" if user in named(g) else "guest"
             if kind=="guest" or path=="/deny": shadow(auth,g,user)
