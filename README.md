@@ -17,12 +17,29 @@ Este repositório é a versão **pública e pronta para clonar**: sem dados de p
 
 Pré-requisito: [Docker](https://docs.docker.com/engine/install/) + plugin **Compose v2**.
 
+### Opção A — rápido (senha de fábrica)
+
 ```bash
 git clone https://github.com/wilbresley/galene-edicao-spartan-the-gratis.git
 cd galene-edicao-spartan-the-gratis
 chmod +x scripts/subir.sh
 ./scripts/subir.sh
 ```
+
+Login fábrica: `admin` / `Mudar@123` (troque no 1º login).
+
+### Opção B — instalador completo (recomendado para produção)
+
+Pergunta IP, domínio, nome da sala e senhas. **Sempre cria sala CONVITE** (nunca pública no início).
+
+```bash
+git clone https://github.com/wilbresley/galene-edicao-spartan-the-gratis.git
+cd galene-edicao-spartan-the-gratis
+chmod +x scripts/instalar-completo.sh
+./scripts/instalar-completo.sh
+```
+
+No final o script lista o que você ainda precisa fazer no DNS, Nginx/NPM, firewall e roteador (TURN/portas).
 
 Pronto. Abra:
 
@@ -229,6 +246,12 @@ docker compose down
 ## Para uma IA te ajudar a instalar
 
 Pede para a IA ler o arquivo [INSTALACAO-PARA-IA.md](INSTALACAO-PARA-IA.md). Ela vai te perguntar domínio, IP, sala, senhas, etc., e montar os arquivos/comandos.
+
+Ou rode o instalador interativo (sempre sala **convite**):
+
+```bash
+chmod +x scripts/instalar-completo.sh && ./scripts/instalar-completo.sh
+```
 
 ## Créditos
 

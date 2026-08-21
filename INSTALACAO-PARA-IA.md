@@ -57,8 +57,7 @@ TURN/portas = “caminho do áudio/vídeo”. Sem isso, a sala abre mas a call f
 
 8. Nome da sala na URL (minúsculo, sem espaço)? Padrão: `spartan`  
 9. Título bonito da sala? (ex.: `Spartan`)  
-10. Sala **convite** (precisa senha de amigos) ou **pública** (só nick)?  
-    - Recomendado igual produção atual: **convite**
+10. Sala inicial: **sempre convite** (nick + senha de amigos). **Não** oferecer pública no instalador — confunde login/admin. Pública só depois, no painel.
 
 ### E) Contas (a pessoa escolhe; a IA não inventa)
 
