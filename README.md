@@ -2,7 +2,9 @@
 
 Videoconferência auto-hospedada com **[Galene](https://galene.org)** (Juliusz Chroboczek) e interface **Spartan** (HTML/CSS/JS + sidecar Python).
 
-Repositório **privado** de [wilbresley](https://github.com/wilbresley). Não contém senhas, `sidecar.auth`, `registry.json` nem JSON de salas com contas reais.
+Repositório **privado** de [wilbresley](https://github.com/wilbresley). **Não** contém senhas de produção, `data/sidecar.auth` vivo, `registry.json` nem JSON de salas com contas reais (estão no `.gitignore`).
+
+**Exceção:** `factory-reset/` traz a senha de fábrica conhecida `Mudar@123` (só para reset do Docker; o 1º login força troca). Hashes nesse pacote correspondem a essa senha de fábrica, não às senhas do servidor em produção.
 
 ## O que tem aqui
 

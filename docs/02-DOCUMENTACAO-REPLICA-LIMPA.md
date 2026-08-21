@@ -276,6 +276,7 @@ Iguais à secção 4.4 e 4.6.
 - `/admin/`: **não** uses `/admin.html` na barra de endereço (há `static/admin/index.html`).
 - Sala pública: classe `html.spartan-open-room`, campo senha oculto.
 - Temporários = só salas **sem** senha de amigos. Convite = senha de amigos.
+- **Cargos:** Admin (`op`), Verificado (`present`), Ouvinte (`["present"]` sem message). Temporário nasce Ouvinte; convidado nasce Verificado.
 - **Sair** limpa sessão. **Voltar à sala** no admin **não** desloga.
 - Inputs de senha: `autocomplete=off` / `new-password`. CSP do Galene **proíbe** JS inline (`onfocus=...`).
 - Purge das públicas na hora cheia (`TZ` em `registry.py`, default `America/Sao_Paulo`).

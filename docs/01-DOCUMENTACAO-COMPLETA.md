@@ -1,8 +1,10 @@
 # Spartan Chat (Galene) — documentação completa da implantação
 
 **Data da implantação:** 20 de agosto de 2026  
+**Última revisão deste documento:** 21 de agosto de 2026  
 **Objetivo deste arquivo:** registrar *como o stack ficou no teu servidor*, para operação, backup e GitHub.  
-**Segredos:** nenhuma senha, hash, `sidecar.auth` ou credencial aparece aqui. Contas e senhas ficam só no servidor (`groups/*.json`, `data/config.json`, `data/sidecar.auth`).
+**Segredos:** nenhuma senha de produção, hash real do servidor, `sidecar.auth` vivo ou credencial operacional aparece aqui. Contas e senhas **da instalação** ficam só no servidor (`groups/*.json`, `data/config.json`, `data/sidecar.auth`).  
+**Exceção documentada:** o pacote `factory-reset/` traz a senha de fábrica `Mudar@123` (admin + convidados) de propósito — só para zerar o Docker; no primeiro login o admin **obrigatoriamente** troca as duas.
 
 A versão para mandar a um amigo (placeholders, sem IP/domínio teu) está em `02-DOCUMENTACAO-REPLICA-LIMPA.md`.
 
@@ -154,15 +156,30 @@ Se a main for apagada por fora (API Galene crua), a home cai no primeiro grupo p
 
 ---
 
-## 9. Contas e senhas (política)
+## 9. Contas, senhas e cargos
+
+### 9.1 Senhas (política)
 
 - Operadores da sala (`op`) e admins globais do `config.json` existem no JSON do Galene.
-- Senhas no disco estão **hasheadas** (`pbkdf2` ou `bcrypt`). Texto puro não deve voltar a ser gravado.
+- Senhas no disco estão **hasheadas** (`pbkdf2` ou `bcrypt`). Texto puro não deve voltar a ser gravado nas salas.
 - Pedidos de cadastro **não** guardam a senha em `registry.json` (só timestamp); a senha vai direto à API do Galene.
-- `data/sidecar.auth` (`usuario:senha`, modo 0600) é o único segredo em claro que o sidecar usa para Basic na API interna. **Não commitar.**
+- `data/sidecar.auth` (`usuario:senha`, modo 0600) é o único segredo em claro que o sidecar usa para Basic na API interna. **Não commitar** (está no `.gitignore`).
 - `BAN_IP` no `registry.py` está **desligado** (`False`) para testes; ligar de novo quando quiser o ban de 24h após o purge das públicas.
 
-Nunca documente nem commite os valores de senha.
+Nunca documente nem commite senhas **de produção**.
+
+### 9.2 Cargos na sala (3 só)
+
+| Cargo (UI) | Valor Galene | Quem nasce assim | Pode |
+|---|---|---|---|
+| **Admin** | `op` | conta admin | moderar + tudo |
+| **Verificado** | `present` (string → present+message) | **convidado** (sala convite / senha de amigos) | lives, transmitir, chat texto e voz |
+| **Ouvinte** | `["present"]` (present **sem** message) | **temporário** (sala pública) | só voz (falar/ouvir); **sem** lives, **sem** chat texto, **sem** transmitir vídeo/tela |
+
+- Tipo de entrada (cadastrado / convidado / temporário) ≠ cargo. Nos logs, “Admin (painel)” é só o evento de login no `/admin`, não um 4º cargo.
+- Sala pública: o sidecar (`ensure_open_ouvinte` no beacon) alinha o wildcard para Ouvinte.
+- Sala convite: wildcard permanece Verificado (`present`).
+- Painel: menu de cargo moderno; Renomear verde; Redefinir senha em modal; aba Logs com filtros (tipo, nick, IP).
 
 ---
 
@@ -177,15 +194,19 @@ Arquivo: `registry.py`. Endpoints úteis (prefixo `/spartan-api` opcional):
 | GET | `/site` | público | `main` e `home` |
 | GET | `/status` | público | status do nick (guest/temp/named/…) |
 | GET | `/temp-status` | público | `open`, `purge`, `banned`, `taken` |
+| GET | `/access-log` | admin Basic | últimas entradas de `data/access.log` (JSONL, ~1 ano) |
 | GET | `/registry` | admin Basic | dump do registry |
-| POST | `/beacon` | sala | IP + visto (`seen`; temps ou guests) |
+| POST | `/beacon` | sala | IP + visto; em sala pública chama `ensure_open_ouvinte` |
 | POST | `/register` `/approve` `/quick` `/deny` `/block` `/unblock` `/forget` `/stamp` | fluxos de convite | cadastro / moderação |
+| POST | `/panel-login` | painel | valida op/admin (mesma conta da sala) |
+| POST | `/first-setup` | admin | troca senha admin + amigos no 1º login |
+| POST | `/rename-user` | admin | renomeia por ID imutável |
 | POST | `/site-home` | admin | define sala da home |
 | POST | `/rename-main` | admin | renomeia slug + título da main |
 
 Purge das **públicas**: thread na **hora cheia** (Brasília). Incrementa `purge`; o cliente zera o chat e sai. Ban de IP 24h só se `BAN_IP = True`.
 
-Beacon grava `seen[nick] = {first, last, ip}` para **todo mundo** (inclusive registrados), para o painel mostrar IP / sala / visto.
+Beacon grava `seen[nick] = {first, last, ip}` para **todo mundo** (inclusive registrados), para o painel mostrar IP / sala / visto. IP prefere `CF-Connecting-IP` / hops úteis do XFF.
 
 ---
 
@@ -195,7 +216,7 @@ Volume `./static` por cima do static da imagem. Arquivos-chave:
 
 - `index.html` + `custom-home.js` — home, botão segue `/spartan-api/site` + `public-groups.json`
 - `salas/` — busca, ordenação, paginação (5 linhas de altura fixa)
-- `admin/` — usuários, convidados, bloqueados, temporários, salas
+- `admin/` — usuários, convidados, bloqueados, temporários, **logs**, salas
 - `galene.html` + `galene.js` + `galene-spartan.css` + `spartan-boot.js` — sala
 - Wallpaper `papel-de-parede.jpg`
 - Rodapé fixo: Galene / Juliusz (esquerda), “Interface refeita por wilbresley” (centro), Outras salas/Home (direita). Sem linha cinza; fundo semitransparente por cima da imagem.
@@ -208,6 +229,7 @@ Comportamentos de sessão:
 - **Voltar à sala** no painel **não** desloga.
 - F5 na mesma sala reentra; ir para outra sala depois de Sair pede nick/senha.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
+- Admin SSO: handoff `localStorage` para abrir o painel já logado.
 
 Painel admin:
 
@@ -216,6 +238,8 @@ Painel admin:
 - Temporários = só salas `open` (sem senha).
 - Listas: A–Z (padrão) ou Recentes; meta IP / sala / visto.
 - Main no topo, sem Apagar; outras podem ir para a home.
+- Cargos: Admin / Verificado / Ouvinte (sem “só chat”).
+- Logs: filtros por tipo, nick e IP; horário Brasília.
 
 ---
 
@@ -226,6 +250,8 @@ Painel admin:
 - Histórico de chat pulado para guests/temps e antes do timestamp `created`.
 - “Solicitar registro” só para convite, não para pública.
 - Sem kick HTTP nativo: o cliente sai sozinho no purge / bloqueio.
+- Multi-live: botões Tela/Câmera por stream; cabeçalho preto acima do vídeo.
+- **Ouvinte** (`body.spartan-ouvinte`): microfone ok; sem lives, sem chat texto, sem câmera/tela.
 
 ---
 
