@@ -225,6 +225,11 @@ docker compose down
 
 ---
 
+
+## Para uma IA te ajudar a instalar
+
+Pede para a IA ler o arquivo [INSTALACAO-PARA-IA.md](INSTALACAO-PARA-IA.md). Ela vai te perguntar domínio, IP, sala, senhas, etc., e montar os arquivos/comandos.
+
 ## Créditos
 
 - **Galene** — Juliusz Chroboczek e contribuidores  
