@@ -340,12 +340,41 @@ function spartanApplyUserMute(c) {
 function spartanApplyDownRequest(c) {
     if(!c || c.up || typeof c.request !== 'function')
         return;
+    if(spartanIsOuvinte()) {
+        c.request(['audio']);
+        return;
+    }
     if(spartanWatch[c.id])
         c.request(['audio', 'video']);
     else
         // Mantém a stream viva (botões Tela 1/2…) sem baixar vídeo cheio.
         // audio-only costumava fechar screenshare sem áudio → sumiam os botões.
         c.request(['audio', 'video-low']);
+}
+
+function spartanIsOuvinte() {
+    if(!serverConnection || !serverConnection.permissions) return false;
+    let p = serverConnection.permissions;
+    if(p.indexOf('op') >= 0 || p.indexOf('admin') >= 0) return false;
+    // present sem message = Ouvinte no servidor; observe = sem poder falar
+    if(p.indexOf('present') >= 0 && p.indexOf('message') < 0) return true;
+    if(p.indexOf('present') < 0 && p.indexOf('message') < 0) return true;
+    return false;
+}
+
+function spartanApplyOuvinteUi() {
+    let on = spartanIsOuvinte();
+    document.body.classList.toggle('spartan-ouvinte', on);
+    if(on) {
+        try { spartanSetChatOpen(false); } catch(e) {}
+        try {
+            for(let id in (serverConnection && serverConnection.down || {})) {
+                delete spartanWatch[id];
+                spartanApplyDownRequest(serverConnection.down[id]);
+            }
+        } catch(e) {}
+        try { resizePeers(); } catch(e) {}
+    }
 }
 
 /**
@@ -536,6 +565,8 @@ function spartanFillUserLives(userId, elt) {
     box.textContent = '';
     if(!serverConnection)
         return;
+    if(spartanIsOuvinte())
+        return;
     let lives = spartanUserLives(userId);
     let telaTotal = 0;
     let camTotal = 0;
@@ -594,6 +625,8 @@ function spartanToggleLive(c) {
         spartanRefreshAllMedia();
         return;
     }
+    if(spartanIsOuvinte())
+        return;
     if(spartanWatch[c.id]) {
         delete spartanWatch[c.id];
         spartanApplyDownRequest(c);
@@ -636,6 +669,8 @@ function spartanToggleUserMute(userId) {
 }
 
 function spartanSetChatOpen(open) {
+    if(open && spartanIsOuvinte())
+        open = false;
     let chat = document.getElementById('chat');
     let btn = document.getElementById('channel-chat-btn');
     if(!chat)
@@ -949,14 +984,19 @@ function getVisibility(id) {
 function setButtonsVisibility() {
     let connected = serverConnection && serverConnection.socket;
     let permissions = serverConnection.permissions;
+    let ouvinte = spartanIsOuvinte();
     let canWebrtc = !(typeof RTCPeerConnection === 'undefined');
-    let canPresent = canWebrtc &&
+    let canPresent = !ouvinte && canWebrtc &&
         ('mediaDevices' in navigator) &&
         ('getUserMedia' in navigator.mediaDevices) &&
         permissions.indexOf('present') >= 0;
-    let canShare = canWebrtc &&
+    let canShare = !ouvinte && canWebrtc &&
         ('mediaDevices' in navigator) &&
         ('getDisplayMedia' in navigator.mediaDevices) &&
+        permissions.indexOf('present') >= 0;
+    let canVoice = canWebrtc &&
+        ('mediaDevices' in navigator) &&
+        ('getUserMedia' in navigator.mediaDevices) &&
         permissions.indexOf('present') >= 0;
     let local = !!findUpMedia('camera');
     let mediacount = document.getElementById('peers').childElementCount;
@@ -966,7 +1006,7 @@ function setButtonsVisibility() {
     setVisibility('unpresentbutton', false);
     setVisibility('camerabutton', canPresent);
 
-    setVisibility('mutebutton', !connected || canPresent);
+    setVisibility('mutebutton', !connected || canVoice);
     let camBtn = document.getElementById('camerabutton');
     if(camBtn) {
         let cam = findUpMedia('camera');
@@ -989,10 +1029,13 @@ function setButtonsVisibility() {
     spartanRefreshHideOwnButton();
 
     setVisibility('mediaoptions', canPresent);
-    setVisibility('sendform', canPresent);
+    setVisibility('sendform', canPresent && permissions.indexOf('message') >= 0);
     setVisibility('simulcastform', canPresent);
 
-    setVisibility('collapse-video', mediacount && mobilelayout);
+    setVisibility('collapse-video', !ouvinte && mediacount && mobilelayout);
+    let chatBtn = document.getElementById('channel-chat-btn');
+    if(chatBtn) setVisibility('channel-chat-btn', connected && !ouvinte);
+    spartanApplyOuvinteUi();
 }
 
 /**
@@ -1087,6 +1130,10 @@ document.getElementById('mutebutton').onclick = async function(e) {
 
 document.getElementById('camerabutton').onclick = async function(e) {
     e.preventDefault();
+    if(spartanIsOuvinte()) {
+        displayWarning('Ouvinte não transmite vídeo.');
+        return;
+    }
     let cam = findUpMedia('camera');
     try {
         if(!cam)
@@ -1101,6 +1148,10 @@ document.getElementById('camerabutton').onclick = async function(e) {
 
 document.getElementById('sharebutton').onclick = function(e) {
     e.preventDefault();
+    if(spartanIsOuvinte()) {
+        displayWarning('Ouvinte não transmite tela.');
+        return;
+    }
     addShareMedia();
 };
 
@@ -2356,7 +2407,9 @@ function showHideMedia(c, elt) {
     if(real)
         spartanHasVideo[c.id] = true;
     let display = false;
-    if(real) {
+    if(spartanIsOuvinte() && !c.up) {
+        display = false;
+    } else if(real) {
         if(c.up)
             display = !spartanHideOwn && !spartanHideOwnStream[c.id];
         else
@@ -3030,13 +3083,16 @@ function displayUsername() {
     document.getElementById('userspan').textContent = spartanDisplayName(serverConnection.username);
     let op = serverConnection.permissions.indexOf('op') >= 0;
     let present = serverConnection.permissions.indexOf('present') >= 0;
+    let ouvinte = spartanIsOuvinte();
     let text = '';
     if(op && present)
         text = '(Admin · no palco)';
     else if(op)
         text = 'Admin';
+    else if(ouvinte)
+        text = 'Ouvinte';
     else if(present)
-        text = 'No palco';
+        text = 'Verificado';
     document.getElementById('permspan').textContent = text;
 }
 
@@ -3185,6 +3241,8 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
 
     if(typeof RTCPeerConnection === 'undefined')
         displayWarning("Este navegador não tem WebRTC");
+    else if(spartanIsOuvinte())
+        this.request({'': ['audio']});
     else
         this.request({'': ['audio', 'video']});
 
@@ -3194,7 +3252,10 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
        ('getUserMedia' in navigator.mediaDevices) &&
        serverConnection.permissions.indexOf('present') >= 0 &&
        !findUpMedia('camera')) {
-        if(present) {
+        if(spartanIsOuvinte()) {
+            displayMessage("Ouvinte: microfone para falar. Sem lives nem chat de texto.");
+            spartanApplyOuvinteUi();
+        } else if(present) {
             if(present === 'mike')
                 updateSettings({video: ''});
             else if(present === 'both')
@@ -3215,6 +3276,7 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
             );
         }
     }
+    spartanApplyOuvinteUi();
 }
 
 /**

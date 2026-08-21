@@ -241,6 +241,22 @@ def internal_auth():
         if ":" in line:
             return "Basic "+base64.b64encode(line.encode()).decode()
     return ""
+def ensure_open_ouvinte(gid):
+    """Sala pública: wildcard = Ouvinte (["present"] sem message). Convite fica Verificado ("present")."""
+    if not is_open(gid): return
+    ia=internal_auth()
+    if not ia: return
+    try:
+        fp=GROUPS/f"{gid}.json"
+        g=json.loads(fp.read_text(encoding="utf-8"))
+        wu=g.get("wildcard-user") or {}
+        perm=wu.get("permissions")
+        if isinstance(perm, list) and "present" in perm and "message" not in perm and "op" not in perm:
+            return
+        qg=quote(gid, safe="")
+        galene("PUT", f"/galene-api/v0/.groups/{qg}/.wildcard-user", ia, json.dumps({"permissions":["present"]}))
+    except Exception:
+        pass
 def sidecar_plain():
     sp=Path("/data/sidecar.auth")
     if not sp.exists(): return None, None
@@ -574,6 +590,7 @@ class H(BaseHTTPRequestHandler):
                 access_log("cadastrado", g, user, ip)
                 save(d); self.send_json(200, {"ok":True,"named":True}); return
             if is_open(g):
+                ensure_open_ouvinte(g)
                 rec=b.setdefault("temps",{}).setdefault(user, {"first":t,"last":t,"ip":ip}); rec["last"]=t; rec["ip"]=ip
                 access_log("temporario", g, user, ip)
             else:

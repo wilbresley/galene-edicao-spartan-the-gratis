@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="/spartan-pages.css?v=5"/>
 <link rel="stylesheet" href="/admin.css?v=19"/>
 <link rel="stylesheet" href="/spartan.css?v=22"/>
-<script src="/admin.js?v=26" defer></script>
+<script src="/admin.js?v=27" defer></script>
 </head>
 <body>
 <header class="admin-top">
@@ -56,16 +56,15 @@
 <input id="nu" type="text"/>
 <label for="np">Senha</label>
 <input id="np" type="password"/>
-<label for="nperm">Permissão</label>
+<label for="nperm">Cargo</label>
 <select id="nperm">
-<option value="present">Pode transmitir (amigo)</option>
-<option value="op">Admin da sala</option>
-<option value="message">Só chat</option>
-<option value="observe">Só assistir</option>
+<option value="present">Verificado</option>
+<option value="op">Admin</option>
+<option value="ouvinte">Ouvinte</option>
 </select>
 <button type="button" id="btn-create">Criar</button>
 <p id="create-msg" class="ok"></p>
-<p class="hint">Admin: configurações e convites. Transmitir: câmera/tela/chat. Chat: sem câmera. Assistir: só vê e ouve.</p>
+<p class="hint">Admin: moderar e tudo. Verificado: lives, transmitir e chats. Ouvinte: só voz (sem lives, sem texto, sem transmitir).</p>
 </section>
 <section class="admin-card">
 <h2>Senha dos amigos (qualquer nick)</h2>

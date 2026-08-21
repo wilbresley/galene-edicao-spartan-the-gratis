@@ -1446,3 +1446,18 @@ body:not(.spartan-in) .login-container{
  height:auto!important;
  max-height:none!important;
 }
+
+/* ouvinte: voz só — sem lives, sem chat texto, sem transmitir vídeo */
+body.spartan-ouvinte #channel-chat-btn,
+body.spartan-ouvinte #chat,
+body.spartan-ouvinte #show-chat,
+body.spartan-ouvinte #collapse-video,
+body.spartan-ouvinte #camerabutton,
+body.spartan-ouvinte #sharebutton,
+body.spartan-ouvinte .user-lives,
+body.spartan-ouvinte #peers .peer:not(.peer-hidden){
+ display:none!important;
+}
+body.spartan-ouvinte #peers .peer{
+ /* áudio continua; vídeo escondido via peer-hidden + regra acima */
+}

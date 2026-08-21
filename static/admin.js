@@ -26,7 +26,19 @@ async function reg(path,body){
  return data;
 }
 function $(id){return document.getElementById(id);}
-function permLabel(p){return ({op:'Admin da sala',admin:'Admin',present:'Pode transmitir',message:'Só chat',observe:'Só assistir'})[p]||p;}
+function permLabel(p){return ({op:'Admin',admin:'Admin',present:'Verificado',ouvinte:'Ouvinte',message:'Ouvinte',observe:'Ouvinte'})[p]||p;}
+function roleFromPerm(p){
+ if(p==='op'||p==='admin') return 'op';
+ if(Array.isArray(p)){
+  if(p.indexOf('op')>=0||p.indexOf('admin')>=0) return 'op';
+  if(p.indexOf('present')>=0 && p.indexOf('message')<0) return 'ouvinte';
+  if(p.indexOf('present')>=0) return 'present';
+  return 'ouvinte';
+ }
+ if(p==='observe'||p==='message'||p==='ouvinte') return 'ouvinte';
+ return 'present';
+}
+function permToApi(role){ return role==='ouvinte' ? ['present'] : role; }
 function bucket(){const d=registry[GROUP]||{};return {guests:d.guests||{},pending:d.pending||{},denied:d.denied||{},blocked:d.blocked||{},temps:d.temps||{},ipban:d.ipban||{},created:d.created||{},seen:d.seen||{}};}
 var SORT={users:"az",guests:"az",blocked:"az",temps:"az"};
 function recLast(b,n){var r=(b.seen&&b.seen[n])||(b.guests||{})[n]||(b.temps||{})[n]||(b.blocked||{})[n]||(b.pending||{})[n]||{}; return r.last||r.first||r.at||"";}
@@ -40,8 +52,8 @@ function fmtQuando(iso){
 }
 function fmtSeen(name,gid,rec){rec=rec||{}; var bits=[]; if(gid) bits.push("sala "+gid); if(rec.ip) bits.push("IP "+rec.ip); var v=rec.last||rec.first||rec.at; if(v) bits.push("visto "+fmtQuando(v)); return bits.join(" · ");}
 function tipoLabel(t){return ({cadastrado:"Cadastrado",convidado:"Convidado",temporario:"Temporário",pedido_cadastro:"Pedido de cadastro",conta_aprovada:"Conta aprovada",conta_criada:"Conta criada",painel_admin:"Admin (painel)"})[t]||t||"—";}
-var PERM_OPTS=[{v:"op",l:"Admin da sala"},{v:"present",l:"Pode transmitir"},{v:"message",l:"Só chat"},{v:"observe",l:"Só assistir"}];
-function permLabelBtn(p){for(var i=0;i<PERM_OPTS.length;i++){if(PERM_OPTS[i].v===p)return PERM_OPTS[i].l;}return "Pode transmitir";}
+var PERM_OPTS=[{v:"op",l:"Admin"},{v:"present",l:"Verificado"},{v:"ouvinte",l:"Ouvinte"}];
+function permLabelBtn(p){for(var i=0;i<PERM_OPTS.length;i++){if(PERM_OPTS[i].v===p)return PERM_OPTS[i].l;}return "Verificado";}
 function closeAllRoleMenus(){document.querySelectorAll(".role-menu.open").forEach(function(m){m.classList.remove("open");});document.querySelectorAll(".role-btn.open").forEach(function(b){b.classList.remove("open");});}
 document.addEventListener("click",function(e){if(!e.target.closest||!e.target.closest(".role-wrap"))closeAllRoleMenus();});
 var LOG_CACHE=[];
@@ -90,15 +102,15 @@ async function loadUsers(){
  for(const name of names){
   let info={}; try{info=await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name));}catch(e){}
   const uid=(accounts.by_nick&&accounts.by_nick[String(name).toLowerCase()]);
-  rows.push({name, perm:(info&&info.permissions)||'present', rec:(b.seen||{})[name]||{}, id:uid});
+  rows.push({name, perm:roleFromPerm((info&&info.permissions)||'present'), rec:(b.seen||{})[name]||{}, id:uid});
  }
  sortItems(rows,'users');
  const uk='u:'+SORT.users+':'+rows.map(r=>r.id+':'+r.name+':'+r.perm).join('|');
  if(uk===loadUsers._k) return; loadUsers._k=uk;
  if(boxOps) boxOps.innerHTML='';
  box.innerHTML='';
- const ops=rows.filter(r=>r.perm==='op'||r.perm==='admin');
- const rest=rows.filter(r=>r.perm!=='op'&&r.perm!=='admin');
+ const ops=rows.filter(r=>r.perm==='op');
+ const rest=rows.filter(r=>r.perm!=='op');
  function render(target, list, empty){
   if(!target) return;
   if(!list.length){target.textContent=empty;return;}
@@ -109,7 +121,7 @@ async function loadUsers(){
    const title=(uid!=null?('ID '+uid+' · '):'')+name;
    row.querySelector('b').textContent=title;
    var sm=document.createElement('span'); sm.className='hint'; sm.textContent=fmtSeen(name,GROUP,item.rec); row.querySelector('.who').appendChild(sm);
-   const curPerm=['op','present','message','observe'].indexOf(perm)>=0?perm:'present';
+   const curPerm=['op','present','ouvinte'].indexOf(perm)>=0?perm:'present';
    const roleBtn=row.querySelector('.role-btn');
    const roleMenu=row.querySelector('.role-menu');
    roleBtn.textContent=permLabelBtn(curPerm)+' ▾';
@@ -121,8 +133,8 @@ async function loadUsers(){
      closeAllRoleMenus();
      if(o.v===curPerm) return;
      try{
-      await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:o.v})});
-      loadUsers._k=null; uiMsg('Permissão de '+name+' atualizada.');
+      await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:permToApi(o.v)})});
+      loadUsers._k=null; uiMsg('Cargo de '+name+' atualizado.');
       await loadUsers();
      }catch(e){uiMsg(e.message);}
     };
@@ -219,7 +231,7 @@ async function loadRooms(){
     try{
      try{await api('/.groups/'+encodeURIComponent(n)+'/.wildcard-user',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:'present'})});}catch(e){}
      await api('/.groups/'+encodeURIComponent(n)+'/.wildcard-user/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});
-     ed.querySelector('.mpw').value=''; uiMsg('Senha de amigos atualizada');
+     ed.querySelector('.mpw').value=''; uiMsg('Senha de amigos (Verificado) atualizada');
     }catch(e){uiMsg(e.message);}
    };
    wrap.appendChild(ed);
@@ -372,7 +384,7 @@ $('btn-create').onclick=async()=>{
  const n=($('nu').value||'').trim().toLowerCase(), p=$('np').value, perm=$('nperm').value; $('nu').value=n; $('create-msg').textContent='';
  if(!n||!p){$('create-msg').textContent='Nome e senha obrigatórios';return;}
  try{
-  await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(n),{method:'PUT',headers:{'Content-Type':'application/json','If-None-Match':'*'},body:JSON.stringify({permissions:perm})});
+  await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(n),{method:'PUT',headers:{'Content-Type':'application/json','If-None-Match':'*'},body:JSON.stringify({permissions:permToApi(perm)})});
   await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(n)+'/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:p});
   $('nu').value=''; $('np').value=''; $('create-msg').textContent='Usuário '+n+' criado'; await loadUsers();
  }catch(e){$('create-msg').textContent=e.message;}
@@ -397,14 +409,15 @@ $('btn-room').onclick=async()=>{
  if(!open && !wp){$('room-msg').textContent='Senha de amigos ou marque sala pública';return;}
  try{
   await api('/.groups/'+encodeURIComponent(slug)+'/',{method:'PUT',headers:{'Content-Type':'application/json','If-None-Match':'*'},body:JSON.stringify({public:true,displayName:title,description:'',codecs:['vp9','vp8','opus'],'unrestricted-tokens':true})});
-  try{await api('/.groups/'+encodeURIComponent(slug)+'/.wildcard-user',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:'present'})});}catch(e){}
+  const wildPerm=open?['present']:'present';
+  try{await api('/.groups/'+encodeURIComponent(slug)+'/.wildcard-user',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:wildPerm})});}catch(e){}
   if(open){
     await api('/.groups/'+encodeURIComponent(slug)+'/.wildcard-user/.password',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'wildcard'})});
   }else{
     await api('/.groups/'+encodeURIComponent(slug)+'/.wildcard-user/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:wp});
   }
   $('rn').value=''; $('rd').value=''; if($('rp')) $('rp').value='';
-  $('room-msg').textContent=open?('Sala '+slug+' pública criada'):('Sala '+slug+' criada com senha de amigos');
+  $('room-msg').textContent=open?('Sala '+slug+' pública criada (temporários = Ouvinte)'):('Sala '+slug+' criada (convidados = Verificado)');
   await loadRooms();
  }catch(e){$('room-msg').textContent=e.message;}
 };
