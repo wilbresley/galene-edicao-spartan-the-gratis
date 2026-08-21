@@ -713,8 +713,15 @@ function setAdminPanel(forceOff) {
  let ok = p && (p.indexOf('op') >= 0 || p.indexOf('admin') >= 0);
  if(ok) {
   s.classList.remove('invisible');
-  try{let pend=JSON.parse(sessionStorage.getItem('spartanSession:'+group)||'null');
-      if(pend&&pend.user) sessionStorage.setItem('spartanAdmin',JSON.stringify({user:pend.user,pass:pend.pass}));}catch(e){}
+  try{
+   let pend=JSON.parse(sessionStorage.getItem('spartanSession:'+group)||'null');
+   if(pend&&pend.user&&pend.pass){
+    let hand={user:String(pend.user).trim().toLowerCase(),pass:pend.pass};
+    sessionStorage.setItem('spartanAdmin',JSON.stringify(hand));
+    // Nova aba não herda sessionStorage — localStorage faz o handoff.
+    localStorage.setItem('spartanAdminHandoff',JSON.stringify(hand));
+   }
+  }catch(e){}
  } else s.classList.add('invisible');
 }
 
@@ -737,7 +744,8 @@ function setChangePassword(username) {
  * Join a group.
  */
 async function join() {
-    let username = getInputElement('username').value.trim();
+    let username = getInputElement('username').value.trim().toLowerCase();
+    getInputElement('username').value = username;
     let credentials;
     if(token) {
         pwAuth = false;
@@ -770,7 +778,9 @@ async function join() {
             probingState = null;
         }
         let pw = getInputElement('password').value || window._spartanCred || ''; window._spartanCred='';
-        try{var _s=JSON.stringify({user:username,pass:pw,group:group}); sessionStorage.removeItem('spartanLoggedOut'); sessionStorage.setItem('spartanSession:'+group,_s); sessionStorage.removeItem('spartanSession'); sessionStorage.removeItem('spartanPending');}catch(e){}
+        try{var _s=JSON.stringify({user:username,pass:pw,group:group}); sessionStorage.removeItem('spartanLoggedOut'); sessionStorage.setItem('spartanSession:'+group,_s); sessionStorage.removeItem('spartanSession'); sessionStorage.removeItem('spartanPending');
+            if(pw){ var _h={user:username,pass:pw}; sessionStorage.setItem('spartanAdmin',JSON.stringify(_h)); localStorage.setItem('spartanAdminHandoff',JSON.stringify(_h)); }
+        }catch(e){}
         getInputElement('password').value = '';
         if(!groupStatus.authServer) {
             pwAuth = true;

@@ -9,6 +9,7 @@ import json, secrets, time, urllib.request, urllib.error, base64, os, hashlib, h
 
 DATA, GROUPS, GALENE, PORT = Path("/data/registry.json"), Path("/groups"), "http://127.0.0.1:8443", 8091
 SITE=Path("/data/site.json")
+ACCOUNTS=Path("/data/accounts.json")
 TZ = ZoneInfo("America/Sao_Paulo")
 BAN_IP = False
 
@@ -23,11 +24,81 @@ def load_site():
     return d
 def save_site(d):
     SITE.write_text(json.dumps(d, indent=2, ensure_ascii=False)+chr(10), encoding="utf-8")
+def now():
+    return datetime.now(TZ).isoformat(timespec="seconds")
+def load_accounts():
+    d={"next_id":1,"by_id":{},"by_nick":{}}
+    if ACCOUNTS.exists():
+        try:
+            raw=json.loads(ACCOUNTS.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                d["next_id"]=int(raw.get("next_id") or 1)
+                d["by_id"]=dict(raw.get("by_id") or {})
+                d["by_nick"]=dict(raw.get("by_nick") or {})
+        except Exception: pass
+    if "0" not in d["by_id"]:
+        d["by_id"]["0"]={"nick":"admin","active":True,"created":now()}
+        d["by_nick"].setdefault("admin", 0)
+    return d
+def save_accounts(d):
+    ACCOUNTS.parent.mkdir(parents=True, exist_ok=True)
+    t=ACCOUNTS.with_suffix(".tmp")
+    t.write_text(json.dumps(d, indent=2, ensure_ascii=False)+chr(10), encoding="utf-8")
+    t.replace(ACCOUNTS)
+def norm_nick(u):
+    return (u or "").strip().lower()
+def ok_nick(u):
+    u=norm_nick(u); return bool(u) and ("/" not in u) and len(u)<=32
+def account_ensure(nick, force_id=None):
+    """Garante conta com ID imutável. force_id=0 para admin."""
+    nick=norm_nick(nick)
+    if not nick: return None
+    d=load_accounts()
+    if nick in d["by_nick"]:
+        uid=int(d["by_nick"][nick])
+        rec=d["by_id"].setdefault(str(uid), {"nick":nick,"active":True})
+        rec["nick"]=nick; rec["active"]=True
+        save_accounts(d); return uid
+    if force_id is not None:
+        uid=int(force_id)
+    else:
+        uid=int(d.get("next_id") or 1)
+        while str(uid) in d["by_id"] or uid==0:
+            uid+=1
+        d["next_id"]=uid+1
+    d["by_id"][str(uid)]={"nick":nick,"active":True,"created":now()}
+    d["by_nick"][nick]=uid
+    save_accounts(d); return uid
+def account_forget_nick(nick):
+    nick=norm_nick(nick)
+    d=load_accounts()
+    uid=d["by_nick"].pop(nick, None)
+    if uid is None:
+        save_accounts(d); return
+    rec=d["by_id"].get(str(uid))
+    if rec:
+        rec["active"]=False
+        rec["freed_at"]=now()
+        rec["last_nick"]=nick
+        rec["nick"]=None
+    save_accounts(d)
+def account_rename(uid, new_nick):
+    new_nick=norm_nick(new_nick)
+    if not ok_nick(new_nick): return False, "nick invalido"
+    d=load_accounts()
+    rec=d["by_id"].get(str(uid))
+    if not rec: return False, "id inexistente"
+    old=norm_nick(rec.get("nick") or rec.get("last_nick") or "")
+    if new_nick in d["by_nick"] and int(d["by_nick"][new_nick])!=int(uid):
+        return False, "nick ja em uso"
+    if old and old in d["by_nick"] and int(d["by_nick"][old])==int(uid):
+        del d["by_nick"][old]
+    rec["nick"]=new_nick; rec["active"]=True
+    d["by_nick"][new_nick]=int(uid)
+    save_accounts(d); return True, old
 def slug_ok(s):
     s=(s or "").strip().lower()
     return bool(s) and all(c.isalnum() or c=="-" for c in s) and len(s)<=32
-def now():
-    return datetime.now(TZ).isoformat(timespec="seconds")
 def load():
     return json.loads(DATA.read_text(encoding="utf-8")) if DATA.exists() else {}
 def save(d):
@@ -41,12 +112,40 @@ def bucket(d,g):
 def named(g):
     p=GROUPS/f"{g}.json"
     if not p.exists(): return set()
-    return set((json.loads(p.read_text(encoding="utf-8")).get("users") or {}))
+    return set(norm_nick(k) for k in (json.loads(p.read_text(encoding="utf-8")).get("users") or {}))
+def load_group(gid):
+    p=GROUPS/f"{gid}.json"
+    if not p.exists(): return None
+    try: return json.loads(p.read_text(encoding="utf-8"))
+    except Exception: return None
+def save_group(gid, g):
+    p=GROUPS/f"{gid}.json"
+    p.write_text(json.dumps(g, indent=2, ensure_ascii=False)+chr(10), encoding="utf-8")
+def find_group_user(gid, user):
+    g=load_group(gid)
+    if not g: return None, None
+    users=g.get("users") or {}
+    ul=norm_nick(user)
+    if ul in users: return ul, users[ul]
+    if user in users: return user, users[user]
+    for k,v in users.items():
+        if norm_nick(k)==ul: return k, v
+    return None, None
+def user_perm_name_from(rec):
+    if not rec: return None
+    perm=rec.get("permissions")
+    if isinstance(perm, str): return perm
+    if isinstance(perm, list):
+        if "admin" in perm: return "admin"
+        if "op" in perm: return "op"
+    return None
+def user_perm_name(gid, user):
+    _,rec=find_group_user(gid, user)
+    return user_perm_name_from(rec)
 def is_op(g,u):
-    p=GROUPS/f"{g}.json"
-    if not p.exists(): return False
-    perm=(json.loads(p.read_text(encoding="utf-8")).get("users") or {}).get(u, {}).get("permissions")
-    return perm in ("op","admin") or (isinstance(perm, list) and ("op" in perm or "admin" in perm))
+    real,_=find_group_user(g, norm_nick(u))
+    if not real: return False
+    return user_perm_name(g, real) in ("op","admin")
 def is_open(gid):
     fp=GROUPS/f"{gid}.json"
     if not fp.exists(): return False
@@ -77,13 +176,13 @@ def sidecar_plain():
     if not sp.exists(): return None, None
     line=sp.read_text(encoding="utf-8").strip()
     if ":" not in line: return None, None
-    u,p=line.split(":",1); return u,p
+    u,p=line.split(":",1); return norm_nick(u),p
 def parse_basic(auth):
     if not auth or not auth.lower().startswith("basic "): return None, None
     try:
         raw=base64.b64decode(auth.split(" ",1)[1].strip()).decode("utf-8")
         if ":" not in raw: return None, None
-        u,p=raw.split(":",1); return u,p
+        u,p=raw.split(":",1); return norm_nick(u),p
     except Exception: return None, None
 def password_match(pwobj, password):
     if password is None: return False
@@ -111,41 +210,9 @@ def password_match(pwobj, password):
             return bcrypt.checkpw(password.encode("utf-8"), raw)
         except Exception: return False
     return False
-def load_group(gid):
-    p=GROUPS/f"{gid}.json"
-    if not p.exists(): return None
-    try: return json.loads(p.read_text(encoding="utf-8"))
-    except Exception: return None
-def find_group_user(gid, user):
-    """Retorna (nome_exato, registro) com match case-insensitive."""
-    g=load_group(gid)
-    if not g: return None, None
-    users=g.get("users") or {}
-    if user in users: return user, users[user]
-    ul=(user or "").lower()
-    for k,v in users.items():
-        if str(k).lower()==ul: return k, v
-    return None, None
-def user_perm_name_from(rec):
-    if not rec: return None
-    perm=rec.get("permissions")
-    if isinstance(perm, str): return perm
-    if isinstance(perm, list):
-        if "admin" in perm: return "admin"
-        if "op" in perm: return "op"
-    return None
-def user_perm_name(gid, user):
-    _,rec=find_group_user(gid, user)
-    return user_perm_name_from(rec)
-def user_password_ok(gid, user, password):
-    _,rec=find_group_user(gid, user)
-    if not rec: return False
-    return password_match(rec.get("password"), password)
 def galene_user_auth_ok(gid, user, password):
-    """Valida nick+senha como o Galene (endpoint de senha aceita a própria conta)."""
     auth="Basic "+base64.b64encode(f"{user}:{password}".encode("utf-8")).decode()
     qg,qu=quote(gid,safe=""), quote(user,safe="")
-    # Auth correto + body inválido → 415/400. Auth errado → 401.
     code,_=galene("PUT", f"/galene-api/v0/.groups/{qg}/.users/{qu}/.password", auth, "x", "text/plain")
     if code==401: return False
     return code in (400, 415, 200, 204, 201)
@@ -155,21 +222,21 @@ def config_admin_ok(user, password):
     try: d=json.loads(cfg.read_text(encoding="utf-8"))
     except Exception: return False
     users=d.get("users") or {}
-    rec=users.get(user)
+    ul=norm_nick(user)
+    rec=users.get(ul) or users.get(user)
     if not rec:
-        ul=(user or "").lower()
         for k,v in users.items():
-            if str(k).lower()==ul:
+            if norm_nick(k)==ul:
                 rec=v; break
     if not rec: return False
     perm=rec.get("permissions")
     ok_perm=(perm=="admin") or (isinstance(perm, list) and "admin" in perm)
     return ok_perm and password_match(rec.get("password"), password)
 def panel_login_ok(user, password):
-    user=(user or "").strip()
+    user=norm_nick(user)
     if not user or password is None: return False
     su,spw=sidecar_plain()
-    if su is not None and user.lower()==su.lower() and password==spw: return True
+    if su is not None and user==su and password==spw: return True
     if config_admin_ok(user, password): return True
     site=load_site(); main=site.get("main") or "spartan"
     seen=set()
@@ -202,10 +269,31 @@ def harden_group(gid):
     for u in (g.get("users") or {}).values(): conv(u)
     conv(g.get("wildcard-user") or {})
     if c: fp.write_text(json.dumps(g, indent=2, ensure_ascii=False)+chr(10), encoding="utf-8")
-def ok_nick(u):
-    u=(u or "").strip(); return bool(u) and ("/" not in u) and len(u)<=32
+def rename_galene_user(gid, old, new, auth):
+    old_real, rec=find_group_user(gid, old)
+    if not old_real or not rec: return False, "usuario nao encontrado"
+    new=norm_nick(new)
+    if not ok_nick(new): return False, "nick invalido"
+    if norm_nick(old_real)==new: return True, old_real
+    g=load_group(gid)
+    if not g: return False, "sala nao existe"
+    users=g.setdefault("users", {})
+    if any(norm_nick(k)==new for k in users):
+        return False, "nick ja existe na sala"
+    users[new]=json.loads(json.dumps(rec))
+    users.pop(old_real, None)
+    for k in list(users.keys()):
+        if k!=new and norm_nick(k)==norm_nick(old_real):
+            users.pop(k, None)
+    save_group(gid, g)
+    qg=quote(gid,safe="")
+    galene("PUT", f"/galene-api/v0/.groups/{qg}/.users/{quote(new,safe='')}", auth,
+           json.dumps({"permissions": rec.get("permissions") or "present"}))
+    galene("DELETE", f"/galene-api/v0/.groups/{qg}/.users/{quote(old_real,safe='')}", auth)
+    harden_group(gid)
+    return True, old_real
 def shadow(auth,g,u):
-    pw=secrets.token_urlsafe(18); qg,qu=quote(g,safe=""), quote(u,safe="")
+    u=norm_nick(u); pw=secrets.token_urlsafe(18); qg,qu=quote(g,safe=""), quote(u,safe="")
     galene("PUT", f"/galene-api/v0/.groups/{qg}/.users/{qu}", auth, '{"permissions":"observe"}')
     galene("POST", f"/galene-api/v0/.groups/{qg}/.users/{qu}/.password", auth, pw, "text/plain")
     harden_group(g)
@@ -271,12 +359,19 @@ class H(BaseHTTPRequestHandler):
         xff=(self.headers.get("X-Forwarded-For") or self.headers.get("X-Real-IP") or "").split(",")[0].strip()
         return xff or (self.client_address[0] if self.client_address else "")
     def handle_gapi(self, method):
-        """Proxy /gapi/* → Galene /galene-api/v0/* com auth do sidecar (ops da sala entram no painel)."""
         path,_=self.route()
         if not path.startswith("/gapi"):
             self.send_json(404, {"error":"not found"}); return
         rest=path[len("/gapi"):] or "/"
         if not rest.startswith("/"): rest="/"+rest
+        parts=rest.split("/")
+        try:
+            if ".users" in parts:
+                i=parts.index(".users")
+                if i+1 < len(parts) and parts[i+1] and not parts[i+1].startswith("."):
+                    parts[i+1]=norm_nick(parts[i+1])
+                    rest="/".join(parts)
+        except Exception: pass
         gpath="/galene-api/v0"+rest
         auth=self.headers.get("Authorization") or self.headers.get("X-Spartan-Auth") or ""
         user, password=parse_basic(auth)
@@ -294,16 +389,27 @@ class H(BaseHTTPRequestHandler):
             raw=self.rfile.read(n)
         elif n>0:
             self.rfile.read(n)
+        if method=="PUT" and ".users" in rest:
+            try:
+                segs=[x for x in rest.split("/") if x]
+                if len(segs)>=4 and segs[2]==".users":
+                    nick=norm_nick(segs[3])
+                    if nick and not nick.startswith("."):
+                        account_ensure(nick, force_id=0 if nick=="admin" else None)
+            except Exception: pass
         extra={}
         inm=self.headers.get("If-None-Match")
         if inm: extra["If-None-Match"]=inm
         im=self.headers.get("If-Match")
         if im: extra["If-Match"]=im
-        if method in ("GET","HEAD","DELETE"):
-            ctype_send="application/json"
-        else:
-            ctype_send=ctype
+        ctype_send="application/json" if method in ("GET","HEAD","DELETE") else ctype
         code, text=galene(method, gpath, galene_auth, raw, ctype_send, extra)
+        if method=="DELETE" and ".users" in rest and code < 400:
+            try:
+                segs=[x for x in rest.split("/") if x]
+                if len(segs)>=4 and segs[2]==".users":
+                    account_forget_nick(segs[3])
+            except Exception: pass
         out_ctype="application/json; charset=utf-8"
         if text and text[:1] not in "{[" and not (ctype or "").startswith("application/json"):
             out_ctype="text/plain; charset=utf-8"
@@ -314,6 +420,10 @@ class H(BaseHTTPRequestHandler):
         if path in ("/","/health"): self.send_json(200, {"ok":True}); return
         if path=="/site":
             self.send_json(200, load_site()); return
+        if path=="/accounts":
+            ok,_=self.admin_ok()
+            if not ok: self.send_json(401, {"error":"nao autorizado"}); return
+            self.send_json(200, load_accounts()); return
         if path=="/rooms":
             rooms=[]
             for fp in sorted(GROUPS.glob("*.json")):
@@ -325,13 +435,13 @@ class H(BaseHTTPRequestHandler):
                     "updated": datetime.fromtimestamp(fp.stat().st_mtime, TZ).isoformat(timespec="seconds")})
             self.send_json(200, rooms); return
         if path=="/temp-status":
-            g=(q.get("group") or ["spartan"])[0]; user=(q.get("user") or [""])[0].strip()
+            g=(q.get("group") or ["spartan"])[0]; user=norm_nick((q.get("user") or [""])[0])
             d=load(); b=bucket(d,g)
             self.send_json(200, {"open":is_open(g),"purge":int(b.get("purge") or 0),"banned":ip_banned(b,self.cip()),
                 "taken": user in named(g) or user in (b.get("pending") or {}) or user in (b.get("denied") or {}) or user in (b.get("blocked") or {})})
             return
         if path=="/status":
-            g=(q.get("group") or ["spartan"])[0]; user=(q.get("user") or [""])[0].strip(); b=bucket(load(), g)
+            g=(q.get("group") or ["spartan"])[0]; user=norm_nick((q.get("user") or [""])[0]); b=bucket(load(), g)
             st="denied" if user in b["denied"] else "blocked" if user in b["blocked"] else "pending" if user in b["pending"] else "named" if user in named(g) else ("temp" if is_open(g) else "guest")
             self.send_json(200, {"status":st, "created": (b.get("created") or {}).get(user)}); return
         if path=="/registry":
@@ -349,7 +459,7 @@ class H(BaseHTTPRequestHandler):
         path,_=self.route()
         if path.startswith("/gapi"): self.handle_gapi("POST"); return
         body=self.read_json()
-        g=(body.get("group") or "spartan").strip() or "spartan"; user=(body.get("user") or "").strip()
+        g=(body.get("group") or "spartan").strip() or "spartan"; user=norm_nick(body.get("user") or "")
         if path=="/beacon":
             if not ok_nick(user): self.send_json(400, {"error":"nick invalido"}); return
             d=load(); b=bucket(d,g); t=now(); ip=self.cip()
@@ -378,7 +488,7 @@ class H(BaseHTTPRequestHandler):
                 galene("POST", f"/galene-api/v0/.groups/{qg}/.users/{qu}/.password", ia, pw, "text/plain"); harden_group(g)
             self.send_json(200, {"ok":True}); return
         if path=="/panel-login":
-            u=(body.get("user") or user or "").strip()
+            u=norm_nick(body.get("user") or user or "")
             pw=body.get("password") if "password" in body else body.get("pass")
             if pw is None: pw=""
             if panel_login_ok(u, pw):
@@ -392,24 +502,58 @@ class H(BaseHTTPRequestHandler):
             gid=(body.get("group") or "").strip()
             if not (GROUPS/f"{gid}.json").exists(): self.send_json(404, {"error":"sala nao existe"}); return
             st=load_site(); st["home"]=gid; save_site(st); self.send_json(200, st); return
+        if path=="/rename-user":
+            new_nick=norm_nick(body.get("nick") or body.get("new") or "")
+            uid=body.get("id")
+            old=norm_nick(body.get("user") or body.get("old") or "")
+            if uid is None and old:
+                acc=load_accounts()
+                if old in acc["by_nick"]: uid=acc["by_nick"][old]
+            if uid is None: self.send_json(400, {"error":"id ou user obrigatorio"}); return
+            try: uid=int(uid)
+            except Exception: self.send_json(400, {"error":"id invalido"}); return
+            ok2, info=account_rename(uid, new_nick)
+            if not ok2: self.send_json(409, {"error":info}); return
+            old_nick=info if isinstance(info,str) else old
+            for fp in GROUPS.glob("*.json"):
+                rename_galene_user(fp.stem, old_nick or old, new_nick, auth)
+            d=load()
+            for gid,b in list(d.items()):
+                if not isinstance(b, dict): continue
+                for k in ("guests","pending","denied","blocked","temps","created","seen"):
+                    bag=b.get(k) or {}
+                    if old_nick in bag and old_nick!=new_nick:
+                        bag[new_nick]=bag.pop(old_nick)
+            save(d)
+            cfgp=Path("/data/config.json")
+            if cfgp.exists() and old_nick:
+                try:
+                    cfg=json.loads(cfgp.read_text(encoding="utf-8"))
+                    users=cfg.get("users") or {}
+                    if old_nick in users and new_nick not in users:
+                        users[new_nick]=users.pop(old_nick)
+                        cfg["users"]=users
+                        cfgp.write_text(json.dumps(cfg, indent=2, ensure_ascii=False)+chr(10), encoding="utf-8")
+                except Exception: pass
+            self.send_json(200, {"ok":True,"id":uid,"nick":new_nick,"old":old_nick}); return
         if path=="/rename-main":
             st=load_site(); old=st["main"]; title=(body.get("title") or "").strip()
             nid=(body.get("id") or old).strip().lower()
             if not slug_ok(nid): self.send_json(400, {"error":"nome de URL invalido"}); return
             op,np=GROUPS/f"{old}.json", GROUPS/f"{nid}.json"
             if not op.exists(): self.send_json(404, {"error":"sala principal sumiu"}); return
-            g=json.loads(op.read_text(encoding="utf-8"))
-            if title: g["displayName"]=title
+            gj=json.loads(op.read_text(encoding="utf-8"))
+            if title: gj["displayName"]=title
             if nid!=old:
                 if np.exists(): self.send_json(409, {"error":"ja existe uma sala com esse nome"}); return
-                np.write_text(json.dumps(g, indent=2, ensure_ascii=False)+chr(10), encoding="utf-8")
+                np.write_text(json.dumps(gj, indent=2, ensure_ascii=False)+chr(10), encoding="utf-8")
                 op.unlink()
                 d=load()
                 if old in d: d[nid]=d.pop(old); save(d)
                 if st.get("home")==old: st["home"]=nid
                 st["main"]=nid
             else:
-                op.write_text(json.dumps(g, indent=2, ensure_ascii=False)+chr(10), encoding="utf-8")
+                op.write_text(json.dumps(gj, indent=2, ensure_ascii=False)+chr(10), encoding="utf-8")
             save_site(st); self.send_json(200, st); return
         if not ok_nick(user): self.send_json(400, {"error":"nick invalido"}); return
         if is_op(g,user) and path in ("/deny","/block","/forget"):
@@ -423,6 +567,7 @@ class H(BaseHTTPRequestHandler):
                 code,err=galene("POST", f"/galene-api/v0/.groups/{qg}/.users/{qu}/.password", auth, pend["password"], "text/plain")
                 if code>=400: self.send_json(code, {"error":err[:200]}); return
             harden_group(g)
+            account_ensure(user)
             b["pending"].pop(user,None); b["denied"].pop(user,None); b["blocked"].pop(user,None); b["guests"].pop(user,None)
             b.setdefault("created",{})[user]=now(); save(d); self.send_json(200, {"ok":True}); return
         if path=="/quick":
@@ -431,6 +576,7 @@ class H(BaseHTTPRequestHandler):
             galene("PUT", f"/galene-api/v0/.groups/{qg}/.users/{qu}", auth, json.dumps({"permissions":perm}))
             galene("POST", f"/galene-api/v0/.groups/{qg}/.users/{qu}/.password", auth, pw, "text/plain")
             harden_group(g)
+            account_ensure(user)
             b["pending"].pop(user,None); b["denied"].pop(user,None); b["blocked"].pop(user,None); b["guests"].pop(user,None)
             b.setdefault("created",{})[user]=now(); save(d); self.send_json(200, {"ok":True}); return
         if path in ("/deny","/block"):
@@ -448,10 +594,13 @@ class H(BaseHTTPRequestHandler):
         if path=="/forget":
             galene("DELETE", f"/galene-api/v0/.groups/{qg}/.users/{qu}", auth)
             for k in ("pending","denied","blocked","guests","temps"): b[k].pop(user, None)
+            account_forget_nick(user)
             save(d); self.send_json(200, {"ok":True}); return
         self.send_json(404, {"error":"not found"})
 
 if __name__=="__main__":
+    try: account_ensure("admin", force_id=0)
+    except Exception: pass
     Thread(target=purge_loop, daemon=True).start()
     print("spartan-reg on", PORT, flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()

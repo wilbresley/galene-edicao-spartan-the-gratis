@@ -39,16 +39,19 @@ async function refreshReg(){try{registry=await reg('/registry')||{};}catch(e){re
 async function loadUsers(){
  const boxOps=$('users-ops'), box=$('users');
  try{await refreshReg();}catch(e){}
+ let accounts={by_nick:{}};
+ try{accounts=await reg('/accounts')||accounts;}catch(e){}
  const b=bucket(), skip=new Set(Object.keys(b.denied).concat(Object.keys(b.blocked),Object.keys(b.pending)));
  let names=(await api('/.groups/'+GROUP+'/.users/')||[]).filter(n=>!skip.has(n));
  names.sort((a,c)=>a.localeCompare(c,'pt',{sensitivity:'base'}));
  const rows=[];
  for(const name of names){
   let info={}; try{info=await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name));}catch(e){}
-  rows.push({name, perm:(info&&info.permissions)||'present', rec:(b.seen||{})[name]||{}});
+  const uid=(accounts.by_nick&&accounts.by_nick[String(name).toLowerCase()]);
+  rows.push({name, perm:(info&&info.permissions)||'present', rec:(b.seen||{})[name]||{}, id:uid});
  }
  sortItems(rows,'users');
- const uk='u:'+SORT.users+':'+rows.map(r=>r.name+':'+r.perm).join('|');
+ const uk='u:'+SORT.users+':'+rows.map(r=>r.id+':'+r.name+':'+r.perm).join('|');
  if(uk===loadUsers._k) return; loadUsers._k=uk;
  if(boxOps) boxOps.innerHTML='';
  box.innerHTML='';
@@ -58,10 +61,11 @@ async function loadUsers(){
   if(!target) return;
   if(!list.length){target.textContent=empty;return;}
   list.forEach(function(item){
-   const name=item.name, perm=item.perm;
+   const name=item.name, perm=item.perm, uid=item.id;
    const row=document.createElement('div'); row.className='user-row';
-   row.innerHTML='<div class="who"><b></b></div><select class="permset"><option value="op">Admin da sala</option><option value="present">Pode transmitir</option><option value="message">Só chat</option><option value="observe">Só assistir</option></select><input type="password" placeholder="Nova senha"/><button type="button" class="rst">Redefinir</button><button type="button" class="del">Excluir</button><button type="button" class="blk">Bloquear</button>';
-   row.querySelector('b').textContent=name;
+   row.innerHTML='<div class="who"><b></b></div><button type="button" class="ren">Renomear</button><select class="permset"><option value="op">Admin da sala</option><option value="present">Pode transmitir</option><option value="message">Só chat</option><option value="observe">Só assistir</option></select><input type="password" placeholder="Nova senha"/><button type="button" class="rst">Redefinir</button><button type="button" class="del">Excluir</button><button type="button" class="blk">Bloquear</button>';
+   const title=(uid!=null?('ID '+uid+' · '):'')+name;
+   row.querySelector('b').textContent=title;
    var sm=document.createElement('span'); sm.className='hint'; sm.textContent=fmtSeen(name,GROUP,item.rec); row.querySelector('.who').appendChild(sm);
    row.querySelector('.permset').value=['op','present','message','observe'].indexOf(perm)>=0?perm:'present';
    row.querySelector('.permset').onchange=async function(){
@@ -71,13 +75,27 @@ async function loadUsers(){
      await loadUsers();
     }catch(e){uiMsg(e.message);}
    };
+   row.querySelector('.ren').onclick=async()=>{
+    const inp=$('ui-dlg-input'); if(inp) inp.type='text';
+    const nn=await uiPrompt('Novo nome para '+(uid!=null?('ID '+uid+' / '):'')+name+' (sempre minúsculo):');
+    if(inp) inp.type='password';
+    if(nn==null) return;
+    const nick=String(nn).trim().toLowerCase();
+    if(!nick){uiMsg('Nome vazio');return;}
+    try{
+     const body=uid!=null?{id:uid,nick:nick}:{user:name,nick:nick};
+     await reg('/rename-user',body);
+     loadUsers._k=null; uiMsg('Renomeado para '+nick+(uid!=null?' (ID '+uid+' intacto)':''));
+     await loadUsers(); await loadGuests();
+    }catch(e){uiMsg(e.message);}
+   };
    row.querySelector('.rst').onclick=async()=>{
     const np=row.querySelector('input').value; if(!np){uiMsg('Digite a nova senha');return;}
     try{await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name)+'/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:np}); row.querySelector('input').value=''; uiMsg('Senha de '+name+' atualizada');}
     catch(e){uiMsg(e.message);}
    };
    row.querySelector('.del').onclick=async()=>{
-    if(!await uiConfirm('Excluir '+name+' por completo? A conta some e o nick fica livre de novo para qualquer um usar.')) return;
+    if(!await uiConfirm('Excluir '+name+' por completo? A conta some e o nick fica livre, mas o ID'+(uid!=null?(' '+uid):'')+' permanece reservado.')) return;
     try{await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name),{method:'DELETE'}); try{await reg('/forget',{group:GROUP,user:name});}catch(e){} loadUsers._k=null; await loadUsers(); await loadGuests(); await loadBlocked();}
     catch(e){uiMsg(e.message);}
    };
@@ -262,19 +280,20 @@ async function afterLogin(){
  await loadUsers(); await loadRooms(); await loadGuests(); await loadBlocked(); await loadTemps();
 }
 $('btn-login').onclick=async()=>{
- user=$('u').value.trim(); pass=$('p').value; $('login-err').textContent='';
+ user=($('u').value||'').trim().toLowerCase(); $('u').value=user; pass=$('p').value; $('login-err').textContent='';
  try{
   const r=await fetch(REG+'/panel-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:user,password:pass})});
   let data=null; try{data=await r.json();}catch(e){data={};}
   if(!r.ok) throw new Error((data&&data.error)||'Usuário ou senha inválidos');
   sessionStorage.setItem('spartanAdmin',JSON.stringify({user:user,pass:pass}));
+  try{localStorage.removeItem('spartanAdminHandoff');}catch(e){}
   await afterLogin();
  }catch(e){$('login-err').textContent=e.message;}
 };
 $('p').addEventListener('keydown',e=>{if(e.key==='Enter')$('btn-login').click();});
 $('btn-out').onclick=()=>{try{sessionStorage.removeItem('spartanAdmin');}catch(e){} location.href='/';};
 $('btn-create').onclick=async()=>{
- const n=$('nu').value.trim(), p=$('np').value, perm=$('nperm').value; $('create-msg').textContent='';
+ const n=($('nu').value||'').trim().toLowerCase(), p=$('np').value, perm=$('nperm').value; $('nu').value=n; $('create-msg').textContent='';
  if(!n||!p){$('create-msg').textContent='Nome e senha obrigatórios';return;}
  try{
   await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(n),{method:'PUT',headers:{'Content-Type':'application/json','If-None-Match':'*'},body:JSON.stringify({permissions:perm})});
@@ -324,9 +343,15 @@ document.querySelectorAll('.tab').forEach(b=>{
  };
 });
 try{
- const saved=JSON.parse(sessionStorage.getItem('spartanAdmin')||'null');
- if(saved&&saved.user){
-  user=saved.user;pass=saved.pass;
+ let saved=null;
+ try{saved=JSON.parse(localStorage.getItem('spartanAdminHandoff')||'null');}catch(e){}
+ if(!(saved&&saved.user&&saved.pass)){
+  try{saved=JSON.parse(sessionStorage.getItem('spartanAdmin')||'null');}catch(e){}
+ }
+ if(saved&&saved.user&&saved.pass){
+  user=String(saved.user).trim().toLowerCase(); pass=saved.pass;
+  sessionStorage.setItem('spartanAdmin',JSON.stringify({user:user,pass:pass}));
+  try{localStorage.removeItem('spartanAdminHandoff');}catch(e){}
   afterLogin().catch(function(e){
    try{sessionStorage.removeItem('spartanAdmin');}catch(err){}
    user='';pass='';

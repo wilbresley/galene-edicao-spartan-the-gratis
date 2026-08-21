@@ -1,0 +1,13 @@
+{
+  "next_id": 1,
+  "by_id": {
+    "0": {
+      "nick": "admin",
+      "active": true,
+      "created": "factory"
+    }
+  },
+  "by_nick": {
+    "admin": 0
+  }
+}
