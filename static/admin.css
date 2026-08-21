@@ -125,3 +125,26 @@ html.admin-gate #login-box.login-card:not([hidden]){
  margin:0 auto!important;float:none;
  padding:1.4rem 1.45rem 1.5rem;box-sizing:border-box;
  background:rgba(0,0,0,.9)!important;border:1px solid rgba(220,38,38,.55)!important;border-radius:16px}
+
+/* admin-v19 — roles, renomear verde, filtros de log */
+button.ren{background:#16a34a!important;color:#fff!important}
+.user-row{grid-template-columns:minmax(8rem,11rem) auto minmax(8.5rem,11rem) auto auto auto;gap:.4rem}
+.user-row .role-wrap{position:relative;min-width:8.5rem}
+.user-row .role-btn{
+ width:100%;text-align:left;background:#1e1f22;color:#f2f3f5;border:1px solid #3f4147;
+ border-radius:8px;padding:.4rem .55rem;font-weight:700;font-size:.85rem;cursor:pointer}
+.user-row .role-btn.open,.user-row .role-btn:focus{border-color:#dc2626;outline:none}
+.user-row .role-menu{
+ display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;
+ background:#1e1f22;border:1px solid #dc2626;border-radius:10px;padding:.25rem;
+ box-shadow:0 10px 28px rgba(0,0,0,.55)}
+.user-row .role-menu.open{display:block}
+.user-row .role-menu button{
+ display:block;width:100%;text-align:left;background:transparent;color:#e5e7eb;
+ border:none;border-radius:8px;padding:.45rem .55rem;font-weight:600;font-size:.85rem;margin:0}
+.user-row .role-menu button:hover,.user-row .role-menu button.on{background:#3f4147;color:#fff}
+.user-row button.rst{padding:.4rem .65rem;font-size:.82rem}
+.log-filters{display:flex;flex-wrap:wrap;gap:.45rem;margin:0 0 .85rem}
+.log-filters select,.log-filters input{
+ flex:1 1 9rem;min-width:8rem;max-width:100%;margin:0!important;
+ background:#1e1f22;color:#f2f3f5;border:1px solid #3f4147;border-radius:8px;padding:.45rem .6rem}

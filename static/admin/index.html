@@ -8,9 +8,9 @@
 <link rel="icon" type="image/jpeg" href="/icone-separtan.jpg"/>
 <link rel="stylesheet" href="/common.css"/>
 <link rel="stylesheet" href="/spartan-pages.css?v=5"/>
-<link rel="stylesheet" href="/admin.css?v=18"/>
+<link rel="stylesheet" href="/admin.css?v=19"/>
 <link rel="stylesheet" href="/spartan.css?v=22"/>
-<script src="/admin.js?v=25" defer></script>
+<script src="/admin.js?v=26" defer></script>
 </head>
 <body>
 <header class="admin-top">
@@ -109,6 +109,17 @@
 <section class="admin-card">
 <h2>Logs de conexão</h2>
 <p class="hint">Últimas conexões (cadastrado, convidado e temporário). Horário de Brasília. Arquivo no servidor: data/access.log (até 1 ano).</p>
+<div class="log-filters">
+<select id="log-tipo">
+<option value="">Todos os tipos</option>
+<option value="cadastrado">Cadastrado</option>
+<option value="admin">Admin (painel)</option>
+<option value="convidado">Convidado</option>
+<option value="temporario">Temporário</option>
+</select>
+<input id="log-nick" type="text" placeholder="Filtrar por nick"/>
+<input id="log-ip" type="text" placeholder="Filtrar por IP"/>
+</div>
 <div id="logs"></div>
 </section>
 </div>

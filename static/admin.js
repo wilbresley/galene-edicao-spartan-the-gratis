@@ -39,7 +39,40 @@ function fmtQuando(iso){
  }catch(e){return String(iso);}
 }
 function fmtSeen(name,gid,rec){rec=rec||{}; var bits=[]; if(gid) bits.push("sala "+gid); if(rec.ip) bits.push("IP "+rec.ip); var v=rec.last||rec.first||rec.at; if(v) bits.push("visto "+fmtQuando(v)); return bits.join(" · ");}
-function tipoLabel(t){return ({cadastrado:"Cadastrado",convidado:"Convidado",temporario:"Temporário",pedido_cadastro:"Pedido de cadastro",conta_aprovada:"Conta aprovada",conta_criada:"Conta criada",painel_admin:"Painel admin"})[t]||t||"—";}
+function tipoLabel(t){return ({cadastrado:"Cadastrado",convidado:"Convidado",temporario:"Temporário",pedido_cadastro:"Pedido de cadastro",conta_aprovada:"Conta aprovada",conta_criada:"Conta criada",painel_admin:"Admin (painel)"})[t]||t||"—";}
+var PERM_OPTS=[{v:"op",l:"Admin da sala"},{v:"present",l:"Pode transmitir"},{v:"message",l:"Só chat"},{v:"observe",l:"Só assistir"}];
+function permLabelBtn(p){for(var i=0;i<PERM_OPTS.length;i++){if(PERM_OPTS[i].v===p)return PERM_OPTS[i].l;}return "Pode transmitir";}
+function closeAllRoleMenus(){document.querySelectorAll(".role-menu.open").forEach(function(m){m.classList.remove("open");});document.querySelectorAll(".role-btn.open").forEach(function(b){b.classList.remove("open");});}
+document.addEventListener("click",function(e){if(!e.target.closest||!e.target.closest(".role-wrap"))closeAllRoleMenus();});
+var LOG_CACHE=[];
+function logMatchesFilter(e){
+ var tipo=(($("log-tipo")&&$("log-tipo").value)||"");
+ var nick=((($("log-nick")&&$("log-nick").value)||"").trim().toLowerCase());
+ var ip=((($("log-ip")&&$("log-ip").value)||"").trim().toLowerCase());
+ var t=e.tipo||"";
+ if(tipo==="cadastrado"){ if(!(t==="cadastrado"||t==="conta_aprovada"||t==="conta_criada"||t==="pedido_cadastro")) return false; }
+ else if(tipo==="admin"){ if(t!=="painel_admin") return false; }
+ else if(tipo==="convidado"){ if(t!=="convidado") return false; }
+ else if(tipo==="temporario"){ if(t!=="temporario") return false; }
+ if(nick && String(e.nick||"").toLowerCase().indexOf(nick)<0) return false;
+ if(ip && String(e.ip||"").toLowerCase().indexOf(ip)<0) return false;
+ return true;
+}
+function paintLogs(){
+ const box=$("logs"); if(!box) return;
+ const entries=LOG_CACHE.filter(logMatchesFilter);
+ box.innerHTML="";
+ if(!LOG_CACHE.length){box.textContent="Nenhum log ainda. Assim que alguém entrar na sala, aparece aqui.";return;}
+ if(!entries.length){box.textContent="Nenhum resultado com estes filtros.";return;}
+ entries.forEach(function(e){
+  const el=document.createElement("div"); el.className="guest-row";
+  const lab=document.createElement("b"); lab.textContent=e.nick||"(sem nick)";
+  const tag=document.createElement("span"); tag.className="tag tag-guest"; tag.textContent=tipoLabel(e.tipo);
+  const meta=document.createElement("span"); meta.className="hint";
+  meta.textContent=fmtQuando(e.quando)+(e.sala?(" · sala "+e.sala):"")+(e.ip?(" · IP "+e.ip):"");
+  el.appendChild(lab); el.appendChild(tag); el.appendChild(meta); box.appendChild(el);
+ });
+}
 function sortItems(list,tab){var mode=SORT[tab]||"az"; list.sort(function(a,c){if(mode==="time"){var ta=(a.rec&&(a.rec.last||a.rec.first||a.rec.at))||""; var tc=(c.rec&&(c.rec.last||c.rec.first||c.rec.at))||""; if(tc!==ta) return tc>ta?-1:1;} return String(a.name).localeCompare(String(c.name),"pt",{sensitivity:"base"});}); return list;}
 function sortNickList(names,b,tab){var mode=SORT[tab]||"az"; names.sort(function(a,c){if(mode==="time"){var d=recLast(b,c).localeCompare(recLast(b,a)); if(d) return d;} return a.localeCompare(c,"pt",{sensitivity:"base"});});}
 
@@ -72,17 +105,34 @@ async function loadUsers(){
   list.forEach(function(item){
    const name=item.name, perm=item.perm, uid=item.id;
    const row=document.createElement('div'); row.className='user-row';
-   row.innerHTML='<div class="who"><b></b></div><button type="button" class="ren">Renomear</button><select class="permset"><option value="op">Admin da sala</option><option value="present">Pode transmitir</option><option value="message">Só chat</option><option value="observe">Só assistir</option></select><input type="password" placeholder="Nova senha"/><button type="button" class="rst">Redefinir</button><button type="button" class="del">Excluir</button><button type="button" class="blk">Bloquear</button>';
+   row.innerHTML='<div class="who"><b></b></div><button type="button" class="ren">Renomear</button><div class="role-wrap"><button type="button" class="role-btn"></button><div class="role-menu"></div></div><button type="button" class="rst">Redefinir senha</button><button type="button" class="del">Excluir</button><button type="button" class="blk">Bloquear</button>';
    const title=(uid!=null?('ID '+uid+' · '):'')+name;
    row.querySelector('b').textContent=title;
    var sm=document.createElement('span'); sm.className='hint'; sm.textContent=fmtSeen(name,GROUP,item.rec); row.querySelector('.who').appendChild(sm);
-   row.querySelector('.permset').value=['op','present','message','observe'].indexOf(perm)>=0?perm:'present';
-   row.querySelector('.permset').onchange=async function(){
-    try{
-     await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:this.value})});
-     loadUsers._k=null; uiMsg('Permissão de '+name+' atualizada. Se estiver na sala, a mudança vale na hora no servidor; o vídeo/chat dele atualiza na próxima ação.');
-     await loadUsers();
-    }catch(e){uiMsg(e.message);}
+   const curPerm=['op','present','message','observe'].indexOf(perm)>=0?perm:'present';
+   const roleBtn=row.querySelector('.role-btn');
+   const roleMenu=row.querySelector('.role-menu');
+   roleBtn.textContent=permLabelBtn(curPerm)+' ▾';
+   PERM_OPTS.forEach(function(o){
+    const b=document.createElement('button'); b.type='button'; b.textContent=o.l; b.dataset.v=o.v;
+    if(o.v===curPerm) b.classList.add('on');
+    b.onclick=async function(ev){
+     ev.preventDefault(); ev.stopPropagation();
+     closeAllRoleMenus();
+     if(o.v===curPerm) return;
+     try{
+      await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:o.v})});
+      loadUsers._k=null; uiMsg('Permissão de '+name+' atualizada.');
+      await loadUsers();
+     }catch(e){uiMsg(e.message);}
+    };
+    roleMenu.appendChild(b);
+   });
+   roleBtn.onclick=function(ev){
+    ev.preventDefault(); ev.stopPropagation();
+    const open=roleMenu.classList.contains('open');
+    closeAllRoleMenus();
+    if(!open){ roleMenu.classList.add('open'); roleBtn.classList.add('open'); }
    };
    row.querySelector('.ren').onclick=async()=>{
     const inp=$('ui-dlg-input'); if(inp) inp.type='text';
@@ -99,8 +149,12 @@ async function loadUsers(){
     }catch(e){uiMsg(e.message);}
    };
    row.querySelector('.rst').onclick=async()=>{
-    const np=row.querySelector('input').value; if(!np){uiMsg('Digite a nova senha');return;}
-    try{await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name)+'/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:np}); row.querySelector('input').value=''; uiMsg('Senha de '+name+' atualizada');}
+    const inp=$('ui-dlg-input'); if(inp) inp.type='password';
+    const np=await uiPrompt('Nova senha para '+name+':');
+    if(np==null) return;
+    if(!np){uiMsg('Digite a nova senha');return;}
+    if(!await uiConfirm('Confirmar nova senha para '+name+'?')) return;
+    try{await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name)+'/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:np}); uiMsg('Senha de '+name+' atualizada');}
     catch(e){uiMsg(e.message);}
    };
    row.querySelector('.del').onclick=async()=>{
@@ -284,19 +338,11 @@ async function loadLogs(){
  const box=$('logs'); if(!box) return;
  try{
   const data=await reg('/access-log?limit=400');
-  const entries=(data&&data.entries)||[];
-  const key='L:'+entries.length+':'+(entries[0]&&(entries[0].quando+entries[0].nick+entries[0].ip)||'');
-  if(key===loadLogs._k) return; loadLogs._k=key;
-  box.innerHTML='';
-  if(!entries.length){box.textContent='Nenhum log ainda. Assim que alguém entrar na sala, aparece aqui.';return;}
-  entries.forEach(function(e){
-   const el=document.createElement('div'); el.className='guest-row';
-   const lab=document.createElement('b'); lab.textContent=e.nick||'(sem nick)';
-   const tag=document.createElement('span'); tag.className='tag tag-guest'; tag.textContent=tipoLabel(e.tipo);
-   const meta=document.createElement('span'); meta.className='hint';
-   meta.textContent=fmtQuando(e.quando)+(e.sala?(' · sala '+e.sala):'')+(e.ip?(' · IP '+e.ip):'');
-   el.appendChild(lab); el.appendChild(tag); el.appendChild(meta); box.appendChild(el);
-  });
+  LOG_CACHE=(data&&data.entries)||[];
+  const key='L:'+LOG_CACHE.length+':'+(LOG_CACHE[0]&&(LOG_CACHE[0].quando+LOG_CACHE[0].nick+LOG_CACHE[0].ip)||'')+':'+(($('log-tipo')&&$('log-tipo').value)||'')+':'+(($('log-nick')&&$('log-nick').value)||'')+':'+(($('log-ip')&&$('log-ip').value)||'');
+  if(key===loadLogs._k){ paintLogs(); return; }
+  loadLogs._k=key;
+  paintLogs();
  }catch(e){
   if(!box.dataset.ok) box.textContent='Não deu para ler os logs.';
  }
@@ -397,3 +443,7 @@ try{
 
 document.querySelectorAll('.list-tools').forEach(function(bar){bar.addEventListener('click',function(e){var btn=e.target.closest('[data-sort]'); if(!btn) return; var tab=bar.getAttribute('data-tab'); SORT[tab]=btn.getAttribute('data-sort'); bar.querySelectorAll('[data-sort]').forEach(function(x){x.classList.toggle('on',x===btn);}); loadUsers._k=loadGuests._k=loadBlocked._k=loadTemps._k=null; if(tab==='users') loadUsers(); else if(tab==='guests') loadGuests(); else if(tab==='blocked') loadBlocked(); else if(tab==='temps') loadTemps();});});
 setInterval(function(){ try{ if($('panel') && !$('panel').hidden){ loadUsers().catch(function(){}); loadGuests().catch(function(){}); loadBlocked().catch(function(){}); loadTemps().catch(function(){}); if($('tab-logs') && !$('tab-logs').hidden) loadLogs().catch(function(){}); } }catch(e){} }, 8000);
+['log-tipo','log-nick','log-ip'].forEach(function(id){
+ var el=$(id); if(!el) return;
+ el.addEventListener(id==='log-tipo'?'change':'input', function(){ loadLogs._k=null; paintLogs(); });
+});
