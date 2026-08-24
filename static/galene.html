@@ -2,7 +2,7 @@
 <html lang="pt-BR">
   <head>
     <meta http-equiv="Cache-Control" content="no-store"/>
-    <script src="/spartan-boot.js?v=6"></script>
+    <script src="/spartan-boot.js?v=7"></script>
     <title>Spartan</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,7 +16,7 @@
     <link rel="stylesheet" type="text/css" href="/third-party/fontawesome/css/regular.min.css"/>
     <link rel="stylesheet" type="text/css" href="/third-party/toastify/toastify.css"/>
     <link rel="stylesheet" type="text/css" href="/third-party/contextual/contextual.css"/>
-    <link rel="stylesheet" type="text/css" href="/galene-spartan.css?v=67"/>
+    <link rel="stylesheet" type="text/css" href="/galene-spartan.css?v=68"/>
   </head>
 
   <body>
@@ -61,6 +61,10 @@
                   <i class="fas fa-align-left" aria-hidden="true"></i>
                 </div>
                 <h1 id="title" class="header-title">Spartan</h1>
+                <div id="spartan-ttl" hidden>
+                  <span class="spartan-ttl-msg">Tempo até exclusão desta sala</span>
+                  <span id="spartan-ttl-clock">24:00</span>
+                </div>
                 <button type="button" id="spartan-reg-btn" hidden>Solicitar registro</button>
               </div>
 
@@ -166,6 +170,7 @@
                     <div class="clear"></div>
                     <div class="connect">
                       <input id="connectbutton" type="submit" class="btn btn-blue" value="Entrar"/>
+                      <button type="button" id="spartan-login-switch" hidden>Entrar com conta cadastrada</button>
                     </div>
                   </form>
                   <div class="clear"></div>
@@ -383,7 +388,7 @@
     <script src="/third-party/contextual/contextual.js" defer></script>
     <script src="/settings.js" defer></script>
     <script src="/filter.js" defer></script>
-    <script src="/galene.js?v=77" defer></script>
+    <script src="/galene.js?v=78" defer></script>
   <div id="spartan-toast" hidden></div>
 <div id="spartan-drop" hidden>
   <div class="spartan-reg-card">

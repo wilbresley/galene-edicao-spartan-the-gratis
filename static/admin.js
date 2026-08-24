@@ -204,7 +204,12 @@ async function loadRooms(){
   const row=document.createElement('div'); row.className='room-row room-row-wide';
   row.innerHTML='<b></b><span class="sala-tag"></span><a class="btn-open" target="_blank" rel="noopener">Abrir</a>'+(isMain?'':'<button type="button" class="del">Apagar</button>');
   row.querySelector('b').textContent=n+(n===home?' · home':'');
-  row.querySelector('.sala-tag').textContent=isMain?('principal · '+(info.open?'Pública':'Convite')):(info.open?'Pública':'Convite');
+  let tag=isMain?('principal · '+(info.open?'Pública':'Convite')):(info.ttl?(info.open?'Pública · 24h':'Convite · 24h'):(info.open?'Pública':'Convite'));
+  if(info.ttl && info.remaining_s!=null){
+   const s=Math.max(0, info.remaining_s|0), h=Math.floor(s/3600), m=Math.floor((s%3600)/60);
+   tag+=' · '+h+'h '+String(m).padStart(2,'0')+'min';
+  }
+  row.querySelector('.sala-tag').textContent=tag;
   row.querySelector('a').href='/group/'+encodeURIComponent(n)+'/';
   if(!isMain){
    row.querySelector('.del').onclick=async()=>{
@@ -242,7 +247,7 @@ async function loadRooms(){
    wrap.appendChild(bar);
   } else {
    const bar=document.createElement('div'); bar.className='room-pw';
-   let extra=n===home?'<span class="home-on">Esta é a sala da home</span>':'<button type="button" class="okbtn sethome">Usar na home</button>';
+   let extra=n===home?'<span class="home-on">Esta é a sala da home</span>':(info.ttl?'':'<button type="button" class="okbtn sethome">Usar na home</button>');
    if(!info.open) extra='<input type="password" placeholder="Nova senha de amigos" autocomplete="new-password"/><button type="button" class="rst">Redefinir senha da sala</button> '+extra;
    bar.innerHTML=extra;
    const rst=bar.querySelector('.rst');
@@ -398,27 +403,35 @@ $('btn-wild').onclick=async()=>{
   $('wp').value=''; $('wild-msg').textContent='Senha dos amigos atualizada';
  }catch(e){$('wild-msg').textContent=e.message;}
 };
-$('ropen')&&($('ropen').onchange=()=>{ $('rp').disabled=$('ropen').checked; if($('ropen').checked) $('rp').value=''; });
+$('rkind-open')&&($('rkind-open').onchange=$('rkind-invite').onchange=function(){
+ const invite=$('rkind-invite')&&$('rkind-invite').checked;
+ if($('rp')){ $('rp').disabled=!invite; if(!invite) $('rp').value=''; }
+});
+$('rhost')&&($('rhost').onchange=function(){
+ if($('rhost-wrap')) $('rhost-wrap').hidden=!$('rhost').checked;
+});
 $('btn-room').onclick=async()=>{
  let slug=$('rn').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
  const title=$('rd').value.trim()||slug;
- const open=$('ropen')&&$('ropen').checked;
+ const open=!($('rkind-invite')&&$('rkind-invite').checked);
  const wp=$('rp')?$('rp').value:'';
+ const wantHost=$('rhost')&&$('rhost').checked;
+ const hostNick=(($('rhost-nick')&&$('rhost-nick').value)||'').trim().toLowerCase();
+ const hostPw=$('rhost-pw')?$('rhost-pw').value:'';
  $('room-msg').textContent='';
  if(!slug){$('room-msg').textContent='Digite o nome da sala';return;}
- if(!open && !wp){$('room-msg').textContent='Senha de amigos ou marque sala pública';return;}
+ if(!open && (!wp || wp.length<8)){$('room-msg').textContent='Senha de convite com no mínimo 8 caracteres';return;}
+ if(wantHost && (!hostNick || hostPw.length<8)){$('room-msg').textContent='Anfitrião precisa de nick e senha (mínimo 8)';return;}
  try{
-  await api('/.groups/'+encodeURIComponent(slug)+'/',{method:'PUT',headers:{'Content-Type':'application/json','If-None-Match':'*'},body:JSON.stringify({public:true,displayName:title,description:'',codecs:['vp9','vp8','opus'],'unrestricted-tokens':true})});
-  const wildPerm=open?['present']:'present';
-  try{await api('/.groups/'+encodeURIComponent(slug)+'/.wildcard-user',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:wildPerm})});}catch(e){}
-  if(open){
-    await api('/.groups/'+encodeURIComponent(slug)+'/.wildcard-user/.password',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'wildcard'})});
-  }else{
-    await api('/.groups/'+encodeURIComponent(slug)+'/.wildcard-user/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:wp});
-  }
+  const body={id:slug,title:title,open:open,host:!!wantHost};
+  if(!open) body.friends_password=wp;
+  if(wantHost){ body.host_nick=hostNick; body.host_password=hostPw; }
+  await reg('/create-room', body);
   $('rn').value=''; $('rd').value=''; if($('rp')) $('rp').value='';
-  $('room-msg').textContent=open?('Sala '+slug+' pública criada (temporários = Ouvinte)'):('Sala '+slug+' criada (convidados = Verificado)');
-  await loadRooms();
+  if($('rhost')) $('rhost').checked=false; if($('rhost-wrap')) $('rhost-wrap').hidden=true;
+  if($('rhost-nick')) $('rhost-nick').value=''; if($('rhost-pw')) $('rhost-pw').value='';
+  $('room-msg').textContent=open?('Sala '+slug+' pública criada (24h'+(wantHost?', anfitrião '+hostNick:'')+')'):('Sala '+slug+' de convite criada (24h'+(wantHost?', anfitrião '+hostNick:'')+')');
+  loadRooms._k=null; await loadRooms();
  }catch(e){$('room-msg').textContent=e.message;}
 };
 document.querySelectorAll('.tab').forEach(b=>{
