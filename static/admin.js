@@ -403,19 +403,34 @@ $('btn-wild').onclick=async()=>{
   $('wp').value=''; $('wild-msg').textContent='Senha dos amigos atualizada';
  }catch(e){$('wild-msg').textContent=e.message;}
 };
-$('rkind-open')&&($('rkind-open').onchange=$('rkind-invite').onchange=function(){
+function syncRoomForm(){
  const invite=$('rkind-invite')&&$('rkind-invite').checked;
  if($('rp')){ $('rp').disabled=!invite; if(!invite) $('rp').value=''; }
-});
+ const ttlBox=$('rttl');
+ if(ttlBox){
+  if(!invite){ ttlBox.checked=true; ttlBox.disabled=true; }
+  else ttlBox.disabled=false;
+ }
+ const ttl=ttlBox?!!ttlBox.checked:false;
+ if($('rhost-block')) $('rhost-block').hidden=!ttl;
+ if(!ttl){
+  if($('rhost')) $('rhost').checked=false;
+  if($('rhost-wrap')) $('rhost-wrap').hidden=true;
+ }
+}
+$('rkind-open')&&($('rkind-open').onchange=$('rkind-invite').onchange=syncRoomForm);
+$('rttl')&&($('rttl').onchange=syncRoomForm);
 $('rhost')&&($('rhost').onchange=function(){
  if($('rhost-wrap')) $('rhost-wrap').hidden=!$('rhost').checked;
 });
+syncRoomForm();
 $('btn-room').onclick=async()=>{
  let slug=$('rn').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
  const title=$('rd').value.trim()||slug;
  const open=!($('rkind-invite')&&$('rkind-invite').checked);
+ const ttl=open || (($('rttl')&&$('rttl').checked));
  const wp=$('rp')?$('rp').value:'';
- const wantHost=$('rhost')&&$('rhost').checked;
+ const wantHost=ttl && $('rhost')&&$('rhost').checked;
  const hostNick=(($('rhost-nick')&&$('rhost-nick').value)||'').trim().toLowerCase();
  const hostPw=$('rhost-pw')?$('rhost-pw').value:'';
  $('room-msg').textContent='';
@@ -423,14 +438,23 @@ $('btn-room').onclick=async()=>{
  if(!open && (!wp || wp.length<8)){$('room-msg').textContent='Senha de convite com no mínimo 8 caracteres';return;}
  if(wantHost && (!hostNick || hostPw.length<8)){$('room-msg').textContent='Anfitrião precisa de nick e senha (mínimo 8)';return;}
  try{
-  const body={id:slug,title:title,open:open,host:!!wantHost};
+  const body={id:slug,title:title,open:open,ttl:!!ttl,host:!!wantHost};
   if(!open) body.friends_password=wp;
   if(wantHost){ body.host_nick=hostNick; body.host_password=hostPw; }
   await reg('/create-room', body);
   $('rn').value=''; $('rd').value=''; if($('rp')) $('rp').value='';
+  if($('rttl')) $('rttl').checked=false;
   if($('rhost')) $('rhost').checked=false; if($('rhost-wrap')) $('rhost-wrap').hidden=true;
   if($('rhost-nick')) $('rhost-nick').value=''; if($('rhost-pw')) $('rhost-pw').value='';
-  $('room-msg').textContent=open?('Sala '+slug+' pública criada (24h'+(wantHost?', anfitrião '+hostNick:'')+')'):('Sala '+slug+' de convite criada (24h'+(wantHost?', anfitrião '+hostNick:'')+')');
+  if($('rkind-invite')) $('rkind-invite').checked=true;
+  syncRoomForm();
+  let msg='Sala '+slug+' criada';
+  if(open) msg+=' (pública, 24h';
+  else if(ttl) msg+=' (convite, 24h';
+  else msg+=' (convite definitiva';
+  if(wantHost) msg+=', anfitrião '+hostNick;
+  msg+=')';
+  $('room-msg').textContent=msg;
   loadRooms._k=null; await loadRooms();
  }catch(e){$('room-msg').textContent=e.message;}
 };

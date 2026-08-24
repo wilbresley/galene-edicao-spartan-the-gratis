@@ -90,6 +90,7 @@ O pacote público tem o fluxo polido. Aqui no privado também:
 chmod +x scripts/instalar-completo.sh && ./scripts/instalar-completo.sh
 ```
 
-Sempre cria **sala convite**. Guia para IA: [INSTALACAO-PARA-IA.md](INSTALACAO-PARA-IA.md).
+Sempre cria **sala convite**. Extra no painel: convite definitiva (padrão), convite 24h ou pública 24h (anfitrião só nas de 24h).
+Guia para IA: [INSTALACAO-PARA-IA.md](INSTALACAO-PARA-IA.md).
 Exports de conversa: docs/exports/.
 Regras Cursor: `.cursor/rules/` (CodeGraph + convenções Spartan).

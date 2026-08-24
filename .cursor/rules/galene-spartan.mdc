@@ -20,6 +20,7 @@ Este projeto **não** é o Smart Castro. Pasta canónica: `galene-edicao-spartan
 
 - Textos visíveis em **PT-BR**. Ícones do header vermelhos; estados ligado (mic/câmera/tela) podem ser verdes; **rótulos e nome da sala** brancos.
 - Paleta: preto, vermelho `#dc2626`, fundo grid/lista `#33363d`, nicks pretos.
+- Salas extra: convite definitiva (padrão) ou 24h; pública sempre 24h; anfitrião só nas de 24h. Contador `#spartan-ttl` reconstitui no `start()` / F5, não só no submit do login.
 - Não “corrigir” identificadores, rotas, chaves JSON, logs nem testes.
 
 ## Deploy estático (sala já no ar)

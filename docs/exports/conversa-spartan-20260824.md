@@ -1,6 +1,6 @@
 # Export da conversa Cursor — Galene/Spartan
 
-Gerado em: 2026-08-24
+Gerado em: 2026-08-24 (noite)
 Fonte: agent-transcripts/9c35dbb1-0ff3-4dd3-ad70-d720a2b8e206
 
 Texto dos pedidos e respostas. Chamadas de ferramenta aparecem só como `[tool: nome]`. Sem senhas de produção.
@@ -589,9 +589,9 @@ cat > groups/jogos.json << EOF
   "codecs": ["vp8", "vp9", "opus"],
   "unrestricted-tokens": true,
   "users": {
-    "admin": {"password": "${SENHA_ADMIN}", "permissions": "op"}
+    "admin": {"[redacted], "permissions": "op"}
   },
-  "wildcard-user": {"password": "${SENHA_SALA}", "permissions": "present"}
+  "wildcard-user": {"[redacted], "permissions": "present"}
 }
 EOF
 
@@ -761,9 +761,9 @@ cat > groups/jogos.json << 'EOF'
   "codecs": ["vp8", "vp9", "opus"],
   "unrestricted-tokens": true,
   "users": {
-    "admin": {"password": "GaleneAdmin2026", "permissions": "op"}
+    "admin": {"[redacted], "permissions": "op"}
   },
-  "wildcard-user": {"password": "jogos2026", "permissions": "present"}
+  "wildcard-user": {"[redacted], "permissions": "present"}
 }
 EOF
 
@@ -904,9 +904,9 @@ services:
   "codecs": ["vp8", "vp9", "opus"],
   "unrestricted-tokens": true,
   "users": {
-    "admin": {"password": "GaleneAdmin2026", "permissions": "op"}
+    "admin": {"[redacted], "permissions": "op"}
   },
-  "wildcard-user": {"password": "jogos2026", "permissions": "present"}
+  "wildcard-user": {"[redacted], "permissions": "present"}
 }
 bresley@debian:~/docker/galene$
 </user_query>
@@ -1579,9 +1579,9 @@ cat > ~/docker/galene/groups/jogos.json << 'EOF'
   "codecs": ["vp9", "vp8", "opus"],
   "unrestricted-tokens": true,
   "users": {
-    "admin": {"password": "GaleneAdmin2026", "permissions": "op"}
+    "admin": {"[redacted], "permissions": "op"}
   },
-  "wildcard-user": {"password": "jogos2026", "permissions": "present"}
+  "wildcard-user": {"[redacted], "permissions": "present"}
 }
 EOF
 ```
@@ -1758,9 +1758,9 @@ cat > ~/docker/galene/groups/spartan.json << 'EOF'
   "codecs": ["vp9", "vp8", "opus"],
   "unrestricted-tokens": true,
   "users": {
-    "admin": {"password": "GaleneAdmin2026", "permissions": "op"}
+    "admin": {"[redacted], "permissions": "op"}
   },
-  "wildcard-user": {"password": "&d%4j$OuTJOiURKX1Mff", "permissions": "present"}
+  "wildcard-user": {"[redacted], "permissions": "present"}
 }
 EOF
 cat ~/docker/galene/groups/spartan.json
@@ -1780,9 +1780,9 @@ bresley@debian:~/docker/galene$ cat > ~/docker/galene/groups/spartan.json << 'EO
   "codecs": ["vp9", "vp8", "opus"],
   "unrestricted-tokens": true,
   "users": {
-    "admin": {"password": "GaleneAdmin2026", "permissions": "op"}
+    "admin": {"[redacted], "permissions": "op"}
   },
-  "wildcard-user": {"password": "&d%4j$OuTJOiURKX1Mff", "permissions": "present"}
+  "wildcard-user": {"[redacted], "permissions": "present"}
 }
 EOF
 cat ~/docker/galene/groups/spartan.json
@@ -1793,9 +1793,9 @@ cat ~/docker/galene/groups/spartan.json
   "codecs": ["vp9", "vp8", "opus"],
   "unrestricted-tokens": true,
   "users": {
-    "admin": {"password": "GaleneAdmin2026", "permissions": "op"}
+    "admin": {"[redacted], "permissions": "op"}
   },
-  "wildcard-user": {"password": "&d%4j$OuTJOiURKX1Mff", "permissions": "present"}
+  "wildcard-user": {"[redacted], "permissions": "present"}
 }
 bresley@debian:~/docker/galene$
 </user_query>
@@ -1926,9 +1926,9 @@ cat > ~/docker/galene/groups/spartan.json << 'EOF'
   "codecs": ["vp9", "vp8", "opus"],
   "unrestricted-tokens": true,
   "users": {
-    "admin": {"password": "GaleneAdmin2026", "permissions": "op"}
+    "admin": {"[redacted], "permissions": "op"}
   },
-  "wildcard-user": {"password": "&d%4j$OuTJOiURKX1Mff", "permissions": "present"}
+  "wildcard-user": {"[redacted], "permissions": "present"}
 }
 EOF
 ls ~/docker/galene/groups/
@@ -1949,9 +1949,9 @@ cat > ~/docker/galene/groups/spartan.json << 'EOF'
   "codecs": ["vp9", "vp8", "opus"],
   "unrestricted-tokens": true,
   "users": {
-    "admin": {"password": "GaleneAdmin2026", "permissions": "op"}
+    "admin": {"[redacted], "permissions": "op"}
   },
-  "wildcard-user": {"password": "&d%4j$OuTJOiURKX1Mff", "permissions": "present"}
+  "wildcard-user": {"[redacted], "permissions": "present"}
 }
 EOF
 ls ~/docker/galene/groups/
@@ -2146,9 +2146,9 @@ cat > ~/docker/galene/groups/spartan.json << 'EOF'
   "codecs": ["vp9", "vp8", "opus"],
   "unrestricted-tokens": true,
   "users": {
-    "admin": {"password": "GaleneAdmin2026", "permissions": "op"}
+    "admin": {"[redacted], "permissions": "op"}
   },
-  "wildcard-user": {"password": "Spartandosabiguinhos@2026", "permissions": "present"}
+  "wildcard-user": {"[redacted], "permissions": "present"}
 }
 EOF
 grep wildcard-user ~/docker/galene/groups/spartan.json
@@ -2168,13 +2168,13 @@ bresley@debian:~/docker/galene$ cat > ~/docker/galene/groups/spartan.json << 'EO
   "codecs": ["vp9", "vp8", "opus"],
   "unrestricted-tokens": true,
   "users": {
-    "admin": {"password": "GaleneAdmin2026", "permissions": "op"}
+    "admin": {"[redacted], "permissions": "op"}
   },
-  "wildcard-user": {"password": "Spartandosabiguinhos@2026", "permissions": "present"}
+  "wildcard-user": {"[redacted], "permissions": "present"}
 }
 EOF
 grep wildcard-user ~/docker/galene/groups/spartan.json
-  "wildcard-user": {"password": "Spartandosabiguinhos@2026", "permissions": "present"}
+  "wildcard-user": {"[redacted], "permissions": "present"}
 bresley@debian:~/docker/galene$
 </user_query>
 
@@ -2212,10 +2212,10 @@ cat > ~/docker/galene/groups/spartan.json << 'EOF'
   "codecs": ["vp9", "vp8", "opus"],
   "unrestricted-tokens": true,
   "users": {
-    "admin": {"password": "Y7T^XuvYqr6hw2eOq1b1", "permissions": "op"},
-    "bresley": {"password": "wpBfJogQCyJPgf0&^hKs", "permissions": "op"}
+    "admin": {"[redacted], "permissions": "op"},
+    "bresley": {"[redacted], "permissions": "op"}
   },
-  "wildcard-user": {"password": "Spartandosabiguinhos@2026", "permissions": "present"}
+  "wildcard-user": {"[redacted], "permissions": "present"}
 }
 EOF
 grep -A6 '"users"' ~/docker/galene/groups/spartan.json
@@ -2235,18 +2235,18 @@ bresley@debian:~/docker/galene$ cat > ~/docker/galene/groups/spartan.json << 'EO
   "codecs": ["vp9", "vp8", "opus"],
   "unrestricted-tokens": true,
   "users": {
-    "admin": {"password": "Y7T^XuvYqr6hw2eOq1b1", "permissions": "op"},
-    "bresley": {"password": "wpBfJogQCyJPgf0&^hKs", "permissions": "op"}
+    "admin": {"[redacted], "permissions": "op"},
+    "bresley": {"[redacted], "permissions": "op"}
   },
-  "wildcard-user": {"password": "Spartandosabiguinhos@2026", "permissions": "present"}
+  "wildcard-user": {"[redacted], "permissions": "present"}
 }
 EOF
 grep -A6 '"users"' ~/docker/galene/groups/spartan.json
   "users": {
-    "admin": {"password": "Y7T^XuvYqr6hw2eOq1b1", "permissions": "op"},
-    "bresley": {"password": "wpBfJogQCyJPgf0&^hKs", "permissions": "op"}
+    "admin": {"[redacted], "permissions": "op"},
+    "bresley": {"[redacted], "permissions": "op"}
   },
-  "wildcard-user": {"password": "Spartandosabiguinhos@2026", "permissions": "present"}
+  "wildcard-user": {"[redacted], "permissions": "present"}
 }
 bresley@debian:~/docker/galene$
 </user_query>
@@ -24166,6 +24166,682 @@ Vou deixar os ícones do header vermelhos, os textos brancos, e aplicar o cinza 
 
 ## user (1567)
 
+[Image]
+<image_files>
+The following images were provided by the user and saved to the workspace for future use:
+1. C:\Users\wilian.bresley\.cursor\projects\s-workspace-smart-castro-app/assets/c__Users_wilian.bresley_AppData_Roaming_Cursor_User_workspaceStorage_3778fa4f0ffaf04fa5e1773fd4c16926_images_image-17bbb58b-3284-476b-b5b0-a23628cc5037.png
+
+These images can be copied for use in other locations.
+</image_files>
+<timestamp>Monday, Aug 24, 2026, 5:06 PM (UTC-3)</timestamp>
+<user_query>
+Fa o seguinte no header, tem os textos né de cada iten, microfone camera compartilhar etc, deixa os icones como estão vermelhos, mas somente o texto deixa branco.
+
+E o fundo do grid e da caixa dos usuários que ta o cinza escuro deixa nessa cor que mandei imagem pfv pra eu ver!
+</user_query>
+
+## assistant (1568)
+
+[tool: Grep]
+[tool: Shell]
+
+## assistant (1569)
+
+[tool: Read]
+[tool: Read]
+[tool: Grep]
+[tool: Grep]
+
+## assistant (1570)
+
+Ícones do header ficam **vermelhos** (como estão, inclusive o verde quando mic/câmera/tela estão ligados). Só o texto — Microfone, Câmera, Compartilhar tela, etc. — fica **branco**.
+
+O cinza do grid e da lista de usuários passou para a cor da imagem: **`#33363d`**. As caixinhas pretas dos nicks não mudam.
+
+Arquivos já estão em `S:\Downloads\galene-sala-static\`. No Debian:
+
+```bash
+cp ~/docker/galene/galene-sala-static/galene.html \
+   ~/docker/galene/galene-sala-static/galene-spartan.css \
+   ~/docker/galene/static/
+```
+
+Sem restart. Hard refresh e confirma **`v=66`**.
+
+## user (1571)
+
+<timestamp>Monday, Aug 24, 2026, 5:23 PM (UTC-3)</timestamp>
+<user_query>
+Ficou bom, e o nome da sala quero branco também!
+
+E agora no painel admin, quero que na hora de criar salas quero fazer uma pequena mudança, salas publicas agora tem um prazo de 24h, ao criar uma sala publica o tempo dela é de 24h, e enquanto as pessoas estiverem nessa sala, deve no header, bem no meio da páfina, aparecer um contador de 24h que vai reduzinho tipo 23:59, 23:58, 23:57 e que a cada minuto passado vai reduzindo, mostrando o contador e uma mensagem falando, Tempo até exclusão desde sala!
+E na hora de criar as salas publicas que agora por padrão terão essas 24h de limite, nela seja como já é possivel entrar sem senha, só com usuário, mas na tela de login de salas publicas ter 2 opções de login, por padrão logar sem senha como Temporario, logar com usuário cadastrado, por padrão vem com a tela de logar sem senha, e dai um botão ao lado de logar com outro tipo de conta algo do tipo um botão que ao apertar muda para login com usuário cadastrado, e dai aparece o campo de senha, pois no login sem senha o campo de senha já nem parece.
+E na hora de criar a sala temporaria de 24h também na hora de criar ela, ser possivel criar um anfitrião, que será o usuário que será o "admin dessa sala", ele consegue ckickar alguém, silenciar, imprdir de transmitir e etc, tudo que um admin normal consegue, menos entrar no painel admin é claro, ele jámais deve consegur entrar no painel admin, não deve nem aparecer essa opção pra ele, ele é um admin só da sala e temporario que sumira junto com a sala em 24h.
+Assim como também deve ser possivel criar uma sala com convite, onde exige senha para entrar, mas também com esse timer de 24h, e com ess anfitrição temporario. E esse anfitrião temporario no momento de criar a salas de 24h deve perguntar se ela é publica, se ela é com senha de convite, e se terá enfitrião, uma vez marcado o anfitrião deverá ser preenchido o nome dele e criado uma senha para ele também, e em 24 tudo isso some.
+Tendeu, oq acha analisa esse pedido com carinho e cuidado, e me diz, e por segurança, antes de fazer esse pedidoe implantar, faz um commit detalhado de tudo que já foi feito, atualiza toda a documentação, e os scripts de instalação pois agora tem arquivos novos como os sonzinhos, sabe, deixa tudo tudo alinhado nos dois repositórios, salva essa nossa conversa tbm no privado, salva as regras do cursor e do codegraph tbm. 
+E só depois implanta essa sistema das salas que descrevi, bola um plano pra isso blz.
+E pode fazer ta autorizado, ah e nos commits já da um push tbm claro!
+</user_query>
+
+## assistant (1572)
+
+Antes do sistema de 24h, vou alinhar o que já está feito (nome da sala em branco, commit, docs, instalador, os dois repositórios e a conversa) e, em paralelo, analisar o pedido no código para montar o plano.
+[tool: TodoWrite]
+[tool: GetDynamicTools]
+[tool: GetDynamicTools]
+[tool: Glob]
+[tool: Glob]
+[tool: SearchConversations]
+
+## assistant (1573)
+
+[tool: CallDynamicTool]
+[tool: Read]
+[tool: Read]
+[tool: Read]
+[tool: Read]
+[tool: Glob]
+
+## assistant (1574)
+
+[tool: CallDynamicTool]
+[tool: Grep]
+[tool: Glob]
+[tool: Grep]
+[tool: Read]
+[tool: GetDynamicTools]
+
+## assistant (1575)
+
+[tool: CallDynamicTool]
+[tool: Grep]
+[tool: Grep]
+[tool: Glob]
+[tool: Read]
+[tool: Grep]
+
+## assistant (1576)
+
+[tool: Grep]
+[tool: Grep]
+[tool: Grep]
+[tool: Glob]
+[tool: Read]
+[tool: Read]
+[tool: CallDynamicTool]
+
+## assistant (1577)
+
+[tool: Read]
+[tool: Read]
+[tool: Grep]
+[tool: CallDynamicTool]
+[tool: Read]
+[tool: Grep]
+[tool: Glob]
+
+## assistant (1578)
+
+[tool: CallDynamicTool]
+[tool: Read]
+[tool: Read]
+[tool: Grep]
+[tool: Glob]
+[tool: Read]
+[tool: Grep]
+
+## assistant (1579)
+
+[tool: Grep]
+[tool: Glob]
+[tool: Read]
+[tool: Grep]
+[tool: Read]
+[tool: Read]
+
+## assistant (1580)
+
+[tool: CallDynamicTool]
+[tool: Read]
+[tool: Read]
+[tool: Read]
+[tool: Glob]
+[tool: Read]
+
+## assistant (1581)
+
+[tool: Read]
+[tool: Grep]
+[tool: Glob]
+[tool: Read]
+[tool: Glob]
+[tool: Read]
+
+## assistant (1582)
+
+O pedido das salas 24h é sólido; primeiro fecho o nome branco, o snapshot (docs, regras, conversa, os dois repos) e só então implemento. Há um detalhe de segurança importante: hoje qualquer `op` entra no painel — o anfitrião temporário não pode.
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: TodoWrite]
+[tool: Shell]
+[tool: Shell]
+[tool: Glob]
+[tool: Read]
+
+## assistant (1583)
+
+[tool: Shell]
+[tool: Read]
+[tool: Grep]
+[tool: Read]
+
+## assistant (1584)
+
+[tool: Read]
+[tool: Shell]
+[tool: Read]
+[tool: Read]
+
+## assistant (1585)
+
+[tool: Read]
+[tool: Read]
+[tool: Read]
+
+## assistant (1586)
+
+Os MP3 dos sons já estão no disco e entram no snapshot. Atualizo docs, regras, instalador e a conversa em paralelo.
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: Write]
+[tool: Write]
+[tool: StrReplace]
+[tool: Read]
+
+## assistant (1587)
+
+[tool: StrReplace]
+[tool: Read]
+[tool: StrReplace]
+[tool: Read]
+
+## assistant (1588)
+
+[tool: Read]
+[tool: StrReplace]
+
+## assistant (1589)
+
+[tool: Read]
+[tool: Read]
+
+## assistant (1590)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: Shell]
+
+## assistant (1591)
+
+[tool: Shell]
+[tool: Read]
+[tool: Grep]
+
+## assistant (1592)
+
+[tool: Read]
+[tool: Shell]
+
+## assistant (1593)
+
+[tool: Shell]
+
+## assistant (1594)
+
+[tool: Read]
+[tool: Read]
+[tool: Copy-Item]
+
+## assistant (1595)
+
+[tool: StrReplace]
+[tool: Shell]
+
+## assistant (1596)
+
+[tool: Shell]
+
+## assistant (1597)
+
+[tool: Shell]
+
+## assistant (1598)
+
+[tool: Shell]
+
+## assistant (1599)
+
+[tool: Shell]
+
+## assistant (1600)
+
+[tool: Shell]
+
+## assistant (1601)
+
+[tool: TodoWrite]
+[tool: Shell]
+
+## assistant (1602)
+
+[tool: Read]
+[tool: Read]
+[tool: Glob]
+[tool: Glob]
+
+## assistant (1603)
+
+[tool: Shell]
+
+## assistant (1604)
+
+[tool: Grep]
+[tool: StrReplace]
+
+## assistant (1605)
+
+[tool: Read]
+[tool: Read]
+
+## assistant (1606)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: Grep]
+
+## assistant (1607)
+
+[tool: Shell]
+
+## assistant (1608)
+
+[tool: Shell]
+
+## assistant (1609)
+
+Snapshot nos dois GitHubs. Agora implemento as salas 24h: TTL no sidecar, anfitrião só da sala e o contador no header.
+[tool: CallDynamicTool]
+[tool: Read]
+[tool: Read]
+[tool: Read]
+[tool: Read]
+
+## assistant (1610)
+
+[tool: CallDynamicTool]
+[tool: Read]
+[tool: Grep]
+[tool: Read]
+[tool: Read]
+
+## assistant (1611)
+
+Vou alterar o sidecar primeiro (TTL, anfitrião e o painel só para admin de verdade) e em seguida a UI.
+[tool: StrReplace]
+
+## assistant (1612)
+
+[tool: Read]
+
+## assistant (1613)
+
+[tool: Read]
+
+## assistant (1614)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+
+## assistant (1615)
+
+[tool: Read]
+[tool: Grep]
+
+## assistant (1616)
+
+[tool: Read]
+
+## assistant (1617)
+
+[tool: StrReplace]
+[tool: Grep]
+[tool: StrReplace]
+[tool: Read]
+
+## assistant (1618)
+
+[tool: Read]
+[tool: Grep]
+
+## assistant (1619)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+
+## assistant (1620)
+
+[tool: StrReplace]
+[tool: Grep]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: Grep]
+
+## assistant (1621)
+
+[tool: Read]
+[tool: StrReplace]
+[tool: StrReplace]
+
+## assistant (1622)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: Read]
+
+## assistant (1623)
+
+[tool: Grep]
+[tool: Grep]
+
+## assistant (1624)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+
+## assistant (1625)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+
+## assistant (1626)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+
+## assistant (1627)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: Read]
+
+## assistant (1628)
+
+[tool: Read]
+
+## assistant (1629)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+
+## assistant (1630)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+
+## assistant (1631)
+
+[tool: Read]
+[tool: Read]
+[tool: Read]
+
+## assistant (1632)
+
+[tool: StrReplace]
+[tool: Shell]
+
+## assistant (1633)
+
+[tool: Shell]
+
+## assistant (1634)
+
+[tool: Shell]
+
+## assistant (1635)
+
+[tool: Shell]
+
+## assistant (1636)
+
+[tool: TodoWrite]
+
+## assistant (1637)
+
+O pedido faz sentido, e o ponto de segurança mais importante era este: **hoje qualquer `op` de qualquer sala entrava no painel**. O anfitrião de 24h **não pode**. Por isso o snapshot foi primeiro, e só depois o sistema novo.
+
+**Nome da sala** no header ficou **branco**. Ícones continuam vermelhos (verde quando mic/câmera/tela estão ligados).
+
+## O que eu achei do pedido
+
+É o modelo certo para salas “de uma noite”:
+
+- A **sala principal** (a do instalador, convite) **não** some.
+- Tudo o que o painel **cria agora** é sala de **24h**: pública **ou** convite.
+- Pública: entra só com nick (temporário). Quem tem conta da sala principal usa o botão e vê o campo de senha.
+- Anfitrião: `op` **só daquela sala** (kick, silenciar, impedir de transmitir). **Não** entra no `/admin/` — o botão nem aparece. A conta dele some com a sala.
+- No header, no **meio**: `Tempo até exclusão desta sala` e o relógio `23:59` → `23:58` (hora:minuto).
+
+Troquei o esvaziar **na hora cheia** (que não apagava a sala) por **apagar o grupo aos 24h**. Públicas extra que já existiam ganham 24h no restart do sidecar, para não ficarem eternas.
+
+## Snapshot (antes das 24h) — já no GitHub
+
+- Privado: `6c53c0b` — UI v67, sons MP3, docs, regras Cursor, conversa em `docs/exports/conversa-spartan-20260824.md`
+- Público: `53be7d8` — o mesmo, **sem** a conversa
+
+## Sistema 24h — também já no GitHub
+
+- Privado: `295a26b`
+- Público: `bf0afb7`
+
+## Subir no Debian
+
+Isto **precisa** de restart do sidecar (`registry.py`). Arquivos já estão em `S:\Downloads\galene-sala-static\`.
+
+```bash
+cp ~/docker/galene/galene-sala-static/galene.html \
+   ~/docker/galene/galene-sala-static/galene.js \
+   ~/docker/galene/galene-sala-static/galene-spartan.css \
+   ~/docker/galene/galene-sala-static/spartan-boot.js \
+   ~/docker/galene/galene-sala-static/admin.js \
+   ~/docker/galene/galene-sala-static/admin.html \
+   ~/docker/galene/galene-sala-static/admin/index.html \
+   ~/docker/galene/static/
+
+mkdir -p ~/docker/galene/static/admin
+cp ~/docker/galene/galene-sala-static/admin/index.html \
+   ~/docker/galene/static/admin/
+
+cp ~/docker/galene/galene-sala-static/registry.py \
+   ~/docker/galene/registry.py
+docker restart spartan-reg
+```
+
+Hard refresh. Confirma **`v=68`** no CSS e **`v=78`** no JS.
+
+No painel: **Salas → Criar sala (24 horas)** — pública ou convite, e se quiser anfitrião (nick + senha). Na sala pública, o login vem sem senha; o botão ao lado troca para conta cadastrada.
+
+## user (1638)
+
+[Image]
+[Image]
+<image_files>
+The following images were provided by the user and saved to the workspace for future use:
+1. C:\Users\wilian.bresley\.cursor\projects\s-workspace-smart-castro-app/assets/c__Users_wilian.bresley_AppData_Roaming_Cursor_User_workspaceStorage_3778fa4f0ffaf04fa5e1773fd4c16926_images_image-baa569c3-851f-4c7e-8dc8-54e66d96f5d9.png
+2. C:\Users\wilian.bresley\.cursor\projects\s-workspace-smart-castro-app/assets/c__Users_wilian.bresley_AppData_Roaming_Cursor_User_workspaceStorage_3778fa4f0ffaf04fa5e1773fd4c16926_images_image-1c4f2aae-7962-42e1-8844-e2d75690a06e.png
+
+These images can be copied for use in other locations.
+</image_files>
+<timestamp>Monday, Aug 24, 2026, 5:42 PM (UTC-3)</timestamp>
+<user_query>
+Ficou interessante
+Mas na tela de login ao mudar para logar com senha a interface fica bugada e fora da caix, e o contafor não ta centralizado, ele ta no canto encima do nome da sala, ele tem que ficar centralizado, na verdade não quero ele mais centralizado, quero ele a direita do nome da sala, coloca o contador a direita do nome da sala, e coloca assim.
+Tempo até exclusão desta sala: xx:xx
+Tendeu!
+
+Ah e sobre as salas, as salas de 24h deve ser uma opção, se quiser criar mais salas definitivas que são com convite eu posso criar!
+Então faz esses ajustes ai por favor!
+</user_query>
+
+## assistant (1639)
+
+Vou corrigir o botão de login para ficar dentro da caixa, colocar o contador à direita do nome da sala num só linha, e deixar as 24h opcionais na criação (salas de convite definitivas continuam possíveis).
+[tool: GetDynamicTools]
+[tool: Grep]
+[tool: Grep]
+
+## assistant (1640)
+
+[tool: CallDynamicTool]
+[tool: Read]
+[tool: Read]
+[tool: Read]
+[tool: Read]
+
+## assistant (1641)
+
+[tool: Grep]
+[tool: Grep]
+[tool: Read]
+[tool: Read]
+[tool: Grep]
+[tool: Grep]
+
+## assistant (1642)
+
+[tool: Read]
+[tool: Read]
+[tool: Read]
+[tool: Read]
+[tool: Grep]
+[tool: Read]
+
+## assistant (1643)
+
+[tool: Grep]
+[tool: Read]
+
+## assistant (1644)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+
+## assistant (1645)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+
+## assistant (1646)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+
+## assistant (1647)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+
+## assistant (1648)
+
+[tool: Shell]
+
+## assistant (1649)
+
+O botão de login saía da caixa porque o formulário tinha **altura fixa** (`23em`). Quando a senha aparecia, o conteúdo transbordava. A caixa agora cresce e o botão fica **dentro**.
+
+O contador ficou à **direita do nome da sala**, numa linha só:
+
+**Tempo até exclusão desta sala: 23:58**
+
+No painel, 24h é **opção**. O padrão ao criar é **convite definitiva** (fica). Pública continua 24h. No convite podes marcar “Sala temporária (24h)” e, aí sim, anfitrião.
+
+Arquivos em `S:\Downloads\galene-sala-static\`. No Debian:
+
+```bash
+cp ~/docker/galene/galene-sala-static/galene.html \
+   ~/docker/galene/galene-sala-static/galene.js \
+   ~/docker/galene/galene-sala-static/galene-spartan.css \
+   ~/docker/galene/galene-sala-static/admin.js \
+   ~/docker/galene/galene-sala-static/admin.html \
+   ~/docker/galene/static/
+
+mkdir -p ~/docker/galene/static/admin
+cp ~/docker/galene/galene-sala-static/admin/index.html \
+   ~/docker/galene/static/admin/
+
+cp ~/docker/galene/galene-sala-static/registry.py \
+   ~/docker/galene/registry.py
+docker restart spartan-reg
+```
+
+Hard refresh. Confirma **`v=69`** no CSS.
+
+## user (1650)
+
+<timestamp>Monday, Aug 24, 2026, 5:51 PM (UTC-3)</timestamp>
+<user_query>
+Deu certo, mas ao atualizar a página com f5, control+f5, control+shift+R, de qualqeur modo ao atualizar a ágina o contador some, e não aparece mais, ele só aparece ao logar na sala, o contador ao lado do nome da sala deve se manter mesmo atualizando a sala, de resto acho que ta certo agora, então atualzia esse contador pra ele ficar!
+</user_query>
+
+## assistant (1651)
+
+O contador some no F5 porque o relógio só é ligado no submit do login; no rejoin da sessão isso não corre. Vou amarrá-lo também na reentrada.
+[tool: CallDynamicTool]
+
+## assistant (1652)
+
+[tool: CallDynamicTool]
+[tool: Grep]
+[tool: Read]
+[tool: Grep]
+
+## user (1653)
+
 <dynamic_tools>
 You have access to tools through dynamic namespaces, e.g. MCP servers, using `GetDynamicTools` and `CallDynamicTool`.
 
@@ -24300,71 +24976,120 @@ You also have access to MCP resources via `FetchMcpResource`.
 If an MCP-backed namespace requires authentication, call `mcp_auth` through `CallDynamicTool` for that namespace, then inspect it again and retry if appropriate. Do not authenticate namespaces preemptively or repeatedly.
 </dynamic_tools>
 
-## user (1568)
+## user (1654)
 
-[Image]
-<image_files>
-The following images were provided by the user and saved to the workspace for future use:
-1. C:\Users\wilian.bresley\.cursor\projects\s-workspace-smart-castro-app/assets/c__Users_wilian.bresley_AppData_Roaming_Cursor_User_workspaceStorage_3778fa4f0ffaf04fa5e1773fd4c16926_images_image-17bbb58b-3284-476b-b5b0-a23628cc5037.png
-
-These images can be copied for use in other locations.
-</image_files>
-<timestamp>Monday, Aug 24, 2026, 5:06 PM (UTC-3)</timestamp>
+<timestamp>Monday, Aug 24, 2026, 5:51 PM (UTC-3)</timestamp>
 <user_query>
-Fa o seguinte no header, tem os textos né de cada iten, microfone camera compartilhar etc, deixa os icones como estão vermelhos, mas somente o texto deixa branco.
-
-E o fundo do grid e da caixa dos usuários que ta o cinza escuro deixa nessa cor que mandei imagem pfv pra eu ver!
+Deu certo, mas ao atualizar a página com f5, control+f5, control+shift+R, de qualqeur modo ao atualizar a ágina o contador some, e não aparece mais, ele só aparece ao logar na sala, o contador ao lado do nome da sala deve se manter mesmo atualizando a sala, de resto acho que ta certo agora, então atualzia esse contador pra ele ficar!
 </user_query>
 
-## assistant (1569)
+## assistant (1655)
+
+[tool: CallDynamicTool]
+[tool: Read]
+
+## assistant (1656)
+
+[tool: GetDynamicTools]
+[tool: CallDynamicTool]
+
+## assistant (1657)
+
+[tool: CallDynamicTool]
+[tool: Grep]
+[tool: Grep]
+
+## assistant (1658)
+
+[tool: CallDynamicTool]
+[tool: Grep]
+[tool: Grep]
+
+## assistant (1659)
+
+[tool: Read]
+[tool: Grep]
+[tool: Grep]
+
+## assistant (1660)
 
 [tool: Grep]
+[tool: Read]
+[tool: Grep]
+
+## assistant (1661)
+
+[tool: Grep]
+[tool: Read]
+[tool: Read]
+
+## assistant (1662)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: StrReplace]
+
+## assistant (1663)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: Grep]
+[tool: Grep]
+[tool: Glob]
+
+## assistant (1664)
+
+[tool: Read]
+[tool: Grep]
+[tool: Grep]
+
+## assistant (1665)
+
+[tool: StrReplace]
+[tool: Grep]
+[tool: Grep]
+[tool: Read]
+
+## assistant (1666)
+
+[tool: StrReplace]
+[tool: Grep]
+[tool: Grep]
+
+## assistant (1667)
+
+[tool: StrReplace]
+[tool: StrReplace]
+[tool: Shell]
 [tool: Shell]
 
-## assistant (1570)
+## assistant (1668)
 
-[tool: Read]
-[tool: Read]
-[tool: Grep]
-[tool: Grep]
+[tool: Shell]
 
-## assistant (1571)
+## assistant (1669)
 
-Ícones do header ficam **vermelhos** (como estão, inclusive o verde quando mic/câmera/tela estão ligados). Só o texto — Microfone, Câmera, Compartilhar tela, etc. — fica **branco**.
+O contador sumia no F5 porque ele só ligava no **submit do login**. No refresh a sala reentra pela sessão e pulava esse passo — e o anfitrião/admin ainda saía antes do poll.
 
-O cinza do grid e da lista de usuários passou para a cor da imagem: **`#33363d`**. As caixinhas pretas dos nicks não mudam.
+Agora o relógio reconstitui assim que a página da sala abre (`temp-status` + `sessionStorage`), e continua depois do rejoin, inclusive para op/admin.
 
-Arquivos já estão em `S:\Downloads\galene-sala-static\`. No Debian:
+**Para subir (sem restart do Docker):**
 
 ```bash
-cp ~/docker/galene/galene-sala-static/galene.html \
-   ~/docker/galene/galene-sala-static/galene-spartan.css \
+cp ~/docker/galene/galene-sala-static/galene.js \
+   ~/docker/galene/galene-sala-static/galene.html \
    ~/docker/galene/static/
 ```
 
-Sem restart. Hard refresh e confirma **`v=66`**.
+Os ficheiros já estão em `S:\Downloads\galene-sala-static\` (`galene.js?v=80`). Hard refresh e confirma **`v=80`** no Network. Entra numa sala de 24h, dá F5: o `Tempo até exclusão desta sala: HH:MM` tem de continuar à direita do nome.
 
-## user (1572)
+## user (1670)
 
-<timestamp>Monday, Aug 24, 2026, 5:23 PM (UTC-3)</timestamp>
+<timestamp>Monday, Aug 24, 2026, 5:56 PM (UTC-3)</timestamp>
 <user_query>
-Ficou bom, e o nome da sala quero branco também!
-
-E agora no painel admin, quero que na hora de criar salas quero fazer uma pequena mudança, salas publicas agora tem um prazo de 24h, ao criar uma sala publica o tempo dela é de 24h, e enquanto as pessoas estiverem nessa sala, deve no header, bem no meio da páfina, aparecer um contador de 24h que vai reduzinho tipo 23:59, 23:58, 23:57 e que a cada minuto passado vai reduzindo, mostrando o contador e uma mensagem falando, Tempo até exclusão desde sala!
-E na hora de criar as salas publicas que agora por padrão terão essas 24h de limite, nela seja como já é possivel entrar sem senha, só com usuário, mas na tela de login de salas publicas ter 2 opções de login, por padrão logar sem senha como Temporario, logar com usuário cadastrado, por padrão vem com a tela de logar sem senha, e dai um botão ao lado de logar com outro tipo de conta algo do tipo um botão que ao apertar muda para login com usuário cadastrado, e dai aparece o campo de senha, pois no login sem senha o campo de senha já nem parece.
-E na hora de criar a sala temporaria de 24h também na hora de criar ela, ser possivel criar um anfitrião, que será o usuário que será o "admin dessa sala", ele consegue ckickar alguém, silenciar, imprdir de transmitir e etc, tudo que um admin normal consegue, menos entrar no painel admin é claro, ele jámais deve consegur entrar no painel admin, não deve nem aparecer essa opção pra ele, ele é um admin só da sala e temporario que sumira junto com a sala em 24h.
-Assim como também deve ser possivel criar uma sala com convite, onde exige senha para entrar, mas também com esse timer de 24h, e com ess anfitrição temporario. E esse anfitrião temporario no momento de criar a salas de 24h deve perguntar se ela é publica, se ela é com senha de convite, e se terá enfitrião, uma vez marcado o anfitrião deverá ser preenchido o nome dele e criado uma senha para ele também, e em 24 tudo isso some.
-Tendeu, oq acha analisa esse pedido com carinho e cuidado, e me diz, e por segurança, antes de fazer esse pedidoe implantar, faz um commit detalhado de tudo que já foi feito, atualiza toda a documentação, e os scripts de instalação pois agora tem arquivos novos como os sonzinhos, sabe, deixa tudo tudo alinhado nos dois repositórios, salva essa nossa conversa tbm no privado, salva as regras do cursor e do codegraph tbm. 
-E só depois implanta essa sistema das salas que descrevi, bola um plano pra isso blz.
-E pode fazer ta autorizado, ah e nos commits já da um push tbm claro!
+Acho que deu certo, então novamente atualia toda a documentação, dos dois repositórios, faz um commit detalhado de tudo que foi feito, salva nossa conversa no privado, atualiza os scripts, tudo pra ficar tudo tinindo e certinho!
+E dai da um push pra salvar que acho que deu boa por hoje!
+Qualquer coisas amanhã retorno com mais coisas e correções!
 </user_query>
-
-## assistant (1573)
-
-Antes do sistema de 24h, vou alinhar o que já está feito (nome da sala em branco, commit, docs, instalador, os dois repositórios e a conversa) e, em paralelo, analisar o pedido no código para montar o plano.
-[tool: TodoWrite]
-[tool: GetDynamicTools]
-[tool: GetDynamicTools]
-[tool: Glob]
-[tool: Glob]
-[tool: SearchConversations]
