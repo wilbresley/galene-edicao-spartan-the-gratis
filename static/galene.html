@@ -10,13 +10,13 @@
     <link rel="icon" type="image/jpeg" href="/icone-separtan.jpg"/>
     <link rel="stylesheet" type="text/css" href="/common.css"/>
     <link rel="stylesheet" type="text/css" href="/galene.css"/>
-    <link rel="stylesheet" type="text/css" href="/galene-spartan.css?v=58"/>
     <link rel="author" href="https://www.irif.fr/~jch/"/>
     <link rel="stylesheet" type="text/css" href="/third-party/fontawesome/css/fontawesome.min.css"/>
     <link rel="stylesheet" type="text/css" href="/third-party/fontawesome/css/solid.min.css"/>
     <link rel="stylesheet" type="text/css" href="/third-party/fontawesome/css/regular.min.css"/>
     <link rel="stylesheet" type="text/css" href="/third-party/toastify/toastify.css"/>
     <link rel="stylesheet" type="text/css" href="/third-party/contextual/contextual.css"/>
+    <link rel="stylesheet" type="text/css" href="/galene-spartan.css?v=67"/>
   </head>
 
   <body>
@@ -47,7 +47,10 @@
             <div class="galene-header">Spartan</div>
           </div>
           <div class="header-sep"></div>
-          <button type="button" id="channel-chat-btn" class="channel-chat-btn">Chat do canal</button>
+          <button type="button" id="channel-chat-btn" class="channel-chat-btn">
+            <span class="chat-btn-label">Chat do Canal</span>
+            <span class="chat-unread" hidden aria-hidden="true"><i class="fas fa-bell" aria-hidden="true"></i></span>
+          </button>
           <div id="users"></div>
         </nav>
         <div class="container">
@@ -177,7 +180,7 @@
     <div id="chat" hidden>
       <div id="chatbox">
         <div class="chat-overlay-bar">
-          <span>Chat do canal</span>
+          <span>Chat do Canal</span>
           <button type="button" class="close-chat" id="close-chat" title="Ocultar chat">
             <span class="close-icon"></span>
           </button>
@@ -234,12 +237,6 @@
               <label for="mirrorbox">Espelhar vídeo</label>
             </form>
             <p class="set-help">Mostra a sua câmera em espelho só para você. Os outros continuam a ver o lado real.</p>
-
-            <form>
-              <input id="blackboardbox" type="checkbox"/>
-              <label for="blackboardbox">Modo quadro</label>
-            </form>
-            <p class="set-help">Pede mais nitidez (texto/quadro). Usa mais dados. Desligue em chamadas normais.</p>
   
             <form>
               <input id="preprocessingbox" type="checkbox" checked/>
@@ -256,7 +253,7 @@
           </fieldset>
         </div>
 
-        <fieldset>
+        <fieldset class="spartan-hide-setting">
           <legend>Envio e recepção</legend>
 
           <form id="filterform">
@@ -265,7 +262,6 @@
               <option value="" selected>nenhum</option>
             </select>
           </form>
-          <p class="set-help">Efeito visual na sua câmera (desfocar fundo, etc.). “Nenhum” é o mais leve.</p>
 
           <form id="sendform">
             <label for="sendselect" class="sidenav-label-first">Enviar:</label>
@@ -276,7 +272,6 @@
               <option value="unlimited" selected>ilimitado</option>
             </select>
           </form>
-          <p class="set-help">Teto de qualidade que você envia. Mínimo/baixo economizam rede; normal é o equilíbrio; ilimitado manda o máximo que a conexão aguentar.</p>
 
           <form id="simulcastform">
             <label for="simulcastselect" class="sidenav-label-first">Duas qualidades:</label>
@@ -286,7 +281,6 @@
               <option value="on">ligado</option>
             </select>
           </form>
-          <p class="set-help">Envia uma versão leve e outra nítida. Automático deixa o servidor escolher o que cada um recebe. Desligado = uma só qualidade.</p>
 
           <form id="requestform">
             <label for="requestselect" class="sidenav-label">Receber:</label>
@@ -298,22 +292,41 @@
               <option value="everything" selected>tudo</option>
             </select>
           </form>
-          <p class="set-help">O que você pede por padrão. As lives na tela só aparecem quando você clica nos botões da lista; isso não substitui esses botões. “Nada” não recebe; “só áudio” você ouve sem imagem; “tudo” permite vídeo quando abre uma live.</p>
-  
+
           <form>
-            <input id="activitybox" type="checkbox"/>
+            <input id="activitybox" type="checkbox" checked/>
             <label for="activitybox">Detectar atividade</label>
           </form>
-          <p class="set-help">Destaca quem está falando. Pode usar um pouco mais de CPU.</p>
 
-          <form class="spartan-hide-setting">
+          <form>
             <input id="displayallbox" type="checkbox"/>
             <label for="displayallbox">Mostrar quem só tem áudio</label>
           </form>
-          <form class="spartan-hide-setting">
+          <form>
             <input id="hideselfbox" type="checkbox"/>
             <label for="hideselfbox">Ocultar a minha imagem</label>
           </form>
+          <form>
+            <input id="blackboardbox" type="checkbox"/>
+            <label for="blackboardbox">Modo quadro</label>
+          </form>
+        </fieldset>
+
+        <fieldset>
+          <legend>Sons da sala</legend>
+          <form>
+            <input id="soundentrarbox" type="checkbox" checked/>
+            <label for="soundentrarbox">Quando alguém entra</label>
+          </form>
+          <form>
+            <input id="soundsairbox" type="checkbox" checked/>
+            <label for="soundsairbox">Quando alguém sai</label>
+          </form>
+          <form>
+            <input id="soundmensagembox" type="checkbox" checked/>
+            <label for="soundmensagembox">Quando chega mensagem</label>
+          </form>
+          <p class="set-help">Cada som liga ou desliga à parte. Fica gravado neste computador para o teu nick, mesmo depois de fechar o browser.</p>
         </fieldset>
       </div>
       </div>
@@ -365,13 +378,21 @@
       </form>
     </dialog>
 
-    <script src="/protocol.js" defer></script>
-    <script src="/third-party/toastify/toastify.js" defer></script>
+    <script src="/protocol.js?v=2" defer></script>
+    <script src="/third-party/toastify/toastify.js?v=3" defer></script>
     <script src="/third-party/contextual/contextual.js" defer></script>
     <script src="/settings.js" defer></script>
     <script src="/filter.js" defer></script>
-    <script src="/galene.js?v=66" defer></script>
+    <script src="/galene.js?v=77" defer></script>
   <div id="spartan-toast" hidden></div>
+<div id="spartan-drop" hidden>
+  <div class="spartan-reg-card">
+    <p id="spartan-drop-msg">Ligação perdida</p>
+    <div class="spartan-dlg-acts">
+      <button type="button" id="spartan-drop-btn">Reconectar</button>
+    </div>
+  </div>
+</div>
 <div id="spartan-dlg" hidden><div class="spartan-reg-card">
 <p id="spartan-dlg-msg"></p>
 <input id="spartan-dlg-input" type="text" hidden/>

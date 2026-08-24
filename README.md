@@ -15,7 +15,7 @@ Repositório **privado** de [wilbresley](https://github.com/wilbresley). **Não*
 | `vendor/galene/` | Fonte do Galene pinado (commit `9e03b36`, 28/07/2026) |
 | `compose.yaml` | Galene (`:8443`) + sidecar `spartan-reg` (`:8091`), `network_mode: host` |
 | `registry.py` | API `/spartan-api/` (salas, convites, beacon, purge) |
-| `static/` | Home, `/salas/`, `/admin/`, sala, wallpaper, CSS/JS |
+| `static/` | Home, `/salas/`, `/admin/`, sala, wallpaper, CSS/JS, `sounds/*.mp3` |
 | `data/*.example.json` | Modelos — copie e preencha com **as suas** contas |
 | `docs/` | Documentação completa, guia limpo para replicar, backup |
 
@@ -92,3 +92,4 @@ chmod +x scripts/instalar-completo.sh && ./scripts/instalar-completo.sh
 
 Sempre cria **sala convite**. Guia para IA: [INSTALACAO-PARA-IA.md](INSTALACAO-PARA-IA.md).
 Exports de conversa: docs/exports/.
+Regras Cursor: `.cursor/rules/` (CodeGraph + convenções Spartan).

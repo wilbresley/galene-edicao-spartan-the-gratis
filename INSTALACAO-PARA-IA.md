@@ -85,6 +85,7 @@ Na pasta do projeto (clone do repo):
 | `data/config.json` | `proxyURL`, `canonicalHost`, user admin com **hash** da senha, `writableGroups: true` |
 | `data/site.json` | `main` e `home` = id da sala |
 | `groups/<sala>.json` | sala com user `op` + wildcard (convite com hash da senha de amigos, ou pública com `"type":"wildcard"`) |
+| `static/sounds/` | `entrar.mp3`, `sair.mp3`, `mensagem.mp3` — avisos da sala; vão no clone |
 | `data/accounts.json` | se o pacote usar IDs (Spartan): admin id 0; `must_change` false se senhas já finais |
 | `data/registry.json` | `{}` ou estrutura vazia do pacote |
 

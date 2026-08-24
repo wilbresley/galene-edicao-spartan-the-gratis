@@ -252,7 +252,7 @@ E no `compose.yaml` **tira** `build: .` para não recompilar por engano.
 
 Copia para o servidor (do pacote ou do teu Git):
 
-- `static/` inteiro (é a interface)
+- `static/` inteiro (é a interface), **incluindo** `static/sounds/{entrar,sair,mensagem}.mp3`
 - `registry.py`
 
 Reinicia só o sidecar se mudares o Python:
@@ -352,7 +352,7 @@ Depois: `docker restart spartan-reg`.
 
 Na sala, o microfone começa **desligado** (vermelho) em cada entrada — inclusive ao voltar do admin. O primeiro clique pede o microfone; os seguintes só mutam. A câmera fica num botão à parte. Ativar/Desativar da barra original estão escondidos.
 
-Lives com imagem **não** entram sozinhas no ecrã: aparece um botão verde (Câmera / Tela) sob o nick; o clique abre no teu grid, outro clique tira. Só áudio não ganha botão nem tile. Cada pessoa tem **Mudo** na lista (só no teu cliente). À esquerda do nome há uma bolinha: **cinza** (mic off), **amarelo** (mic ligado, parado), **verde** (falando), **vermelho** (mutado) — igual para si e para os outros. A grelha é de pares (1, 2, 4, 6… até 50). **Ocultar o meu** esconde as tuas imagens só para ti. Chat e definições abrem em janela por cima da sala (engrenagem, sem menu a deslizar).
+Lives com imagem **não** entram sozinhas no ecrã: aparece um botão verde (Câmera / Tela) sob o nick; o clique abre no teu grid, outro clique tira. Só áudio não ganha botão nem tile. Cada pessoa tem **Mudo** na lista (só no teu cliente). À esquerda do nome há uma bolinha: **cinza** (mic off), **amarelo** (mic ligado, parado), **verde** (falando), **vermelho** (mutado) — igual para si e para os outros. Sons curtos ao **entrar**, **sair** e **receber mensagem** (ficheiros em `static/sounds/*.mp3`; cada um liga/desliga em Configurações e fica gravado neste computador para o teu nick). Header: ícones vermelhos, textos e nome da sala brancos; fundo do grid/lista `#33363d`. Se a ligação cair, um overlay **Ligação perdida** deixa **Reconectar** sem voltar ao login (reconexão limpa como um login novo: um nick só, sessão velha cai no servidor). A grelha é de pares (1, 2, 4, 6… até 50). **Ocultar o meu** esconde as tuas imagens só para ti. Chat e definições abrem em janela por cima da sala (engrenagem, sem menu a deslizar). A janela de Configurações tem borda vermelha; o X de fechar (configurações, chat, lives e avisos) é um quadradinho vermelho com X branco. Configurações mostra só dispositivos e os três sons da sala; envio ilimitado, duas qualidades automático e a bolinha de fala ficam ligados por baixo, sem opções extra no menu.
 
 Quem partilha o ecrã e quer que os outros ouçam **o jogo e a voz** precisa dos **dois** ao mesmo tempo: microfone ligado **e** partilha com áudio. No Chrome/Edge no **Windows**, no popup: escolhe **ecrã inteiro** ou **aba**, e marca **partilhar áudio**. Partilhar só uma janela quase nunca traz o som do PC. No Linux o browser muitas vezes só captura áudio de aba; no Safari/iPhone não há áudio de sistema.
 

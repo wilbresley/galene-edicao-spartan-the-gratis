@@ -272,6 +272,11 @@ Admin: $ADMIN_USER
 EOF
 
 ok "Arquivos gravados."
+if [[ -f static/sounds/entrar.mp3 && -f static/sounds/sair.mp3 && -f static/sounds/mensagem.mp3 ]]; then
+  ok "Sons da sala: static/sounds/{entrar,sair,mensagem}.mp3"
+else
+  warn "Faltam MP3 em static/sounds/ (entrar.mp3, sair.mp3, mensagem.mp3). A sala sobe, mas os avisos sonoros não tocam."
+fi
 
 title "Docker…"
 docker load -i images/galene-local.tgz

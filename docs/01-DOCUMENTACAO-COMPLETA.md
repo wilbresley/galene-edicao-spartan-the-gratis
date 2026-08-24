@@ -219,6 +219,7 @@ Volume `./static` por cima do static da imagem. Arquivos-chave:
 - `admin/` — usuários, convidados, bloqueados, temporários, **logs**, salas
 - `galene.html` + `galene.js` + `galene-spartan.css` + `spartan-boot.js` — sala
 - Wallpaper `papel-de-parede.jpg`
+- Sons da sala `static/sounds/` — `entrar.mp3`, `sair.mp3`, `mensagem.mp3` (vão no Git; o instalador avisa se faltarem)
 - Rodapé fixo: Galene / Juliusz (esquerda), “Interface refeita por wilbresley” (centro), Outras salas/Home (direita). Sem linha cinza; fundo semitransparente por cima da imagem.
 
 Comportamentos de sessão:
@@ -230,7 +231,7 @@ Comportamentos de sessão:
 - F5 na mesma sala reentra; ir para outra sala depois de Sair pede nick/senha.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: handoff `localStorage` para abrir o painel já logado.
-- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=66`, `galene-spartan.css?v=58`). Estático só: copiar para `static/` e hard refresh; **sem** restart do Docker.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=77`, `galene-spartan.css?v=67`, `protocol.js?v=2`, `toastify.js?v=3`). O `galene-spartan.css` carrega **depois** do Toastify/contextual para o tema ganhar. Estático só: copiar para `static/` e hard refresh; **sem** restart do Docker.
 
 Painel admin:
 
@@ -255,12 +256,16 @@ Painel admin:
 - **Fluência:** live **assistida** (clicada) pede vídeo alto; as outras pedem áudio só (sem imagem), salvo tela sem áudio (`video-low` só para não sumir o botão Tela). `contentHint` de tela = `motion`.
 - **Uma** live na sala: já entra em foco; clique extra nela não faz nada. Duas ou mais: clique escolhe o foco.
 - **Minhas lives:** ícones de olho; verde = mostrando, vermelho = ocultando. O X nas lives dos outros esconde; o X na **própria** live **para** aquele share.
-- **Sair** no cabeçalho (vermelho `#dc2626`), com confirmação. Engrenagem: rótulo **Configurações**.
+- Engrenagem: rótulo **Configurações**. Painel só com o que a sala usa: perfil (trocar senha / admin), dispositivos (câmera, microfone, espelhar, ruído, áudio HQ) e **Sons da sala** (entrada, saída e mensagem, cada um à parte). As escolhas de som ficam em `localStorage` por nick neste browser. Fora do menu (fixo por baixo): envio **ilimitado**, duas qualidades **automático** (no Firefox, desligado), receber **tudo**, filtros desligados, modo quadro desligado, detectar atividade **sempre ligado** (é a mesma lógica da bolinha).
+- **Sair** no cabeçalho (vermelho `#dc2626`), com confirmação.
 - **Ouvinte** (`body.spartan-ouvinte`): microfone ok; sem lives, sem chat texto, sem câmera/tela.
 - Lista de usuários: clique esquerdo (PC) abre o menu. No **celular**, o drawer da lista desliza da esquerda; o menu do usuário só com **segurar 1 s**, em `position:fixed` por cima do drawer (`z-index` alto). Soltar o dedo **não** fecha o menu (o clique sintético é ignorado ~900 ms).
 - Menu do outro usuário: **Mudo** (só o teu fone), **Volume (seu fone)** 0–400% em passos de 5%, e se fores admin: apresentar / **Silenciar microfone** (muta o mic **dele** para toda a sala) / Expulsar. Sem Identificar (não manda IP) e sem enviar arquivo.
 - Bolinha: **cinza** off; **amarelo** mic ligado parado; **verde** falando; **vermelho** mutado. Publish segue a **faixa** (`enabled`+`live` → `on`; senão `localMute` → `muted`) e reenvia o estado a cada ~2,5 s. Nos outros, `micstate === 'muted'` é absoluto (analisador/stats não pintam amarelo). Desmutar / falar com faixa viva publica `on` mesmo que o `localMute` da sessão tenha ficado preso.
-- Avisos Toastify (erro/aviso/info) e `#spartan-toast`: caixa **verde sólida** `#16a34a`, sem degradê. Silêncio de admin: «Seu microfone foi silenciado por Nome».
+- Sons da sala (`static/sounds/`): `entrar.mp3`, `sair.mp3`, `mensagem.mp3`. Toca para os **outros** (não para ti, não no histórico, não no lote dos 1,5 s ao entrares). Configurações: três interruptores (entrada / saída / mensagem), ligados por defeito, gravados neste computador por nick. O browser só liberta o áudio depois do primeiro clique/tecla.
+- Queda da ligação (rede/servidor), depois de já teres entrado: overlay **Ligação perdida** por cima da sala (não volta ao login). O título passa a **A reconectar…** só enquanto tenta; o botão fica **Reconectar**. Tenta sozinho aos 2 s, depois a cada ~2,5 s, e de imediato quando a rede volta (`online`). Tentativa que não fecha em 8 s é abortada e tenta de novo. A reconexão é **limpa como um login novo**: a lista/lives da sessão morta são apagadas, o servidor larga o id antigo (kick da sessão velha se fores admin), e o mesmo nick não fica duplicado para ti nem para os outros. **Sair**, `/leave` e kick não mostram o overlay.
+- Avisos Toastify (erro/aviso/info) e `#spartan-toast`: caixa **preta** com borda vermelha 2px. O X de fechar (toasts, Configurações, chat e lives) é um `×` branco em Arial (o `✖` do Toastify no Windows vira emoji roxo). Botão **Chat do Canal** com texto centrado; sininho à direita só com mensagens por ler.
+- Header da sala: fundo preto, linha vermelha embaixo; **ícones** vermelhos (verde quando mic/câmera/tela estão ligados); **textos** dos itens (Microfone, Câmera, etc.) e o **nome da sala** em branco. Lista de nicks à esquerda: caixinhas pretas com borda vermelha; fundo do grid e da lista `#33363d`. Sidebar com `border-right` vermelho 4px. Janelas (configurações, chat, convite, menus) borda vermelha 2px e cantos 12px.
 - Volume acima de 100% usa Web Audio (`GainNode`); até 100% usa `media.volume`. Não altera o que os outros ouvem.
 
 ---
@@ -323,6 +328,7 @@ A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export 
 13. Documentação + repo Git privado `wilbresley/galene-edicao-spartan`.
 14. Fonte Galene congelado em `vendor/galene` (commit `9e03b36`).
 15. Imagem `galene:local` no repo (`images/galene-local.tgz`); compose **sem** `build`.
+16. Sala (24/08/2026): fluência das lives, Minhas lives, Sair no header, overlay de reconexão, Configurações só com dispositivos/sons, toasts pretos com X branco, nicks pretos, fundo `#33363d`, labels e nome da sala brancos, sons `static/sounds/*.mp3` no Git.
 
 ---
 

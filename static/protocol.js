@@ -336,7 +336,7 @@ ServerConnection.prototype.connect = function(url) {
 
     this.socket.onerror = function(e) {
         if(sc.onerror)
-            sc.onerror.call(sc, new Error('Socket error: ' + e));
+            sc.onerror.call(sc, new Error('Socket error'));
     };
     this.socket.onopen = function(e) {
         try {
