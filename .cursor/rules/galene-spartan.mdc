@@ -1,0 +1,43 @@
+---
+description: Convenções do Spartan Chat (Galene) — docs, UI, deploy, dois repos
+alwaysApply: true
+---
+
+# Spartan Chat — como trabalhar neste repo
+
+## Onde está o código
+
+Este projeto **não** é o Smart Castro. Pasta canónica: `galene-edicao-spartan` (privado). Espelho público: `galene-edicao-spartan-the-gratis`.
+
+## Documentação
+
+- Privado: `docs/01-DOCUMENTACAO-COMPLETA.md` (implantação real) + `docs/02-DOCUMENTACAO-REPLICA-LIMPA.md` (sem IPs/senhas).
+- Público: o mesmo comportamento; **não** copiar IPs, hashes nem `sidecar.auth` para o *gratis*.
+- Conversas Cursor: só no privado, em `docs/exports/`.
+- Ao mudar tela, API, cache `?v=`, áudio, WebView/segurança, layout ou instalador: atualizar **01 e 02** no mesmo ciclo. Campo **Última revisão** se a mudança for substantiva.
+
+## UI
+
+- Textos visíveis em **PT-BR**. Ícones do header vermelhos; estados ligado (mic/câmera/tela) podem ser verdes; **rótulos e nome da sala** brancos.
+- Paleta: preto, vermelho `#dc2626`, fundo grid/lista `#33363d`, nicks pretos.
+- Não “corrigir” identificadores, rotas, chaves JSON, logs nem testes.
+
+## Deploy estático (sala já no ar)
+
+1. Copiar os ficheiros para `S:\Downloads\galene-sala-static\`
+2. No Debian: `cp` de `~/docker/galene/galene-sala-static/` para `~/docker/galene/static/`
+3. **Sem** `docker restart` para HTML/CSS/JS
+4. Subir o `?v=` em `galene.html` (e admin se mexer no painel)
+5. Hard refresh; pedir confirmação do `?v=`
+
+Python (`registry.py`): `docker restart spartan-reg`.
+
+## Dois repositórios
+
+- Privado = desenvolvimento + exports de conversa + regras Cursor.
+- Público = pacote clonável (`scripts/subir.sh`, fábrica `Mudar@123`). Mesma UI/scripts/docs limpos.
+- Nunca commitar `data/sidecar.auth`, `data/config.json` vivo, `groups/*.json` de produção, `registry.json` com pessoas.
+
+## CodeGraph
+
+Ver `.cursor/rules/codegraph-primeiro.mdc`. Índice em `.codegraph/` desta pasta; se a sessão Cursor estiver noutro workspace, passar `projectPath`. Não correr `codegraph init` / `uninstall` / `uninit`.

@@ -299,9 +299,9 @@ fieldset {
   padding-left: 8px !important;
 }
 .user-avatar{
- flex:0 0 22px;
- width:22px;
- height:22px;
+ flex:0 0 26px;
+ width:26px;
+ height:26px;
  border-radius:50%;
  background:#111 url("/icone-separtan.jpg") center/cover no-repeat;
  border:1px solid #3f4147;
@@ -924,7 +924,11 @@ body.spartan-in #left-sidebar{
 }
 
 .channel-chat-btn{
- display:block;
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ position:relative;
+ gap:8px;
  width:calc(100% - 12px);
  margin:8px 6px;
  padding:8px 10px;
@@ -935,6 +939,30 @@ body.spartan-in #left-sidebar{
  font-weight:700;
  font-size:13px;
  cursor:pointer;
+ box-sizing:border-box;
+}
+.channel-chat-btn .chat-btn-label{
+ flex:1;
+ text-align:center;
+}
+.channel-chat-btn .chat-unread{
+ display:none;
+ position:absolute;
+ right:8px;
+ top:50%;
+ transform:translateY(-50%);
+ align-items:center;
+ justify-content:center;
+ width:22px;
+ height:22px;
+ flex:0 0 22px;
+ background:#dc2626;
+ color:#fff;
+ border-radius:6px;
+}
+.channel-chat-btn.has-unread .chat-unread,
+.channel-chat-btn .chat-unread:not([hidden]){
+ display:inline-flex;
 }
 .channel-chat-btn.on{
  background:#166534;
@@ -1573,9 +1601,330 @@ body.spartan-ouvinte #peers .peer{
 .toastify.warning .toast-close,
 .toastify.error .toast-close {
   color: #fff !important;
+  opacity: 1 !important;
 }
 #spartan-toast {
   background: #16a34a !important;
   color: #fff !important;
   border: none !important;
+}
+
+/* spartan-v59 — overlay de desconexão */
+#spartan-drop{
+ position:fixed;inset:0;z-index:7000;
+ background:rgba(0,0,0,.72);
+ display:flex;align-items:center;justify-content:center;padding:1rem;
+}
+#spartan-drop[hidden]{display:none!important}
+#spartan-drop .spartan-reg-card{
+ text-align:center;margin:0 auto;width:fit-content;max-width:min(360px,92vw);
+ padding:1.1rem 1.25rem;background:#2b2d31;border:1px solid #3f4147;border-radius:14px;
+}
+#spartan-drop-msg{margin:0;color:#f2f3f5;font-weight:700;line-height:1.45}
+#spartan-drop-btn{
+ background:#16a34a;color:#fff;border:none;border-radius:8px;
+ padding:.5rem 1.15rem;font-weight:800;cursor:pointer;margin-top:.85rem;
+}
+#spartan-drop-btn:disabled{opacity:.65;cursor:wait}
+
+/* spartan-v60 — X padrão (quadradinho vermelho, X branco) + borda das janelas */
+.toastify,
+.toastify.info,
+.toastify.warning,
+.toastify.error{
+ display:inline-flex!important;
+ align-items:center;
+ gap:10px;
+ padding:10px 10px 10px 16px!important;
+}
+.toastify .toast-close,
+.toastify.info .toast-close,
+.toastify.warning .toast-close,
+.toastify.error .toast-close,
+#sidebarnav a.closebtn,
+#chat .close-chat,
+.top-video-controls .close-icon.video-stop{
+ display:inline-flex!important;
+ align-items:center!important;
+ justify-content:center!important;
+ width:28px!important;
+ height:28px!important;
+ min-width:28px!important;
+ min-height:28px!important;
+ padding:0!important;
+ margin:0!important;
+ background:#dc2626!important;
+ color:#fff!important;
+ border:none!important;
+ border-radius:6px!important;
+ opacity:1!important;
+ font-size:15px!important;
+ line-height:1!important;
+ font-weight:700!important;
+ cursor:pointer;
+ text-decoration:none!important;
+ box-shadow:none!important;
+ text-shadow:none!important;
+}
+#sidebarnav a.closebtn{
+ position:absolute;
+ top:14px;
+ right:12px;
+ height:28px!important;
+ line-height:28px!important;
+}
+#sidebarnav a.closebtn .fas,
+#sidebarnav .closebtn .fas{
+ color:#fff!important;
+ font-size:14px!important;
+ line-height:1!important;
+}
+#chat .close-chat .close-icon,
+#chat .close-chat .close-icon:before,
+.top-video-controls .close-icon.video-stop:before{
+ color:#fff!important;
+ font-size:16px!important;
+ line-height:1!important;
+}
+#sidebarnav .sidenav-panel{
+ border:2px solid #dc2626;
+ box-sizing:border-box;
+}
+
+/* spartan-v61 — borda vermelha nas janelas, nicks mais gordos, linha no header, fundo #33363d */
+body.spartan-in,
+body.spartan-in .app,
+body.spartan-in .coln-left,
+body.spartan-in .coln-right,
+body.spartan-in .row,
+body.spartan-in .container,
+body.spartan-in .full-height,
+body.spartan-in #left-sidebar,
+body.spartan-in #users,
+body.spartan-in #video-container,
+body.spartan-in #peers>.peer,
+body.spartan-in #chat #chatbox,
+body.spartan-in #chat #box,
+body.spartan-in #sidebarnav .sidenav-panel,
+body.spartan-in #sidebarnav .sidenav-content{
+ background:#33363d!important;
+}
+.navbar,
+.topnav,
+.users-header,
+.sidenav-header,
+#left-sidebar .users-header,
+.chat-overlay-bar{
+ background:#000!important;
+ border-bottom:2px solid #dc2626!important;
+}
+body.spartan-in #left-sidebar{
+ border-right:4px solid #dc2626!important;
+}
+#users>div,
+#users .user-p,
+#users>div:hover,
+#users .user-p:hover,
+#left-sidebar.active #users>div,
+#left-sidebar.active #users>div:hover{
+ border:2px solid #dc2626!important;
+ border-radius:8px!important;
+ background:#000!important;
+ background-color:#000!important;
+ background-image:none!important;
+}
+.contextualMenu,
+.contextualHoverMenu,
+#invite-dialog,
+.spartan-reg-card,
+#spartan-dlg .spartan-reg-card,
+#spartan-drop .spartan-reg-card,
+#chat #chatbox,
+#chat.spartan-chat-open #chatbox,
+#sidebarnav .sidenav-panel,
+.login-box,
+body:not(.spartan-in) #login-container .login-box{
+ border:2px solid #dc2626!important;
+ border-radius:12px!important;
+ box-sizing:border-box;
+}
+.contextualMenu,
+.contextualHoverMenu{
+ background:#33363d!important;
+}
+#invite-dialog,
+.spartan-reg-card,
+#spartan-dlg .spartan-reg-card,
+#spartan-drop .spartan-reg-card{
+ background:#33363d!important;
+}
+
+/* spartan-v62 — fundo mais escuro, nicks pretos, avatar +4px, sininho do chat */
+.channel-chat-btn{
+ display:flex!important;
+ align-items:center;
+ justify-content:space-between;
+}
+.channel-chat-btn.has-unread .chat-unread{
+ display:inline-flex!important;
+}
+
+/* spartan-v63 — folga nos nicks; toasts pretos; X vermelho em todos os avisos */
+body.spartan-in #users{
+ padding:8px 10px!important;
+ box-sizing:border-box!important;
+}
+body.spartan-in #users>div,
+body.spartan-in #users .user-p,
+body.spartan-in #users>div:hover,
+body.spartan-in #users .user-p:hover,
+body.spartan-in #left-sidebar.active #users>div{
+ margin:0 0 8px!important;
+}
+body.spartan-in #users>div:last-child,
+body.spartan-in #users .user-p:last-child{
+ margin-bottom:0!important;
+}
+
+.toastify,
+.toastify.on,
+.toastify.info,
+.toastify.warning,
+.toastify.error,
+#spartan-toast{
+ background:#000!important;
+ background-image:none!important;
+ color:#fff!important;
+ border:2px solid #dc2626!important;
+ border-radius:12px!important;
+ box-shadow:0 8px 24px rgba(0,0,0,.45)!important;
+}
+.toastify .toast-close,
+.toastify.on .toast-close,
+.toastify.info .toast-close,
+.toastify.warning .toast-close,
+.toastify.error .toast-close,
+button.toast-close{
+ appearance:none!important;
+ -webkit-appearance:none!important;
+ display:inline-flex!important;
+ align-items:center!important;
+ justify-content:center!important;
+ width:28px!important;
+ height:28px!important;
+ min-width:28px!important;
+ min-height:28px!important;
+ padding:0!important;
+ margin:0 0 0 8px!important;
+ background:#dc2626!important;
+ background-image:none!important;
+ color:#fff!important;
+ -webkit-text-fill-color:#fff!important;
+ border:none!important;
+ border-radius:6px!important;
+ opacity:1!important;
+ font-size:15px!important;
+ line-height:1!important;
+ font-weight:700!important;
+ filter:none!important;
+ mix-blend-mode:normal!important;
+ box-shadow:none!important;
+ text-shadow:none!important;
+ cursor:pointer!important;
+}
+
+/* spartan-v64 — X branco de verdade (o ✖ do Toastify vira emoji roxo no Windows) */
+.toastify .toast-close,
+.toastify.on .toast-close,
+.toastify.info .toast-close,
+.toastify.warning .toast-close,
+.toastify.error .toast-close,
+button.toast-close{
+ font-size:0!important;
+ color:transparent!important;
+ -webkit-text-fill-color:transparent!important;
+}
+.toastify .toast-close::after,
+.toastify.on .toast-close::after,
+.toastify.info .toast-close::after,
+.toastify.warning .toast-close::after,
+.toastify.error .toast-close::after,
+button.toast-close::after{
+ content:"\00d7";
+ font-family:Arial,Helvetica,sans-serif!important;
+ font-size:20px!important;
+ font-weight:700!important;
+ line-height:1!important;
+ color:#fff!important;
+ -webkit-text-fill-color:#fff!important;
+}
+.close-icon{
+ font-size:0!important;
+ color:transparent!important;
+}
+.close-icon:before,
+#chat .close-chat .close-icon:before,
+.top-video-controls .close-icon.video-stop:before{
+ content:"\00d7"!important;
+ font-family:Arial,Helvetica,sans-serif!important;
+ font-size:18px!important;
+ font-weight:700!important;
+ line-height:1!important;
+ color:#fff!important;
+ -webkit-text-fill-color:#fff!important;
+}
+#sidebarnav a.closebtn .fas{
+ display:none!important;
+}
+#sidebarnav a.closebtn::after{
+ content:"\00d7";
+ font-family:Arial,Helvetica,sans-serif!important;
+ font-size:20px!important;
+ font-weight:700!important;
+ line-height:1!important;
+ color:#fff!important;
+ -webkit-text-fill-color:#fff!important;
+}
+
+/* spartan-v65 — Spartan da lista à esquerda, centrado */
+#left-sidebar .users-header{
+ justify-content:center!important;
+ text-align:center!important;
+}
+#left-sidebar .users-header .galene-header{
+ display:block!important;
+ width:100%!important;
+ text-align:center!important;
+}
+
+/* spartan-v66 — labels brancas no header; fundo grid/lista #33363d */
+.nav-menu .nav-link label,
+.nav-menu .nav-button label,
+.nav-menu .nav-text,
+#mutebutton label,
+#mutebutton.muted label,
+#mutebutton:not(.muted) label,
+#camerabutton label,
+#camerabutton.cam-on label,
+#camerabutton:not(.cam-on) label,
+#sharebutton label,
+#sharebutton.sharing label,
+#sharebutton:not(.sharing) label,
+#hideownbutton label,
+#hideownbutton:not(.hiding) label,
+#hideownbutton.hiding label,
+#disconnectbutton label,
+.nav-menu #disconnectbutton label,
+#openside label,
+.nav-menu .nav-link:hover label,
+.nav-menu .nav-button:hover label{
+ color:#fff!important;
+}
+
+/* spartan-v67 — nome da sala no header em branco (ícones continuam vermelhos) */
+#title,
+#title.header-title,
+.navbar .header-title,
+#header #title{
+ color:#fff!important;
 }

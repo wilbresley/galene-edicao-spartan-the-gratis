@@ -1,0 +1,20 @@
+---
+description: CodeGraph é absoluto — explorar, atualizar e só então Grep/Read
+alwaysApply: true
+---
+
+# CodeGraph primeiro (absoluto)
+
+Em **toda** solicitação que precise achar símbolos, arquivos, chamadas ou fluxos neste repo, o CodeGraph é a fonte. Não é opcional.
+
+1. **Primeiro** o grafo: MCP `codegraph_explore` (passe `projectPath` para esta pasta se a sessão não estiver nela). Na CLI, o equivalente é `codegraph explore`; para um símbolo só, `codegraph node`; para o resto, `codegraph query`, `callers` / `callees` / `impact`. Se o índice puder estar velho: `codegraph status` e, se preciso, `codegraph sync`.
+2. Trate o source retornado como já lido. **Não** reabra os mesmos arquivos com Read só para “conferir”.
+3. Se o explore **cortar** funções (`signatures elided`, `trimmed`, “run another explore with the exact name”): **não** caia no Read. Chame de novo o explore/`codegraph node` com o **nome exato** da função. O grafo tem de entregar o corpo.
+4. Só use Grep/Glob/Read quando:
+   - o projeto **não** estiver indexado (sem `.codegraph/`) ou o MCP CodeGraph estiver indisponível;
+   - o caso for texto fora do grafo (docs, QSS, HTML puro, assets, configs, CSV, YAML, strings de UI);
+   - houver banner de staleness apontando arquivos editados — aí Read **só** esses arquivos.
+5. **Não** comece por Grep amplo “no escuro” quando o índice estiver OK (`codegraph status` → up to date).
+6. Após mudanças de código neste repo: `codegraph sync` (ou `index` se o sync não chegar) **antes** de voltar a confiar no grafo. O índice tem de permanecer atualizado.
+7. Não rode `codegraph init` / `uninstall` / `uninit` sozinho; se faltar índice, oriente o usuário a rodar `codegraph init` na pasta do projeto.
+8. Não diga “usei CodeGraph” em toda resposta — só use a ferramenta e responda a pergunta.

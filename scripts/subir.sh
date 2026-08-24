@@ -41,6 +41,12 @@ mkdir -p data groups recordings
 chmod 600 data/sidecar.auth 2>/dev/null || true
 [[ -f groups/spartan.json ]] || cp factory-reset/spartan.json groups/spartan.json
 
+if [[ -f static/sounds/entrar.mp3 && -f static/sounds/sair.mp3 && -f static/sounds/mensagem.mp3 ]]; then
+  echo "Sons da sala: static/sounds/{entrar,sair,mensagem}.mp3"
+else
+  echo "!! Faltam MP3 em static/sounds/ — a sala sobe, mas os avisos sonoros não tocam."
+fi
+
 echo "==> Carregando imagem galene:local (do repositório)…"
 docker load -i images/galene-local.tgz
 

@@ -66,7 +66,7 @@ Logs: `docker compose logs -f`
 | Peça | Função |
 |---|---|
 | **Galene** | SFU + TURN: áudio/vídeo/tela entre várias pessoas |
-| **static/** | Interface Spartan (home, salas, admin, sala ao vivo) |
+| **static/** | Interface Spartan (home, salas, admin, sala ao vivo, `sounds/*.mp3`) |
 | **registry.py** | Sidecar (`spartan-reg`): convites, temporários, logs, IDs, beacon |
 | **groups/spartan.json** | Sala principal (modo **convite** na fábrica) |
 | **data/** | Config, contas, registry, sidecar.auth |
@@ -202,7 +202,7 @@ Sala pública: `ensure_open_ouvinte` no beacon alinha wildcard para Ouvinte (`["
 
 ### Customizar UI
 
-Tudo em `static/`. Suba o `?v=` nos HTML/CSS ao publicar assets. Wallpaper: `static/papel-de-parede.jpg`.
+Tudo em `static/`. Suba o `?v=` nos HTML/CSS ao publicar assets. Wallpaper: `static/papel-de-parede.jpg`. Sons: `static/sounds/{entrar,sair,mensagem}.mp3`.
 
 ### Rebuild da imagem Galene (opcional)
 

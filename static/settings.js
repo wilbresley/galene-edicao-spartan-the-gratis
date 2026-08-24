@@ -36,6 +36,10 @@
  * @property {string} [filter]
  * @property {boolean} [preprocessing]
  * @property {boolean} [hqaudio]
+ * @property {boolean} [roomSounds]
+ * @property {boolean} [soundEntrar]
+ * @property {boolean} [soundSair]
+ * @property {boolean} [soundMensagem]
  * @property {boolean} [forceRelay]
  */
 
