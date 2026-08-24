@@ -110,9 +110,8 @@ function reflectSettings() {
     if(typeof settings.localMute !== 'boolean') {
         settings.localMute = true;
         store = true;
+        setLocalMute(true, false);
     }
-    settings.localMute = true;
-    setLocalMute(true, false);
 
     let videoselect = getSelectElement('videoselect');
     if(!settings.hasOwnProperty('video') ||
@@ -706,27 +705,171 @@ function spartanToggleUserMute(userId) {
     spartanRefreshMuteButtons(userId);
 }
 
-let spartanLastPublishedMuted = undefined;
+let spartanLastMicstate = undefined;
+let spartanLastMicPublishAt = 0;
+let spartanMicSeq = 0;
+let spartanMicArmed = false;
+/** @type {Record<string, number>} */
+let spartanLastMicSeq = {};
+/** @type {Record<string, boolean>} */
+let spartanHeardOn = {};
+/** @type {Record<string, number>} */
+let spartanMutedAt = {};
+/** @type {Record<string, boolean>} */
+let spartanTalkingNow = {};
+
+function spartanLocalAudioLive() {
+    let c = findUpMedia('camera');
+    if(!c || !c.stream || !c.stream.getAudioTracks)
+        return false;
+    return c.stream.getAudioTracks().some(function(t) {
+        return t.enabled && t.readyState === 'live';
+    });
+}
 
 function spartanPublishMicMuted() {
     if(!serverConnection || !serverConnection.id)
         return;
-    let next = !!(findUpMedia('camera') && getSettings().localMute);
-    if(next === spartanLastPublishedMuted)
+    let hasCam = !!findUpMedia('camera');
+    let live = spartanLocalAudioLive();
+    let localMute = !!getSettings().localMute;
+    if(live)
+        spartanMicArmed = true;
+    let state = 'off';
+    if(live)
+        state = 'on';
+    else if(spartanMicArmed && hasCam && localMute)
+        state = 'muted';
+    let now = Date.now();
+    if(state === spartanLastMicstate && now - spartanLastMicPublishAt < 2500)
         return;
-    spartanLastPublishedMuted = next;
+    spartanLastMicstate = state;
+    spartanLastMicPublishAt = now;
+    spartanMicSeq++;
     try {
         serverConnection.userAction(
-            'setdata', serverConnection.id, {muted: next ? true : null},
+            'setdata', serverConnection.id,
+            {
+                micstate: state,
+                micseq: spartanMicSeq,
+                muted: state === 'muted',
+                mic: state === 'on',
+            },
         );
     } catch(e) {}
 }
 
-function spartanRemoteMuted(userId) {
+function spartanRemoteMicState(userId) {
     if(!serverConnection || !serverConnection.users)
-        return false;
+        return 'off';
     let u = serverConnection.users[userId];
-    return !!(u && u.data && u.data.muted);
+    let d = (u && u.data) || {};
+    if(d.micstate === 'on' || d.micstate === 'muted' || d.micstate === 'off')
+        return d.micstate;
+    if(d.mic && !d.muted)
+        return 'on';
+    if(d.muted && !d.mic)
+        return 'muted';
+    return 'off';
+}
+
+function spartanHasUnmutedDownAudio(userId) {
+    if(!serverConnection)
+        return false;
+    for(let id in serverConnection.down) {
+        let c = serverConnection.down[id];
+        if(c.source !== userId || !c.stream || !c.stream.getAudioTracks)
+            continue;
+        let tracks = c.stream.getAudioTracks();
+        for(let i = 0; i < tracks.length; i++) {
+            let t = tracks[i];
+            if(t.readyState === 'live' && t.enabled && !t.muted)
+                return true;
+        }
+    }
+    return false;
+}
+
+function spartanNoteRemoteMic(userId) {
+    if(!serverConnection || !serverConnection.users)
+        return;
+    let u = serverConnection.users[userId];
+    let d = (u && u.data) || {};
+    let seq = typeof d.micseq === 'number' ? d.micseq : 0;
+    let st = spartanRemoteMicState(userId);
+    if(seq > (spartanLastMicSeq[userId] || 0)) {
+        spartanLastMicSeq[userId] = seq;
+        if(st === 'muted') {
+            spartanHeardOn[userId] = false;
+            spartanMutedAt[userId] = Date.now();
+            spartanClearRemoteSpeech(userId);
+        } else if(st === 'off') {
+            spartanHeardOn[userId] = false;
+            delete spartanMutedAt[userId];
+        } else {
+            spartanHeardOn[userId] = true;
+            delete spartanMutedAt[userId];
+        }
+    }
+}
+
+function spartanClearRemoteSpeech(userId) {
+    spartanTalkingNow[userId] = false;
+    spartanHeardOn[userId] = false;
+    if(serverConnection && serverConnection.down) {
+        for(let sid in serverConnection.down) {
+            let c = serverConnection.down[sid];
+            if(c && c.source === userId && c.userdata)
+                c.userdata.lastVoiceActivity = 0;
+        }
+    }
+    for(let sid in spartanDownTalk) {
+        let d = spartanDownTalk[sid];
+        if(d && d.uid === userId)
+            d.last = 0;
+    }
+}
+
+/**
+ * Um critério só, para si e para os outros:
+ * off / idle (amarelo) / on (verde) / muted (vermelho).
+ * @param {string} userId
+ * @returns {'off'|'idle'|'on'|'muted'}
+ */
+function spartanPeerTalkMode(userId) {
+    if(!userId || !serverConnection)
+        return 'off';
+    if(userId === serverConnection.id) {
+        let hasCam = !!findUpMedia('camera');
+        let live = spartanLocalAudioLive();
+        if(live)
+            spartanMicArmed = true;
+        if(live)
+            return spartanTalkingNow[userId] ? 'on' : 'idle';
+        if(spartanMicArmed && hasCam && getSettings().localMute)
+            return 'muted';
+        return 'off';
+    }
+    spartanNoteRemoteMic(userId);
+    let st = spartanRemoteMicState(userId);
+    if(st === 'muted')
+        return 'muted';
+    if(spartanTalkingNow[userId]) {
+        spartanHeardOn[userId] = true;
+        return 'on';
+    }
+    if(st === 'on' || spartanHeardOn[userId] || spartanHasUnmutedDownAudio(userId))
+        return 'idle';
+    return 'off';
+}
+
+function spartanRemoteMuted(userId) {
+    return spartanPeerTalkMode(userId) === 'muted';
+}
+
+function spartanRemoteMicOn(userId) {
+    let m = spartanPeerTalkMode(userId);
+    return m === 'on' || m === 'idle';
 }
 
 function spartanPaintMuteBtn(btn, userId) {
@@ -763,6 +906,24 @@ function spartanRefreshMuteButtons(userId) {
         if(b.getAttribute('data-uid') === userId)
             spartanPaintMuteBtn(b, userId);
     });
+}
+
+let spartanPeerUiTimer = null;
+function spartanEnsurePeerUiTimer() {
+    if(spartanPeerUiTimer)
+        return;
+    spartanPeerUiTimer = setInterval(function() {
+        if(!serverConnection || !serverConnection.users)
+            return;
+        for(let id in serverConnection.users) {
+            if(id === serverConnection.id)
+                continue;
+            spartanPaintTalkDot(id);
+            let row = document.getElementById('user-' + id);
+            if(row)
+                spartanEnsureMuteBelowName(row, id);
+        }
+    }, 300);
 }
 
 function spartanVolLin(userId) {
@@ -1061,6 +1222,7 @@ function gotDownStream(c) {
         delete spartanHasVideo[c.id];
         delete spartanHideOwnStream[c.id];
         spartanDropBoost(c.id);
+        spartanDropDownTalk(c.id);
         if(!replace)
             delMedia(c.localId);
         if(c.source)
@@ -1079,7 +1241,19 @@ function gotDownStream(c) {
         if(track && track.kind === 'video' && streamHasRealVideo(c.stream))
             spartanHasVideo[c.id] = true;
         setMedia(c);
-        // Não rebaixa para audio-only aqui — isso fechava screenshare e sumia o botão.
+        if(track && track.kind === 'audio' && c.source) {
+            track.onmute = function() {
+                spartanPaintTalkDot(c.source);
+                spartanRefreshMuteButtons(c.source);
+            };
+            track.onunmute = function() {
+                spartanPaintTalkDot(c.source);
+                spartanRefreshMuteButtons(c.source);
+            };
+            spartanPaintTalkDot(c.source);
+            spartanRefreshMuteButtons(c.source);
+            spartanHookDownTalk(c);
+        }
         if(c.source)
             spartanRefreshAllMedia();
     };
@@ -1219,6 +1393,7 @@ function setButtonsVisibility() {
     if(chatBtn) setVisibility('channel-chat-btn', connected && !ouvinte);
     spartanApplyOuvinteUi();
     spartanPublishMicMuted();
+    spartanEnsurePeerUiTimer();
 }
 
 /**
@@ -1243,8 +1418,20 @@ function setLocalMute(mute, reflect) {
     }
     if(reflect)
         updateSettings({localMute: mute});
-    if(mute && serverConnection)
-        spartanSetUserTalking(serverConnection.id, false);
+    if(serverConnection) {
+        if(!mute && findUpMedia('camera'))
+            spartanMicArmed = true;
+        if(!mute) {
+            let cam = findUpMedia('camera');
+            if(cam && cam.stream)
+                spartanHookLocalTalk(cam.stream, true);
+            spartanLastMicstate = undefined;
+        } else {
+            spartanTalkingNow[serverConnection.id] = false;
+            spartanLastMicstate = undefined;
+        }
+        spartanPaintTalkDot(serverConnection.id);
+    }
     spartanPublishMicMuted();
 }
 
@@ -1518,32 +1705,104 @@ function setActive(c, value) {
 
 /**
  * @param {string} userId
- * @param {boolean} on
+ * @param {'off'|'idle'|'on'|'muted'} mode
  */
-function spartanSetUserTalking(userId, on) {
+function spartanSetTalkMode(userId, mode) {
     let elt = document.getElementById('user-' + userId);
     if(!elt)
         return;
-    if(on)
-        elt.classList.add('user-talking');
-    else
-        elt.classList.remove('user-talking');
+    elt.classList.remove(
+        'user-talking', 'user-talk-1', 'user-talk-2', 'user-talk-3',
+        'user-talk-idle', 'user-talk-on', 'user-talk-muted',
+    );
+    if(mode === 'idle')
+        elt.classList.add('user-talk-idle');
+    else if(mode === 'on')
+        elt.classList.add('user-talk-on', 'user-talking');
+    else if(mode === 'muted')
+        elt.classList.add('user-talk-muted');
+}
+
+/**
+ * @param {string} userId
+ */
+function spartanPaintTalkDot(userId) {
+    if(!userId)
+        return;
+    spartanSetTalkMode(userId, spartanPeerTalkMode(userId));
 }
 
 let spartanTalkCtx = null;
+
+function spartanMeasureSpeech(analyser) {
+    if(!analyser)
+        return {rms: 0, peak: 0, speech: false};
+    let data = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(data);
+    let sum = 0;
+    let peak = 0;
+    for(let i = 0; i < data.length; i++) {
+        let v = (data[i] - 128) / 128;
+        let a = v < 0 ? -v : v;
+        sum += v * v;
+        if(a > peak)
+            peak = a;
+    }
+    let rms = Math.sqrt(sum / data.length);
+    return {rms: rms, peak: peak, speech: rms >= 0.018 || peak >= 0.12};
+}
+
+let spartanDownTalk = {};
+
+function spartanDropDownTalk(sid) {
+    let d = spartanDownTalk[sid];
+    if(!d)
+        return;
+    try { d.src.disconnect(); } catch(e) {}
+    delete spartanDownTalk[sid];
+}
+
+function spartanHookDownTalk(c) {
+    if(!c || !c.stream || !c.source)
+        return;
+    spartanDropDownTalk(c.id);
+    try {
+        if(!c.stream.getAudioTracks().length)
+            return;
+        let AC = window.AudioContext || window.webkitAudioContext;
+        if(!AC)
+            return;
+        if(!spartanTalkCtx)
+            spartanTalkCtx = new AC();
+        if(spartanTalkCtx.state === 'suspended')
+            spartanTalkCtx.resume();
+        let src = spartanTalkCtx.createMediaStreamSource(c.stream);
+        let an = spartanTalkCtx.createAnalyser();
+        an.fftSize = 512;
+        src.connect(an);
+        spartanDownTalk[c.id] = {src: src, an: an, uid: c.source};
+        if(!spartanTalkTimer)
+            spartanTalkTimer = setInterval(spartanTickLocalTalk, 120);
+    } catch(e) {}
+}
 let spartanTalkAnalyser = null;
 let spartanTalkSource = null;
 let spartanTalkTimer = null;
+let spartanTalkStream = null;
+let spartanLocalSpeechAt = 0;
 
 /**
  * @param {MediaStream} [stream]
  */
-function spartanHookLocalTalk(stream) {
+function spartanHookLocalTalk(stream, force) {
     try {
+        if(!force && spartanTalkStream === stream && spartanTalkSource)
+            return;
         if(spartanTalkSource) {
             try { spartanTalkSource.disconnect(); } catch(e) {}
             spartanTalkSource = null;
         }
+        spartanTalkStream = stream || null;
         if(!stream || !stream.getAudioTracks().length)
             return;
         let AC = window.AudioContext || window.webkitAudioContext;
@@ -1554,35 +1813,76 @@ function spartanHookLocalTalk(stream) {
         if(spartanTalkCtx.state === 'suspended')
             spartanTalkCtx.resume();
         spartanTalkAnalyser = spartanTalkCtx.createAnalyser();
-        spartanTalkAnalyser.fftSize = 512;
+        spartanTalkAnalyser.fftSize = 1024;
+        spartanTalkAnalyser.smoothingTimeConstant = 0.3;
         spartanTalkSource = spartanTalkCtx.createMediaStreamSource(stream);
         spartanTalkSource.connect(spartanTalkAnalyser);
         if(!spartanTalkTimer)
-            spartanTalkTimer = setInterval(spartanTickLocalTalk, 200);
+            spartanTalkTimer = setInterval(spartanTickLocalTalk, 80);
     } catch(e) {}
 }
 
 function spartanTickLocalTalk() {
     if(!serverConnection)
         return;
-    let on = false;
+    if(spartanTalkCtx && spartanTalkCtx.state === 'suspended')
+        spartanTalkCtx.resume();
     let c = findUpMedia('camera');
+    if(c && c.stream && c.stream !== spartanTalkStream)
+        spartanHookLocalTalk(c.stream);
+    let talking = false;
     if(c && c.stream && !getSettings().localMute && spartanTalkAnalyser) {
         let live = c.stream.getAudioTracks().some(function(t) {
             return t.enabled && t.readyState === 'live';
         });
         if(live) {
-            let data = new Uint8Array(spartanTalkAnalyser.fftSize);
-            spartanTalkAnalyser.getByteTimeDomainData(data);
-            let sum = 0;
-            for(let i = 0; i < data.length; i++) {
-                let v = (data[i] - 128) / 128;
-                sum += v * v;
-            }
-            on = Math.sqrt(sum / data.length) > 0.045;
+            talking = spartanMeasureSpeech(spartanTalkAnalyser).speech;
         }
     }
-    spartanSetUserTalking(serverConnection.id, on);
+    if(talking)
+        spartanLocalSpeechAt = Date.now();
+    else if(spartanLocalSpeechAt && Date.now() - spartanLocalSpeechAt <= 400)
+        talking = true;
+    if(serverConnection)
+        spartanTalkingNow[serverConnection.id] = talking;
+    let remoteSpeech = {};
+    for(let sid in spartanDownTalk) {
+        let d = spartanDownTalk[sid];
+        if(!d || !d.uid || (serverConnection && d.uid === serverConnection.id))
+            continue;
+        if(spartanRemoteMicState(d.uid) === 'muted')
+            continue;
+        let speech = spartanMeasureSpeech(d.an).speech;
+        if(speech)
+            d.last = Date.now();
+        if(speech || (d.last && Date.now() - d.last <= 450))
+            remoteSpeech[d.uid] = true;
+    }
+    if(serverConnection && serverConnection.users) {
+        for(let id in serverConnection.users) {
+            if(id === serverConnection.id)
+                continue;
+            if(spartanRemoteMicState(id) === 'muted') {
+                spartanTalkingNow[id] = false;
+                spartanPaintTalkDot(id);
+                continue;
+            }
+            let fromStats = false;
+            for(let sid in serverConnection.down) {
+                let dc = serverConnection.down[sid];
+                if(!dc || dc.source !== id)
+                    continue;
+                let last = dc.userdata && dc.userdata.lastVoiceActivity;
+                if(last && Date.now() - last <= activityDetectionPeriod)
+                    fromStats = true;
+            }
+            spartanTalkingNow[id] = !!remoteSpeech[id] || fromStats;
+            spartanPaintTalkDot(id);
+        }
+    }
+    spartanPublishMicMuted();
+    if(serverConnection)
+        spartanPaintTalkDot(serverConnection.id);
 }
 
 /**
@@ -1591,9 +1891,21 @@ function spartanTickLocalTalk() {
  */
 function gotDownStats(stats) {
     let c = this;
+    if(c.source && spartanRemoteMicState(c.source) === 'muted') {
+        c.userdata.lastVoiceActivity = 0;
+        spartanTalkingNow[c.source] = false;
+        spartanPaintTalkDot(c.source);
+        return;
+    }
 
     let maxEnergy = 0;
 
+    for(let tid in stats) {
+        let s = stats[tid];
+        let e = s && s['inbound-rtp'] && s['inbound-rtp'].audioEnergy;
+        if(typeof e === 'number' && e > maxEnergy)
+            maxEnergy = e;
+    }
     c.pc.getReceivers().forEach(r => {
         let tid = r.track && r.track.id;
         let s = tid && stats[tid];
@@ -1602,7 +1914,7 @@ function gotDownStats(stats) {
             maxEnergy = Math.max(maxEnergy, energy);
     });
 
-    let talking = maxEnergy > activityDetectionThreshold * activityDetectionThreshold;
+    let talking = maxEnergy > 0.018;
     if(talking)
         c.userdata.lastVoiceActivity = Date.now();
     let still = talking;
@@ -1610,16 +1922,41 @@ function gotDownStats(stats) {
         let last = c.userdata.lastVoiceActivity;
         still = !!(last && Date.now() - last <= activityDetectionPeriod);
     }
-    if(c.label === 'camera' || !c.label)
-        spartanSetUserTalking(c.source, still);
+    c.userdata.lastTalkLevel = still ? 1 : 0;
+    if(c.source)
+        spartanApplyDownTalk(c.source);
 
     if(!getInputElement('activitybox').checked)
         return;
 
-    if(talking)
+    if(still)
         setActive(c, true);
-    else if(!still)
+    else
         setActive(c, false);
+}
+
+/**
+ * @param {string} userId
+ */
+function spartanApplyDownTalk(userId) {
+    if(!serverConnection || userId === serverConnection.id)
+        return;
+    if(spartanRemoteMicState(userId) === 'muted') {
+        spartanTalkingNow[userId] = false;
+        spartanPaintTalkDot(userId);
+        return;
+    }
+    let hang = false;
+    for(let id in serverConnection.down) {
+        let c = serverConnection.down[id];
+        if(c.source !== userId)
+            continue;
+        let last = c.userdata.lastVoiceActivity;
+        if(last && Date.now() - last <= activityDetectionPeriod)
+            hang = true;
+    }
+    spartanTalkingNow[userId] = hang;
+    spartanPaintTalkDot(userId);
 }
 
 /**
@@ -2022,6 +2359,9 @@ async function replaceUpStream(c) {
                    cn.label === 'camera' && getSettings().mirrorView,
                    cn.label === 'video' && media);
 
+    if(cn.label === 'camera' && cn.stream)
+        spartanHookLocalTalk(cn.stream);
+
     return cn;
 }
 
@@ -2059,39 +2399,43 @@ async function addLocalMedia(localId, audioOnly) {
     let settings = getSettings();
 
     /** @type{boolean|MediaTrackConstraints} */
-    let audio = settings.audio ? {deviceId: settings.audio} : true;
-    /** @type{boolean|MediaTrackConstraints} */
-    let video = audioOnly ? false : (settings.video ? {deviceId: settings.video} : true);
+    let audio = true;
+    /** @type{boolean|MediaTrackConstraints|false} */
+    let video = audioOnly ? false : true;
     if(audioOnly && !audio)
         audio = true;
 
-    if(video && typeof video === 'object') {
-        let resolution = settings.resolution;
-        if(resolution) {
-            video.width = { ideal: resolution[0] };
-            video.height = { ideal: resolution[1] };
-        } else if(settings.blackboardMode) {
-            video.width = { min: 640, ideal: 1920 };
-            video.height = { min: 400, ideal: 1080 };
-        } else {
-            video.aspectRatio = { ideal: 4/3 };
+    if(!audioOnly && !spartanIsCoarsePointer()) {
+        audio = settings.audio ? {deviceId: settings.audio} : true;
+        video = settings.video ? {deviceId: settings.video} : true;
+        if(video && typeof video === 'object') {
+            let resolution = settings.resolution;
+            if(resolution) {
+                video.width = { ideal: resolution[0] };
+                video.height = { ideal: resolution[1] };
+            } else if(settings.blackboardMode) {
+                video.width = { min: 640, ideal: 1920 };
+                video.height = { min: 400, ideal: 1080 };
+            } else {
+                video.aspectRatio = { ideal: 4/3 };
+            }
         }
-    }
-
-    if(audio && typeof audio === 'object') {
-        if(!settings.preprocessing) {
-            audio.echoCancellation = false;
-            audio.noiseSuppression = false;
-            audio.autoGainControl = false;
+        if(audio && typeof audio === 'object') {
+            if(!settings.preprocessing) {
+                audio.echoCancellation = false;
+                audio.noiseSuppression = false;
+                audio.autoGainControl = false;
+            }
         }
     }
 
     let old = serverConnection.findByLocalId(localId);
     if(old) {
-        // make sure that the camera is released before we try to reopen it
         await removeFilter(old);
         stopStream(old.stream);
     }
+
+    try { await closeSafariStream(); } catch(e) {}
 
     let constraints = {audio: audio, video: video};
     /** @type {MediaStream} */
@@ -2133,7 +2477,11 @@ async function addLocalMedia(localId, audioOnly) {
     try {
         await setUpStream(c, stream);
         await setMedia(c, settings.mirrorView);
-        spartanHookLocalTalk(stream);
+        muteLocalTracks(getSettings().localMute);
+        spartanHookLocalTalk(stream, true);
+        spartanPublishMicMuted();
+        if(serverConnection)
+            spartanPaintTalkDot(serverConnection.id);
     } catch(e) {
         console.error(e);
         displayError(e);
@@ -3430,6 +3778,7 @@ function setUserStatus(id, elt, userinfo) {
     elt.classList.remove('user-status-microphone');
     elt.classList.remove('user-status-camera');
     spartanFillUserLives(id, elt);
+    spartanPaintTalkDot(id);
 }
 
 /**
@@ -3441,6 +3790,10 @@ function delUser(id) {
     div.removeChild(user);
     delete spartanUserMuted[id];
     delete spartanUserVol[id];
+    delete spartanTalkingNow[id];
+    delete spartanLastMicSeq[id];
+    delete spartanHeardOn[id];
+    delete spartanMutedAt[id];
 }
 
 /**
@@ -3873,8 +4226,9 @@ function gotUserMessage(id, dest, username, time, privileged, kind, error, messa
             console.error(`Got unprivileged message of kind ${kind}`);
             return;
         }
+        spartanMicArmed = true;
         setLocalMute(true, true);
-        let by = username ? ' by ' + username : '';
+        let by = username ? ' por ' + username : '';
         displayWarning(`Seu microfone foi silenciado${by}`);
         break;
     }

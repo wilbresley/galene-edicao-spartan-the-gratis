@@ -952,6 +952,7 @@ body.spartan-in #left-sidebar{
  min-height:40px;
  overflow:visible!important;
  white-space:normal!important;
+ line-height:1.5!important;
  padding:8px 10px!important;
  border-bottom:none!important;
  color:#dbdee1;
@@ -965,6 +966,8 @@ body.spartan-in #left-sidebar{
  display:flex;
  align-items:center;
  gap:8px;
+ overflow:visible;
+ min-height:24px;
 }
 .user-talk-dot{
  flex:0 0 8px;
@@ -974,9 +977,17 @@ body.spartan-in #left-sidebar{
  background:#6b7280;
  box-shadow:none;
 }
-#users > div.user-talking .user-talk-dot{
+#users > div.user-talk-idle .user-talk-dot{
+ background:#eab308;
+ box-shadow:0 0 6px #eab308;
+}
+#users > div.user-talk-on .user-talk-dot{
  background:#22c55e;
  box-shadow:0 0 6px #22c55e;
+}
+#users > div.user-talk-muted .user-talk-dot{
+ background:#dc2626;
+ box-shadow:0 0 6px #dc2626;
 }
 #users > div::before{
  content:none!important;
@@ -996,6 +1007,8 @@ body.spartan-in #left-sidebar{
  overflow:hidden;
  text-overflow:ellipsis;
  white-space:nowrap;
+ line-height:1.5;
+ padding:3px 0 4px;
 }
 .user-mute-wrap{
  margin-top:6px;
@@ -1542,4 +1555,27 @@ body.spartan-ouvinte #peers .peer:not(.peer-hidden){
 }
 body.spartan-ouvinte #peers .peer{
  /* áudio continua; vídeo escondido via peer-hidden + regra acima */
+}
+
+/* spartan-v58 — avisos Toastify: caixa verde sólida, sem degradê */
+.toastify,
+.toastify.info,
+.toastify.warning,
+.toastify.error {
+  background: #16a34a !important;
+  background-image: none !important;
+  color: #fff !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45) !important;
+}
+.toastify .toast-close,
+.toastify.info .toast-close,
+.toastify.warning .toast-close,
+.toastify.error .toast-close {
+  color: #fff !important;
+}
+#spartan-toast {
+  background: #16a34a !important;
+  color: #fff !important;
+  border: none !important;
 }
