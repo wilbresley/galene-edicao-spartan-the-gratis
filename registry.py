@@ -318,23 +318,106 @@ def config_admin_ok(user, password):
     perm=rec.get("permissions")
     ok_perm=(perm=="admin") or (isinstance(perm, list) and "admin" in perm)
     return ok_perm and password_match(rec.get("password"), password)
+def main_id():
+    return load_site().get("main") or "spartan"
+def parse_iso(s):
+    if not s: return None
+    try:
+        dt=datetime.fromisoformat(s)
+        if dt.tzinfo is None: dt=dt.replace(tzinfo=TZ)
+        return dt
+    except Exception:
+        return None
+def ttl_info(gid, b=None):
+    if b is None:
+        try: b=bucket(load(), gid)
+        except Exception: b={}
+    ttl=(b or {}).get("ttl") or {}
+    exp=parse_iso(ttl.get("expires_at"))
+    if not exp: return {"ttl": False, "expires_at": None, "remaining_s": None, "host": None, "kind": None}
+    rem=int((exp-datetime.now(TZ)).total_seconds())
+    return {
+        "ttl": True,
+        "expires_at": ttl.get("expires_at"),
+        "remaining_s": max(0, rem),
+        "host": ttl.get("host") or None,
+        "kind": ttl.get("kind") or ("public" if is_open(gid) else "invite"),
+    }
+def set_ttl(gid, kind, host=None, hours=24):
+    d=load(); b=bucket(d,gid)
+    nowdt=datetime.now(TZ)
+    b["ttl"]={
+        "created_at": nowdt.isoformat(timespec="seconds"),
+        "expires_at": (nowdt+timedelta(hours=hours)).isoformat(timespec="seconds"),
+        "kind": kind,
+        "host": norm_nick(host) if host else None,
+    }
+    save(d)
+    return b["ttl"]
+def delete_group_ttl(gid):
+    if gid==main_id(): return False
+    ia=internal_auth()
+    qg=quote(gid, safe="")
+    if ia:
+        galene("DELETE", f"/galene-api/v0/.groups/{qg}", ia)
+    fp=GROUPS/f"{gid}.json"
+    try:
+        if fp.exists(): fp.unlink()
+    except Exception:
+        pass
+    d=load(); d.pop(gid, None); save(d)
+    st=load_site()
+    if st.get("home")==gid:
+        st["home"]=st.get("main") or "spartan"
+        save_site(st)
+    return True
+def ensure_public_ttl():
+    """Salas públicas extra (não a main) passam a ter 24h se ainda não tiverem prazo."""
+    d=load(); main=main_id(); nowdt=datetime.now(TZ); changed=False
+    for fp in GROUPS.glob("*.json"):
+        gid=fp.stem
+        if gid==main or not is_open(gid): continue
+        b=bucket(d,gid)
+        if parse_iso((b.get("ttl") or {}).get("expires_at")): continue
+        b["ttl"]={
+            "created_at": nowdt.isoformat(timespec="seconds"),
+            "expires_at": (nowdt+timedelta(hours=24)).isoformat(timespec="seconds"),
+            "kind": "public",
+            "host": (b.get("ttl") or {}).get("host"),
+        }
+        changed=True
+    if changed: save(d)
+def expire_due():
+    d=load(); main=main_id(); nowdt=datetime.now(TZ)
+    for gid in list(d.keys()):
+        if gid==main: continue
+        gone=not (GROUPS/f"{gid}.json").exists()
+        ttl=(d.get(gid) or {}).get("ttl") or {}
+        exp=parse_iso(ttl.get("expires_at"))
+        if gone:
+            d.pop(gid, None); save(d); continue
+        if exp and exp<=nowdt:
+            try: delete_group_ttl(gid)
+            except Exception: pass
+def expire_loop():
+    while True:
+        time.sleep(20)
+        try: expire_due()
+        except Exception: pass
 def panel_login_ok(user, password):
+    """Só admin de verdade: sidecar.auth, config.json, ou op da sala principal. Anfitrião 24h não entra."""
     user=norm_nick(user)
     if not user or password is None: return False
     su,spw=sidecar_plain()
     if su is not None and user==su and password==spw: return True
     if config_admin_ok(user, password): return True
-    site=load_site(); main=site.get("main") or "spartan"
-    seen=set()
-    for gid in [main]+[fp.stem for fp in GROUPS.glob("*.json")]:
-        if gid in seen: continue
-        seen.add(gid)
-        real, rec=find_group_user(gid, user)
-        if not real: continue
-        perm=user_perm_name_from(rec)
-        if perm not in ("op","admin"): continue
-        if password_match(rec.get("password"), password): return True
-        if galene_user_auth_ok(gid, real, password): return True
+    main=main_id()
+    real, rec=find_group_user(main, user)
+    if not real: return False
+    perm=user_perm_name_from(rec)
+    if perm not in ("op","admin"): return False
+    if password_match(rec.get("password"), password): return True
+    if galene_user_auth_ok(main, real, password): return True
     return False
 def hash_plain(pw):
     salt=os.urandom(8)
@@ -389,25 +472,6 @@ def ip_banned(b, ip):
     if not until: return False
     try: return datetime.fromisoformat(until)>datetime.now(TZ)
     except Exception: return False
-def purge_open():
-    d=load(); until=(datetime.now(TZ)+timedelta(hours=24)).isoformat(timespec="seconds")
-    for fp in GROUPS.glob("*.json"):
-        gid=fp.stem
-        if not is_open(gid): continue
-        b=bucket(d,gid); b["purge"]=int(b.get("purge") or 0)+1
-        bans=b.setdefault("ipban",{})
-        for rec in (b.get("temps") or {}).values():
-            ip=rec.get("ip")
-            if ip: bans[ip]=until
-            rec.setdefault("clears",[]).append(datetime.now(TZ).isoformat(timespec="seconds"))
-    save(d)
-def purge_loop():
-    while True:
-        nnow=datetime.now(TZ)
-        nxt=nnow.replace(minute=0,second=0,microsecond=0)+timedelta(hours=1)
-        time.sleep(max(1.0,(nxt-nnow).total_seconds()))
-        try: purge_open()
-        except Exception: pass
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -547,19 +611,25 @@ class H(BaseHTTPRequestHandler):
             self.send_json(200, {"entries": read_access_log(lim)}); return
         if path=="/rooms":
             rooms=[]
+            d=load()
             for fp in sorted(GROUPS.glob("*.json")):
                 try: g=json.loads(fp.read_text(encoding="utf-8"))
                 except Exception: continue
                 pw=(g.get("wildcard-user") or {}).get("password")
+                info=ttl_info(fp.stem, d.get(fp.stem) or {})
                 rooms.append({"id":fp.stem,"title":g.get("displayName") or fp.stem,"public":bool(g.get("public")),
                     "open": (not pw) or (isinstance(pw, dict) and pw.get("type")=="wildcard"),
-                    "updated": datetime.fromtimestamp(fp.stat().st_mtime, TZ).isoformat(timespec="seconds")})
+                    "updated": datetime.fromtimestamp(fp.stat().st_mtime, TZ).isoformat(timespec="seconds"),
+                    "ttl": bool(info.get("ttl")), "expires_at": info.get("expires_at"),
+                    "remaining_s": info.get("remaining_s"), "host": info.get("host"), "kind": info.get("kind")})
             self.send_json(200, rooms); return
         if path=="/temp-status":
             g=(q.get("group") or ["spartan"])[0]; user=norm_nick((q.get("user") or [""])[0])
-            d=load(); b=bucket(d,g)
-            self.send_json(200, {"open":is_open(g),"purge":int(b.get("purge") or 0),"banned":ip_banned(b,self.cip()),
-                "taken": user in named(g) or user in (b.get("pending") or {}) or user in (b.get("denied") or {}) or user in (b.get("blocked") or {})})
+            d=load(); b=bucket(d,g); info=ttl_info(g, b)
+            out={"open":is_open(g),"purge":int(b.get("purge") or 0),"banned":ip_banned(b,self.cip()),
+                "taken": user in named(g) or user in (b.get("pending") or {}) or user in (b.get("denied") or {}) or user in (b.get("blocked") or {})}
+            out.update(info)
+            self.send_json(200, out)
             return
         if path=="/status":
             g=(q.get("group") or ["spartan"])[0]; user=norm_nick((q.get("user") or [""])[0]); b=bucket(load(), g)
@@ -621,8 +691,40 @@ class H(BaseHTTPRequestHandler):
                 access_log("painel_admin", "painel", u, self.cip())
                 self.send_json(200, {"ok":True})
             else:
-                self.send_json(401, {"error":"Usuário ou senha inválidos. Use a conta op/admin da sala (a mesma da entrada), não a senha de amigos."})
+                self.send_json(401, {"error":"Usuário ou senha inválidos. Use a conta admin da sala principal, não a senha de amigos nem o anfitrião temporário."})
             return
+        if path=="/can-panel":
+            u=norm_nick(body.get("user") or user or "")
+            pw=body.get("password") if "password" in body else body.get("pass")
+            if pw is None: pw=""
+            self.send_json(200, {"ok": panel_login_ok(u, pw)})
+            return
+        if path=="/join-named":
+            pw=body.get("password") or ""
+            gid=(body.get("group") or g).strip() or "spartan"
+            if not ok_nick(user) or not pw:
+                self.send_json(400, {"error":"usuario e senha obrigatorios"}); return
+            if not (GROUPS/f"{gid}.json").exists():
+                self.send_json(404, {"error":"sala nao existe"}); return
+            real, rec=find_group_user(gid, user)
+            if real:
+                if password_match(rec.get("password"), pw) or galene_user_auth_ok(gid, real, pw):
+                    self.send_json(200, {"ok":True,"role": user_perm_name_from(rec) or "present"}); return
+                self.send_json(401, {"error":"senha incorreta"}); return
+            main=main_id()
+            mreal, mrec=find_group_user(main, user)
+            if not mreal:
+                self.send_json(401, {"error":"conta nao encontrada. Use o nick da sua conta cadastrada."}); return
+            if not (password_match(mrec.get("password"), pw) or galene_user_auth_ok(main, mreal, pw)):
+                self.send_json(401, {"error":"senha incorreta"}); return
+            ia=internal_auth()
+            if not ia:
+                self.send_json(500, {"error":"sidecar.auth ausente"}); return
+            qg,qu=quote(gid,safe=""), quote(user,safe="")
+            galene("PUT", f"/galene-api/v0/.groups/{qg}/.users/{qu}", ia, '{"permissions":"present"}')
+            galene("POST", f"/galene-api/v0/.groups/{qg}/.users/{qu}/.password", ia, pw, "text/plain")
+            harden_group(gid)
+            self.send_json(200, {"ok":True,"role":"present"}); return
         if path=="/first-setup":
             # Primeiro login: troca senha do admin + senha de convidados da sala principal
             u=norm_nick(body.get("user") or "")
@@ -680,9 +782,54 @@ class H(BaseHTTPRequestHandler):
             self.send_json(200, {"ok":True}); return
         ok,auth=self.admin_ok()
         if not ok: self.send_json(401, {"error":"nao autorizado"}); return
+        if path=="/create-room":
+            slug=(body.get("id") or body.get("slug") or "").strip().lower()
+            if not slug_ok(slug):
+                self.send_json(400, {"error":"nome da sala invalido"}); return
+            if slug==main_id() or (GROUPS/f"{slug}.json").exists():
+                self.send_json(409, {"error":"essa sala ja existe"}); return
+            title=(body.get("title") or slug).strip() or slug
+            open_room=bool(body.get("open") or body.get("public"))
+            friends=body.get("friends_password") or body.get("password") or ""
+            if not open_room and len(friends)<8:
+                self.send_json(400, {"error":"senha de convite minimo 8"}); return
+            want_host=bool(body.get("host"))
+            host_nick=norm_nick(body.get("host_nick") or body.get("host_user") or "")
+            host_pw=body.get("host_password") or ""
+            if want_host:
+                if not ok_nick(host_nick) or len(host_pw)<8:
+                    self.send_json(400, {"error":"anfitriao precisa de nick e senha (minimo 8)"}); return
+                if host_nick in named(main_id()):
+                    self.send_json(409, {"error":"esse nick ja e conta da sala principal; escolhe outro para o anfitriao"}); return
+            ia=internal_auth()
+            if not ia:
+                self.send_json(500, {"error":"sidecar.auth ausente"}); return
+            qg=quote(slug, safe="")
+            desc={"public":True,"displayName":title,"description":"","codecs":["vp9","vp8","opus"],"unrestricted-tokens":True}
+            code,err=galene("PUT", f"/galene-api/v0/.groups/{qg}/", ia, json.dumps(desc), "application/json", {"If-None-Match":"*"})
+            if code>=400:
+                self.send_json(code, {"error":(err or "nao criou a sala")[:220]}); return
+            wild_perm=["present"] if open_room else "present"
+            galene("PUT", f"/galene-api/v0/.groups/{qg}/.wildcard-user", ia, json.dumps({"permissions":wild_perm}))
+            if open_room:
+                galene("PUT", f"/galene-api/v0/.groups/{qg}/.wildcard-user/.password", ia, json.dumps({"type":"wildcard"}))
+            else:
+                galene("POST", f"/galene-api/v0/.groups/{qg}/.wildcard-user/.password", ia, friends, "text/plain")
+            host_saved=None
+            if want_host:
+                qu=quote(host_nick, safe="")
+                galene("PUT", f"/galene-api/v0/.groups/{qg}/.users/{qu}", ia, json.dumps({"permissions":"op"}))
+                galene("POST", f"/galene-api/v0/.groups/{qg}/.users/{qu}/.password", ia, host_pw, "text/plain")
+                host_saved=host_nick
+            harden_group(slug)
+            ttl=set_ttl(slug, "public" if open_room else "invite", host_saved)
+            self.send_json(200, {"ok":True,"id":slug,"ttl":ttl}); return
         if path=="/site-home":
             gid=(body.get("group") or "").strip()
             if not (GROUPS/f"{gid}.json").exists(): self.send_json(404, {"error":"sala nao existe"}); return
+            info=ttl_info(gid)
+            if info.get("ttl"):
+                self.send_json(400, {"error":"sala de 24h nao pode ser a home"}); return
             st=load_site(); st["home"]=gid; save_site(st); self.send_json(200, st); return
         if path=="/rename-user":
             new_nick=norm_nick(body.get("nick") or body.get("new") or "")
@@ -787,6 +934,8 @@ class H(BaseHTTPRequestHandler):
 if __name__=="__main__":
     try: account_ensure("admin", force_id=0)
     except Exception: pass
-    Thread(target=purge_loop, daemon=True).start()
+    try: ensure_public_ttl()
+    except Exception: pass
+    Thread(target=expire_loop, daemon=True).start()
     print("spartan-reg on", PORT, flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()

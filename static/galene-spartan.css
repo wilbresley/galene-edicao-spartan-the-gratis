@@ -1928,3 +1928,60 @@ button.toast-close::after{
 #header #title{
  color:#fff!important;
 }
+
+/* spartan-v68 — contador 24h no meio do header; login público em dois modos */
+#header{
+ position:relative;
+}
+#spartan-ttl{
+ display:none;
+ position:absolute;
+ left:50%;
+ top:50%;
+ transform:translate(-50%,-50%);
+ z-index:3;
+ text-align:center;
+ pointer-events:none;
+ line-height:1.15;
+}
+#spartan-ttl.is-on{
+ display:flex!important;
+ flex-direction:column;
+ align-items:center;
+ gap:2px;
+}
+.spartan-ttl-msg{
+ color:#fff!important;
+ font-size:.72rem;
+ font-weight:600;
+ white-space:nowrap;
+}
+#spartan-ttl-clock{
+ color:#fff!important;
+ font-size:1.05rem;
+ font-weight:800;
+ letter-spacing:.04em;
+ font-variant-numeric:tabular-nums;
+}
+html.spartan-open-room:not(.spartan-named-login) #passwordform,
+html.spartan-open-room:not(.spartan-named-login) #passwordform *{display:none!important}
+html.spartan-open-room.spartan-named-login #passwordform,
+html.spartan-open-room.spartan-named-login #passwordform *{display:block!important}
+#spartan-login-switch{
+ display:none;
+ margin-top:.55rem;
+ width:100%;
+ background:#111!important;
+ color:#fecaca!important;
+ border:2px solid #dc2626!important;
+ border-radius:10px;
+ padding:.45rem .7rem;
+ font-weight:700;
+ cursor:pointer;
+}
+html.spartan-open-room #spartan-login-switch{display:block!important}
+html.spartan-open-room.spartan-named-login #spartan-login-switch{color:#fff!important}
+@media (max-width:900px){
+ #spartan-ttl{position:static;transform:none;margin:.15rem auto 0;}
+ .spartan-ttl-msg{white-space:normal;max-width:12rem;}
+}
