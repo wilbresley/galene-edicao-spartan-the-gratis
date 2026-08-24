@@ -57,7 +57,7 @@ TURN/portas = “caminho do áudio/vídeo”. Sem isso, a sala abre mas a call f
 
 8. Nome da sala na URL (minúsculo, sem espaço)? Padrão: `spartan`  
 9. Título bonito da sala? (ex.: `Spartan`)  
-10. Sala inicial: **sempre convite** (nick + senha de amigos). **Não** oferecer pública no instalador — confunde login/admin. Pública só depois, no painel.
+10. Sala inicial: **sempre convite** (nick + senha de amigos). **Não** oferecer pública no instalador — confunde login/admin. Extra só depois, no painel: convite definitiva (padrão), convite 24h, ou pública (sempre 24h). Anfitrião só nas de 24h, sem `/admin/`.
 
 ### E) Contas (a pessoa escolhe; a IA não inventa)
 

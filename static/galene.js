@@ -6237,6 +6237,8 @@ async function start() {
     if(window.location.search)
         window.history.replaceState(null, '', window.location.pathname);
     setTitle(groupStatus.displayName || capitalise(group));
+    spartanTtlRestore();
+    spartanLoadTtl();
 
     addFilters();
     await setMediaChoices(false);
@@ -6276,8 +6278,7 @@ function spartanOnJoin(){
   const u=serverConnection&&serverConnection.username; if(!u) return;
   fetch('/spartan-api/beacon',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({group:group,user:u})}).catch(function(){});
   spartanMaybeFirstSetup(u);
-  const p=serverConnection.permissions||[];
-  if(p.indexOf('op')>=0||p.indexOf('admin')>=0) return;
+  spartanLoadTtl(u);
   spartanCheck(u);
   if(!window._spartanPoll) window._spartanPoll=setInterval(function(){spartanCheck(serverConnection&&serverConnection.username);},4000);
  }catch(e){}
@@ -6327,7 +6328,8 @@ async function spartanCheck(u){
  try{
   let j={};
   try{ const r=await fetch('/spartan-api/status?group='+encodeURIComponent(group)+'&user='+encodeURIComponent(u)); j=await r.json(); }catch(e){}
-  try{ const t=await (await fetch('/spartan-api/temp-status?group='+encodeURIComponent(group)+'&user='+encodeURIComponent(u))).json(); Object.assign(j,t); }catch(e){}
+  var ttlOk=false;
+  try{ const t=await (await fetch('/spartan-api/temp-status?group='+encodeURIComponent(group)+'&user='+encodeURIComponent(u))).json(); Object.assign(j,t); ttlOk=true; }catch(e){}
 
   if(j.banned){ spartanToast('IP suspenso nesta sala por 24h.'); location.href='/'; return; }
   if(j.ttl && (j.remaining_s===0 || (j.remaining_s!=null && j.remaining_s<=0))){
@@ -6336,7 +6338,7 @@ async function spartanCheck(u){
     location.href='/?expired=1'; return;
   }
   if(j.ttl) spartanTtlApply(j);
-  else spartanTtlApply(null);
+  else if(ttlOk) spartanTtlApply(null);
   if(j.host) window._spartanHost=j.host;
   if(window._spartanOpenRoom && j.purge!=null){
     if(window._spartanPurge!=null && j.purge!==window._spartanPurge){
@@ -6395,15 +6397,53 @@ function spartanTtlTick(){
  clock.textContent=spartanFmtHm(rem);
  el.hidden=false; el.classList.add('is-on');
 }
+function spartanTtlKey(){
+ return group ? ('spartanTtl:'+group) : '';
+}
+function spartanTtlPersist(){
+ try{
+  var k=spartanTtlKey(); if(!k) return;
+  if(window._spartanTtlUntil)
+   sessionStorage.setItem(k, JSON.stringify({until:window._spartanTtlUntil, host:window._spartanHost||null}));
+  else
+   sessionStorage.removeItem(k);
+ }catch(e){}
+}
+function spartanTtlRestore(){
+ try{
+  var k=spartanTtlKey(); if(!k) return;
+  var o=JSON.parse(sessionStorage.getItem(k)||'null');
+  if(!o||!o.until||o.until<=Date.now()) return;
+  window._spartanHost=o.host||window._spartanHost||null;
+  window._spartanTtlUntil=o.until;
+  spartanTtlTick();
+  if(!window._spartanTtlTimer) window._spartanTtlTimer=setInterval(spartanTtlTick, 1000);
+ }catch(e){}
+}
+async function spartanLoadTtl(u){
+ if(!group) return;
+ try{
+  var q='/spartan-api/temp-status?group='+encodeURIComponent(group);
+  if(u) q+='&user='+encodeURIComponent(u);
+  var t=await (await fetch(q,{cache:'no-store'})).json();
+  if(t&&t.ttl) spartanTtlApply(t);
+  else spartanTtlApply(null);
+ }catch(e){}
+}
 function spartanTtlApply(j){
- if(!j||!j.ttl||j.remaining_s==null){
+ if(!j||!j.ttl||(j.remaining_s==null && !j.expires_at)){
    window._spartanTtlUntil=null;
    var el=document.getElementById('spartan-ttl');
    if(el){ el.hidden=true; el.classList.remove('is-on'); }
+   spartanTtlPersist();
    return;
  }
  window._spartanHost=j.host||window._spartanHost||null;
- window._spartanTtlUntil=Date.now()+Math.max(0, Number(j.remaining_s))*1000;
+ var until=j.expires_at ? Date.parse(j.expires_at) : NaN;
+ if(!until || isNaN(until))
+   until=Date.now()+Math.max(0, Number(j.remaining_s))*1000;
+ window._spartanTtlUntil=until;
+ spartanTtlPersist();
  spartanTtlTick();
  if(!window._spartanTtlTimer) window._spartanTtlTimer=setInterval(spartanTtlTick, 1000);
 }

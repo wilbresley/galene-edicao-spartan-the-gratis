@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="/spartan-pages.css?v=5"/>
 <link rel="stylesheet" href="/admin.css?v=19"/>
 <link rel="stylesheet" href="/spartan.css?v=22"/>
-<script src="/admin.js?v=28" defer></script>
+<script src="/admin.js?v=29" defer></script>
 </head>
 <body>
 <header class="admin-top">
@@ -130,26 +130,29 @@
 <div id="rooms"></div>
 </section>
 <section class="admin-card">
-<h2>Criar sala (24 horas)</h2>
-<p class="hint">Pública (só nick) ou convite (senha). Some sozinha em 24h, com o anfitrião se houver. A sala principal não entra neste prazo.</p>
+<h2>Criar sala</h2>
+<p class="hint">Convite definitiva fica para sempre. Pública some em 24h. Convite também pode ser de 24h, com anfitrião opcional.</p>
 <label for="rn">Nome na URL (minúsculo, sem espaço)</label>
 <input id="rn" type="text" placeholder="ex: jogos"/>
 <label for="rd">Título na home</label>
 <input id="rd" type="text" placeholder="ex: Jogos"/>
-<label class="chk"><input type="radio" name="rkind" id="rkind-open" value="open" checked/> Pública — entra só com o nick, sem senha</label>
-<label class="chk"><input type="radio" name="rkind" id="rkind-invite" value="invite"/> Convite — exige senha para entrar</label>
+<label class="chk"><input type="radio" name="rkind" id="rkind-invite" value="invite" checked/> Convite — senha para entrar (pode ser definitiva)</label>
+<label class="chk"><input type="radio" name="rkind" id="rkind-open" value="open"/> Pública — só nick, some em 24h</label>
 <div id="rp-wrap">
 <label for="rp">Senha de convite desta sala</label>
-<input id="rp" type="password" placeholder="mínimo 8 caracteres" disabled/>
+<input id="rp" type="password" placeholder="mínimo 8 caracteres"/>
 </div>
-<label class="chk"><input id="rhost" type="checkbox"/> Ter anfitrião (admin só desta sala, some em 24h)</label>
+<label class="chk" id="rttl-row"><input id="rttl" type="checkbox"/> Sala temporária (some em 24h)</label>
+<div id="rhost-block" hidden>
+<label class="chk"><input id="rhost" type="checkbox"/> Ter anfitrião (admin só desta sala; some com ela em 24h)</label>
 <div id="rhost-wrap" hidden>
 <label for="rhost-nick">Nick do anfitrião</label>
 <input id="rhost-nick" type="text" placeholder="ex: dono" autocomplete="off"/>
 <label for="rhost-pw">Senha do anfitrião</label>
 <input id="rhost-pw" type="password" placeholder="mínimo 8 caracteres" autocomplete="new-password"/>
 </div>
-<button type="button" id="btn-room">Criar sala de 24h</button>
+</div>
+<button type="button" id="btn-room">Criar sala</button>
 <p id="room-msg" class="ok"></p>
 </section>
 </div>

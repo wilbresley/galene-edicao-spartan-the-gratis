@@ -82,6 +82,10 @@ Logs: `docker compose logs -f`
 - **Convidado** (sala com senha de amigos) nasce **Verificado**
 - **Temporário** (sala pública) nasce **Ouvinte**
 
+### Salas extra (depois, no painel)
+
+Padrão: **convite definitiva**. Marque **Sala temporária (24h)** no convite, ou crie **pública** (sempre 24h). Anfitrião só nas de 24h (`op` daquela sala, **sem** `/admin/`). O relógio `Tempo até exclusão desta sala: HH:MM` fica à direita do nome e **permanece no F5**.
+
 ---
 
 # Tutorial — nível Júnior
@@ -196,7 +200,7 @@ Em produção: troque senhas, restrinja o repo se for fork privado, `chmod 600 d
 
 Prefixo típico via proxy: `/spartan-api/…`
 
-Principais: `health`, `rooms`, `site`, `beacon`, `status`, `temp-status`, `access-log`, `registry`, `panel-login`, `first-setup`, `rename-user`, convites (`register`, `approve`, …), proxy `gapi/*` da API Galene.
+Principais: `health`, `rooms`, `site`, `beacon`, `status`, `temp-status`, `access-log`, `registry`, `panel-login`, `first-setup`, `rename-user`, `create-room` (`ttl` no convite; pública sempre 24h; anfitrião só com ttl), `join-named`, convites (`register`, `approve`, …), proxy `gapi/*` da API Galene.
 
 Sala pública: `ensure_open_ouvinte` no beacon alinha wildcard para Ouvinte (`["present"]`).
 

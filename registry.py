@@ -796,6 +796,11 @@ class H(BaseHTTPRequestHandler):
             want_host=bool(body.get("host"))
             host_nick=norm_nick(body.get("host_nick") or body.get("host_user") or "")
             host_pw=body.get("host_password") or ""
+            use_ttl=bool(body.get("ttl")) or open_room
+            if open_room:
+                use_ttl=True
+            if want_host and not use_ttl:
+                self.send_json(400, {"error":"anfitriao so em sala de 24h"}); return
             if want_host:
                 if not ok_nick(host_nick) or len(host_pw)<8:
                     self.send_json(400, {"error":"anfitriao precisa de nick e senha (minimo 8)"}); return
@@ -816,13 +821,15 @@ class H(BaseHTTPRequestHandler):
             else:
                 galene("POST", f"/galene-api/v0/.groups/{qg}/.wildcard-user/.password", ia, friends, "text/plain")
             host_saved=None
-            if want_host:
+            if want_host and use_ttl:
                 qu=quote(host_nick, safe="")
                 galene("PUT", f"/galene-api/v0/.groups/{qg}/.users/{qu}", ia, json.dumps({"permissions":"op"}))
                 galene("POST", f"/galene-api/v0/.groups/{qg}/.users/{qu}/.password", ia, host_pw, "text/plain")
                 host_saved=host_nick
             harden_group(slug)
-            ttl=set_ttl(slug, "public" if open_room else "invite", host_saved)
+            ttl=None
+            if use_ttl:
+                ttl=set_ttl(slug, "public" if open_room else "invite", host_saved)
             self.send_json(200, {"ok":True,"id":slug,"ttl":ttl}); return
         if path=="/site-home":
             gid=(body.get("group") or "").strip()
