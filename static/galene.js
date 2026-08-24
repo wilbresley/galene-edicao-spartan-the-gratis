@@ -272,9 +272,13 @@ let spartanWatch = {};
 let spartanHasVideo = {};
 /** @type {Record<string, boolean>} */
 let spartanUserMuted = {};
+let spartanUserVol = {};
+let spartanBoost = {};
 let spartanHideOwn = false;
 /** @type {Record<string, boolean>} ocultar cada live própria (por id) */
 let spartanHideOwnStream = {};
+/** @type {{x:number,y:number}} */
+let spartanLastPointer = {x: 24, y: 80};
 
 /**
  * @param {MediaStream} [stream]
@@ -300,6 +304,31 @@ function streamHasRealVideo(stream) {
 
 function spartanVisibleCount() {
     return document.querySelectorAll('#peers .peer:not(.peer-hidden)').length;
+}
+
+function spartanSyncLiveFocus() {
+    let vc = document.getElementById('video-container');
+    if(!vc)
+        return;
+    let peers = document.querySelectorAll('#peers .peer:not(.peer-hidden)');
+    if(peers.length === 1) {
+        document.querySelectorAll('#peers .peer-focus').forEach(function(p) {
+            p.classList.remove('peer-focus');
+        });
+        peers[0].classList.add('peer-focus');
+        vc.classList.add('peer-focus-mode');
+        vc.dataset.spartanAutoFocus = '1';
+        return;
+    }
+    if(vc.dataset.spartanAutoFocus === '1') {
+        vc.classList.remove('peer-focus-mode');
+        document.querySelectorAll('#peers .peer-focus').forEach(function(p) {
+            p.classList.remove('peer-focus');
+        });
+        delete vc.dataset.spartanAutoFocus;
+    }
+    if(peers.length === 0)
+        vc.classList.remove('peer-focus-mode');
 }
 
 /**
@@ -344,11 +373,17 @@ function spartanApplyDownRequest(c) {
         c.request(['audio']);
         return;
     }
-    if(spartanWatch[c.id])
+    // Live aberta (clicou Tela/Câmera): sempre qualidade alta. Nunca video-low.
+    if(spartanWatch[c.id]) {
         c.request(['audio', 'video']);
+        return;
+    }
+    // Não clicou: não baixa imagem. Só áudio, se existir.
+    // Tela sem áudio: video-low só para o botão não sumir (stream só-vídeo).
+    let hasAudio = !!(c.stream && c.stream.getAudioTracks && c.stream.getAudioTracks().length);
+    if(hasAudio)
+        c.request(['audio']);
     else
-        // Mantém a stream viva (botões Tela 1/2…) sem baixar vídeo cheio.
-        // audio-only costumava fechar screenshare sem áudio → sumiam os botões.
         c.request(['audio', 'video-low']);
 }
 
@@ -501,7 +536,7 @@ function spartanRefreshHideOwnButton() {
             icon.classList.add('fa-eye-slash');
         }
         if(lab)
-            lab.textContent = 'Mostrar o meu';
+            lab.textContent = 'Minhas lives';
     } else {
         btn.classList.remove('hiding');
         if(icon) {
@@ -509,7 +544,7 @@ function spartanRefreshHideOwnButton() {
             icon.classList.remove('fa-eye-slash');
         }
         if(lab)
-            lab.textContent = 'Ocultar o meu';
+            lab.textContent = 'Minhas lives';
     }
 }
 
@@ -524,6 +559,8 @@ function spartanRefreshAllMedia() {
                 showHideMedia(c, elt);
             setLabel(c);
             spartanApplyUserMute(c);
+            if(!c.up && c.source)
+                spartanApplyUserVolume(c.source);
         }
     }
     walk(serverConnection.down);
@@ -538,6 +575,7 @@ function spartanRefreshAllMedia() {
     }
     resizePeers();
     showVideo();
+    spartanSyncLiveFocus();
 }
 
 /**
@@ -547,9 +585,9 @@ function spartanRefreshAllMedia() {
 function spartanStreamShowsLiveBtn(c) {
     if(!c)
         return false;
-    if(spartanHasVideo[c.id])
+    if(c.label === 'screenshare' || c.label === 'camera')
         return true;
-    if(c.label === 'screenshare')
+    if(spartanHasVideo[c.id])
         return true;
     return streamHasRealVideo(c.stream);
 }
@@ -606,12 +644,8 @@ function spartanFillUserLives(userId, elt) {
         box.appendChild(b);
     }
     let muteBtn = elt.querySelector('.user-mute-btn');
-    if(muteBtn) {
-        if(spartanUserMuted[userId])
-            muteBtn.classList.add('on');
-        else
-            muteBtn.classList.remove('on');
-    }
+    if(muteBtn)
+        spartanPaintMuteBtn(muteBtn, userId);
 }
 
 /**
@@ -655,6 +689,8 @@ function spartanToggleLive(c) {
  * @param {string} userId
  */
 function spartanToggleUserMute(userId) {
+    if(!serverConnection || userId === serverConnection.id)
+        return;
     spartanUserMuted[userId] = !spartanUserMuted[userId];
     if(serverConnection) {
         for(let id in serverConnection.down) {
@@ -663,9 +699,152 @@ function spartanToggleUserMute(userId) {
                 spartanApplyUserMute(c);
         }
     }
+    spartanApplyUserVolume(userId);
     let row = document.getElementById('user-' + userId);
     if(row)
         spartanFillUserLives(userId, row);
+    spartanRefreshMuteButtons(userId);
+}
+
+let spartanLastPublishedMuted = undefined;
+
+function spartanPublishMicMuted() {
+    if(!serverConnection || !serverConnection.id)
+        return;
+    let next = !!(findUpMedia('camera') && getSettings().localMute);
+    if(next === spartanLastPublishedMuted)
+        return;
+    spartanLastPublishedMuted = next;
+    try {
+        serverConnection.userAction(
+            'setdata', serverConnection.id, {muted: next ? true : null},
+        );
+    } catch(e) {}
+}
+
+function spartanRemoteMuted(userId) {
+    if(!serverConnection || !serverConnection.users)
+        return false;
+    let u = serverConnection.users[userId];
+    return !!(u && u.data && u.data.muted);
+}
+
+function spartanPaintMuteBtn(btn, userId) {
+    if(!btn)
+        return;
+    let loc = !!spartanUserMuted[userId];
+    let rem = spartanRemoteMuted(userId);
+    btn.classList.remove('on', 'mute-local', 'mute-remote', 'mute-both');
+    if(loc && rem)
+        btn.classList.add('mute-both');
+    else if(loc)
+        btn.classList.add('mute-local');
+    else if(rem)
+        btn.classList.add('mute-remote');
+    if(loc && rem)
+        btn.title = 'Você não ouve (amarelo) e o microfone dele está desligado (vermelho)';
+    else if(loc)
+        btn.title = 'Mudo só no seu fone';
+    else if(rem)
+        btn.title = 'Microfone desligado (ele ou um admin)';
+    else
+        btn.title = 'Mudo só no seu fone';
+}
+
+function spartanRefreshMuteButtons(userId) {
+    let row = document.getElementById('user-' + userId);
+    if(row) {
+        spartanEnsureMuteBelowName(row, userId);
+        row.querySelectorAll('.user-mute-wrap .user-mute-btn').forEach(function(b) {
+            spartanPaintMuteBtn(b, userId);
+        });
+    }
+    document.querySelectorAll('.contextualMenu .user-mute-btn').forEach(function(b) {
+        if(b.getAttribute('data-uid') === userId)
+            spartanPaintMuteBtn(b, userId);
+    });
+}
+
+function spartanVolLin(userId) {
+    if(spartanUserMuted[userId])
+        return 0;
+    let p = spartanUserVol[userId];
+    if(p == null)
+        p = 100;
+    if(p < 0)
+        p = 0;
+    if(p > 400)
+        p = 400;
+    return p / 100;
+}
+
+function spartanDropBoost(sid) {
+    let b = spartanBoost[sid];
+    if(!b)
+        return;
+    try { b.src.disconnect(); } catch(e) {}
+    try { b.gain.disconnect(); } catch(e) {}
+    delete spartanBoost[sid];
+}
+
+function spartanSetStreamGain(c, lin) {
+    if(!c || !c.stream)
+        return;
+    let media = document.getElementById('media-' + c.localId);
+    let hasAudio = c.stream.getAudioTracks && c.stream.getAudioTracks().length;
+    if(!hasAudio) {
+        spartanDropBoost(c.id);
+        return;
+    }
+    if(lin <= 1) {
+        spartanDropBoost(c.id);
+        if(media instanceof HTMLMediaElement) {
+            media.muted = false;
+            media.volume = lin;
+        }
+        return;
+    }
+    if(media instanceof HTMLMediaElement) {
+        media.muted = true;
+        media.volume = 1;
+    }
+    try {
+        let AC = window.AudioContext || window.webkitAudioContext;
+        if(!AC)
+            return;
+        if(!window._spartanActx)
+            window._spartanActx = new AC();
+        let actx = window._spartanActx;
+        if(actx.state === 'suspended')
+            actx.resume();
+        let b = spartanBoost[c.id];
+        if(!b) {
+            let src = actx.createMediaStreamSource(c.stream);
+            let g = actx.createGain();
+            src.connect(g);
+            g.connect(actx.destination);
+            b = {src: src, gain: g};
+            spartanBoost[c.id] = b;
+        }
+        b.gain.gain.value = lin;
+    } catch(e) {
+        console.warn(e);
+        if(media instanceof HTMLMediaElement) {
+            media.muted = false;
+            media.volume = 1;
+        }
+    }
+}
+
+function spartanApplyUserVolume(userId) {
+    if(!serverConnection || userId === serverConnection.id)
+        return;
+    let lin = spartanVolLin(userId);
+    for(let id in serverConnection.down) {
+        let c = serverConnection.down[id];
+        if(c.source === userId)
+            spartanSetStreamGain(c, lin);
+    }
 }
 
 function spartanSetChatOpen(open) {
@@ -881,6 +1060,7 @@ function gotDownStream(c) {
         delete spartanWatch[c.id];
         delete spartanHasVideo[c.id];
         delete spartanHideOwnStream[c.id];
+        spartanDropBoost(c.id);
         if(!replace)
             delMedia(c.localId);
         if(c.source)
@@ -892,6 +1072,8 @@ function gotDownStream(c) {
     };
     c.ondowntrack = function(track, transceiver, stream) {
         spartanApplyUserMute(c);
+        if(c.source)
+            spartanApplyUserVolume(c.source);
         if(c.label === 'screenshare')
             spartanHasVideo[c.id] = true;
         if(track && track.kind === 'video' && streamHasRealVideo(c.stream))
@@ -910,7 +1092,7 @@ function gotDownStream(c) {
     c.onstats = gotDownStats;
     c.setStatsInterval(activityDetectionInterval);
 
-    if(c.label === 'screenshare')
+    if(c.label === 'screenshare' || c.label === 'camera')
         spartanHasVideo[c.id] = true;
     setMedia(c);
     if(!spartanWatch[c.id])
@@ -1036,6 +1218,7 @@ function setButtonsVisibility() {
     let chatBtn = document.getElementById('channel-chat-btn');
     if(chatBtn) setVisibility('channel-chat-btn', connected && !ouvinte);
     spartanApplyOuvinteUi();
+    spartanPublishMicMuted();
 }
 
 /**
@@ -1062,6 +1245,7 @@ function setLocalMute(mute, reflect) {
         updateSettings({localMute: mute});
     if(mute && serverConnection)
         spartanSetUserTalking(serverConnection.id, false);
+    spartanPublishMicMuted();
 }
 
 getSelectElement('videoselect').onchange = function(e) {
@@ -1714,6 +1898,8 @@ async function setUpStream(c, stream) {
                     t.contentHint = 'detail';
                 }
             }
+        } else if(c.label === 'screenshare' && t.kind === 'video') {
+            t.contentHint = 'motion';
         }
         t.onended = e => {
             stream.onaddtrack = null;
@@ -2178,36 +2364,10 @@ function reconsiderDownRate(id) {
     }
     let c = serverConnection.down[id];
     if(!c)
-        throw new Error("Unknown down stream");
-    let normalrequest = mapRequestLabel(getSettings().request, c.label);
-
-    let requestlow = mapVideoToLow(normalrequest);
-    if(requestlow === null)
         return;
-
-    let old = c.userdata.requested;
-    let low = false;
-    if(old && ('force' in old)) {
-        low = old.force;
-    } else {
-        let media = /** @type {HTMLVideoElement} */
-            (document.getElementById('media-' + c.localId));
-        if(!media)
-            throw new Error("No media for stream");
-        let w = media.scrollWidth;
-        let h = media.scrollHeight;
-        if(w && h && w * h <= 320 * 240) {
-            low = true;
-        }
-    }
-
-    if(low !== !!(old && old.low)) {
-        if('requested' in c.userdata)
-            c.userdata.requested.low = low;
-        else
-            c.userdata.requested = {low: low};
-        c.request(low ? requestlow : null);
-    }
+    // Spartan manda: live aberta = alto; fechada = sem imagem.
+    // Não rebaixa porque o quadrado na tela ficou pequeno.
+    spartanApplyDownRequest(c);
 }
 
 let reconsiderDownRateTimer = null;
@@ -2338,6 +2498,8 @@ function spartanBindPeerUi(div, media) {
             return;
         if(div.classList.contains('peer-fs'))
             return;
+        if(spartanVisibleCount() <= 1)
+            return;
         let vc = document.getElementById('video-container');
         if(!vc)
             return;
@@ -2351,6 +2513,7 @@ function spartanBindPeerUi(div, media) {
             div.classList.add('peer-focus');
             vc.classList.add('peer-focus-mode');
         }
+        delete vc.dataset.spartanAutoFocus;
         resizePeers();
     });
 }
@@ -2380,8 +2543,11 @@ document.addEventListener('keydown', function(e) {
     let focus = document.querySelector('#peers .peer.peer-focus');
     let vc = document.getElementById('video-container');
     if(focus && vc && vc.classList.contains('peer-focus-mode')) {
+        if(spartanVisibleCount() <= 1)
+            return;
         focus.classList.remove('peer-focus');
         vc.classList.remove('peer-focus-mode');
+        delete vc.dataset.spartanAutoFocus;
         resizePeers();
     }
 });
@@ -2535,7 +2701,11 @@ function registerControlHandlers(localId, media, container) {
                 vc.classList.remove('peer-focus-mode');
             try {
                 let c = spartanFindByLocalId(localId);
-                if(c)
+                if(c && c.up) {
+                    c.close();
+                    setButtonsVisibility();
+                    spartanRefreshAllMedia();
+                } else if(c)
                     spartanToggleLive(c);
                 else
                     container.classList.add('peer-hidden');
@@ -2895,9 +3065,19 @@ function userMenu(elt) {
             items.push({label: 'Transmitir arquivo', onClick: presentFile});
         items.push({label: 'Reiniciar mídia', onClick: renegotiateStreams});
     } else {
-        items.push({label: 'Enviar arquivo', onClick: () => {
-            sendFile(id);
-        }});
+        let p = spartanUserVol[id] != null ? spartanUserVol[id] : 100;
+        items.push({
+            type: 'custom',
+            markup:
+                '<div class="contextualJs user-vol-menu">' +
+                '<button type="button" class="contextualJs user-mute-btn" data-uid="' + id + '">Mudo</button>' +
+                '<span class="contextualJs user-vol-menu-title">Volume (seu fone)</span>' +
+                '<div class="contextualJs user-vol-row">' +
+                '<input class="contextualJs user-vol-slider" type="range" min="0" max="400" step="5" value="' + p + '">' +
+                '<span class="contextualJs user-vol-lab">' + p + '%</span>' +
+                '</div>' +
+                '</div>',
+        });
         if(serverConnection.permissions.indexOf('op') >= 0) {
             items.push({type: 'seperator'}); // sic
             if(user.permissions.indexOf('present') >= 0)
@@ -2908,20 +3088,228 @@ function userMenu(elt) {
                 items.push({label: 'Permitir apresentar', onClick: () => {
                     serverConnection.userAction('present', id);
                 }});
-            items.push({label: 'Silenciar', onClick: () => {
+            items.push({label: 'Silenciar microfone', onClick: () => {
                 serverConnection.userMessage('mute', id);
             }});
             items.push({label: 'Expulsar', onClick: () => {
                 serverConnection.userAction('kick', id);
             }});
-            items.push({label: 'Identificar', onClick: () => {
-                serverConnection.userAction('identify', id);
-            }});
         }
     }
     /** @ts-ignore */
-    new Contextual({
+    let ctx = new Contextual({
         items: items,
+        width: '240px',
+    });
+    let menu = ctx && ctx.menuControl;
+    spartanPlaceUserMenu(menu);
+    spartanArmMenuCloser();
+    if(id !== serverConnection.id)
+        spartanBindVolumeMenu(id);
+}
+
+let spartanMenuCloseArmed = 0;
+
+function spartanPlaceUserMenu(menu) {
+    if(!menu)
+        menu = null;
+    if(!menu) {
+        let menus = document.getElementsByClassName('contextualMenu');
+        menu = menus.length ? menus[menus.length - 1] : null;
+    }
+    if(!menu)
+        return;
+    document.body.appendChild(menu);
+    menu.style.position = 'fixed';
+    menu.style.zIndex = '2147483000';
+    menu.style.pointerEvents = 'auto';
+    let x = spartanLastPointer.x;
+    let y = spartanLastPointer.y;
+    let w = menu.offsetWidth || 240;
+    let h = menu.offsetHeight || 160;
+    if(x + w > window.innerWidth - 8)
+        x = window.innerWidth - w - 8;
+    if(y + h > window.innerHeight - 8)
+        y = window.innerHeight - h - 8;
+    if(x < 8)
+        x = 8;
+    if(y < 8)
+        y = 8;
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+}
+
+function spartanArmMenuCloser() {
+    spartanMenuCloseArmed = Date.now() + 900;
+    document.onclick = function(e) {
+        if(Date.now() < spartanMenuCloseArmed)
+            return;
+        let t = e.target;
+        if(t && t.closest && t.closest('.contextualMenu'))
+            return;
+        contextualCore.CloseMenu();
+    };
+}
+
+function spartanIsCoarsePointer() {
+    try {
+        return !!(window.matchMedia &&
+            (window.matchMedia('(pointer: coarse)').matches ||
+             window.matchMedia('(hover: none)').matches));
+    } catch(e) {
+        return false;
+    }
+}
+
+/**
+ * @param {HTMLElement} elt
+ */
+function spartanBindUserLongPress(elt) {
+    let timer = null;
+    let sx = 0;
+    let sy = 0;
+    let opened = false;
+    function clearTimer() {
+        if(timer) {
+            clearTimeout(timer);
+            timer = null;
+        }
+    }
+    function fromControl(ev) {
+        let t = ev.target;
+        return !!(t && t.closest && t.closest('button, input, a'));
+    }
+    elt.addEventListener('touchstart', function(e) {
+        if(!spartanIsCoarsePointer() || fromControl(e))
+            return;
+        let touch = e.touches && e.touches[0];
+        if(!touch)
+            return;
+        sx = touch.clientX;
+        sy = touch.clientY;
+        opened = false;
+        spartanLastPointer = {x: sx, y: sy};
+        clearTimer();
+        timer = setTimeout(function() {
+            timer = null;
+            opened = true;
+            userMenu(elt);
+        }, 1000);
+    }, {passive: true});
+    elt.addEventListener('touchmove', function(e) {
+        let touch = e.touches && e.touches[0];
+        if(!touch)
+            return;
+        let dx = touch.clientX - sx;
+        let dy = touch.clientY - sy;
+        if((dx * dx + dy * dy) > 144)
+            clearTimer();
+    }, {passive: true});
+    elt.addEventListener('touchend', function(e) {
+        clearTimer();
+        if(opened) {
+            e.preventDefault();
+            e.stopPropagation();
+            opened = false;
+        }
+    });
+    elt.addEventListener('touchcancel', function() {
+        clearTimer();
+        opened = false;
+    });
+    elt.addEventListener('contextmenu', function(e) {
+        if(spartanIsCoarsePointer())
+            e.preventDefault();
+    });
+}
+
+/**
+ * @param {HTMLElement} elt
+ * @param {string} id
+ */
+function spartanEnsureMuteBelowName(elt, id) {
+    let inRow = elt.querySelector('.user-row > .user-mute-btn');
+    if(inRow)
+        inRow.remove();
+    let wrap = elt.querySelector('.user-mute-wrap');
+    if(serverConnection && id === serverConnection.id) {
+        if(wrap)
+            wrap.remove();
+        return;
+    }
+    let show = !!(spartanUserMuted[id] || spartanRemoteMuted(id));
+    if(!show) {
+        if(wrap)
+            wrap.remove();
+        return;
+    }
+    let muteBtn = wrap && wrap.querySelector('.user-mute-btn');
+    if(!wrap) {
+        wrap = document.createElement('div');
+        wrap.className = 'user-mute-wrap';
+        let row = elt.querySelector('.user-row');
+        let lives = elt.querySelector('.user-lives');
+        if(lives)
+            elt.insertBefore(wrap, lives);
+        else if(row && row.nextSibling)
+            elt.insertBefore(wrap, row.nextSibling);
+        else
+            elt.appendChild(wrap);
+    }
+    if(!muteBtn) {
+        muteBtn = document.createElement('button');
+        muteBtn.type = 'button';
+        muteBtn.className = 'user-mute-btn';
+        muteBtn.textContent = 'Mudo';
+        muteBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            spartanToggleUserMute(id);
+        });
+        wrap.appendChild(muteBtn);
+    }
+    spartanPaintMuteBtn(muteBtn, id);
+}
+
+/**
+ * @param {string} userId
+ */
+function spartanBindVolumeMenu(userId) {
+    let menus = document.getElementsByClassName('contextualMenu');
+    let menu = menus.length ? menus[menus.length - 1] : null;
+    if(!menu)
+        return;
+    let muteBtn = menu.querySelector('.user-mute-btn');
+    if(muteBtn instanceof HTMLButtonElement) {
+        muteBtn.setAttribute('data-uid', userId);
+        spartanPaintMuteBtn(muteBtn, userId);
+        muteBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            spartanToggleUserMute(userId);
+        });
+    }
+    let sl = menu.querySelector('.user-vol-slider');
+    let lab = menu.querySelector('.user-vol-lab');
+    if(!(sl instanceof HTMLInputElement) || !lab)
+        return;
+    sl.addEventListener('click', function(e) {
+        e.stopPropagation();
+    });
+    sl.addEventListener('mousedown', function(e) {
+        e.stopPropagation();
+    });
+    sl.addEventListener('touchstart', function(e) {
+        e.stopPropagation();
+    });
+    sl.addEventListener('input', function(e) {
+        e.stopPropagation();
+        let v = parseInt(this.value, 10) || 0;
+        v = Math.round(v / 5) * 5;
+        this.value = String(v);
+        spartanUserVol[userId] = v;
+        lab.textContent = v + '%';
+        spartanApplyUserVolume(userId);
     });
 }
 
@@ -2936,11 +3324,15 @@ function addUser(id, userinfo) {
     user.classList.add("user-p");
     setUserStatus(id, user, userinfo);
     user.addEventListener('click', function(e) {
+        if(spartanIsCoarsePointer())
+            return;
+        spartanLastPointer = {x: e.clientX, y: e.clientY};
         let elt = e.currentTarget;
         if(!elt || !(elt instanceof HTMLElement))
             throw new Error("Couldn't find user div");
         userMenu(elt);
     });
+    spartanBindUserLongPress(user);
 
     let us = div.children;
 
@@ -3005,20 +3397,11 @@ function setUserStatus(id, elt, userinfo) {
         name = document.createElement('span');
         name.className = 'user-name';
         row.appendChild(name);
-        let muteBtn = document.createElement('button');
-        muteBtn.type = 'button';
-        muteBtn.className = 'user-mute-btn';
-        muteBtn.textContent = 'Mudo';
-        muteBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            spartanToggleUserMute(id);
-        });
-        row.appendChild(muteBtn);
         elt.appendChild(row);
         let lives = document.createElement('div');
         lives.className = 'user-lives';
         elt.appendChild(lives);
+        spartanEnsureMuteBelowName(elt, id);
     } else {
         let row = elt.querySelector('.user-row');
         if(row && !row.querySelector('.user-avatar')) {
@@ -3034,6 +3417,10 @@ function setUserStatus(id, elt, userinfo) {
             let nm = row.querySelector('.user-name');
             row.insertBefore(dot, nm || null);
         }
+        let leftover = row && row.querySelector('.user-vol');
+        if(leftover)
+            leftover.remove();
+        spartanEnsureMuteBelowName(elt, id);
     }
     name.textContent = userinfo.username ? spartanDisplayName(userinfo.username) : '(anônimo)';
     if(userinfo.data.raisehand)
@@ -3052,6 +3439,8 @@ function delUser(id) {
     let div = document.getElementById('users');
     let user = document.getElementById('user-' + id);
     div.removeChild(user);
+    delete spartanUserMuted[id];
+    delete spartanUserVol[id];
 }
 
 /**
@@ -3813,9 +4202,6 @@ function chatMessageMenu(elt) {
                         userId: peerId,
                     });
                 }});
-    items.push({label: `Identificar ${u}`, onClick: () => {
-        serverConnection.userAction('identify', peerId);
-    }});
     items.push({label: `Expulsar ${u}`, onClick: () => {
         serverConnection.userAction('kick', peerId);
     }});
@@ -4310,13 +4696,6 @@ commands.kick = {
     f: userCommand,
 };
 
-commands.identify = {
-    parameters: 'user [message]',
-    description: 'identificar usuário',
-    predicate: operatorPredicate,
-    f: userCommand,
-};
-
 commands.op = {
     parameters: 'user',
     description: 'dar admin',
@@ -4791,7 +5170,11 @@ document.getElementById('loginform').onsubmit = async function(e) {
     serverConnect();
 };
 
-document.getElementById('disconnectbutton').onclick = function(e) {
+document.getElementById('disconnectbutton').onclick = async function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if(!await spartanAsk('Sair da sala agora?','confirm'))
+        return;
     try{sessionStorage.removeItem('spartanAdmin');sessionStorage.removeItem('spartanPending');sessionStorage.removeItem('spartanSession');sessionStorage.setItem('spartanLoggedOut','1');Object.keys(sessionStorage).forEach(function(k){if(k.indexOf('spartanSession:')===0)sessionStorage.removeItem(k);});window._spartanCred='';}catch(e){}
     location.href='/';
 };

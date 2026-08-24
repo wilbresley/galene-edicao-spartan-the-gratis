@@ -192,6 +192,8 @@ fieldset {
 }
 .contextualMenu,
 .contextualHoverMenu {
+  position: fixed !important;
+  z-index: 2147483000 !important;
   background: #1e1f22 !important;
   color: #f2f3f5 !important;
   border: 1px solid #3f4147 !important;
@@ -214,6 +216,7 @@ fieldset {
 .contextualHoverMenuItem {
   display: flex !important;
   align-items: center !important;
+  justify-content: center !important;
   flex-wrap: nowrap !important;
   gap: 8px !important;
   background: #2b2d31 !important;
@@ -228,14 +231,16 @@ fieldset {
   width: auto !important;
   min-width: 100% !important;
   box-sizing: border-box !important;
+  text-align: center !important;
 }
 .contextualMenuItemTitle,
 .contextualMenuItemTip {
   color: #f2f3f5 !important;
   white-space: nowrap !important;
-  flex: 0 1 auto !important;
+  flex: 1 1 auto !important;
   overflow: visible !important;
   text-overflow: clip !important;
+  text-align: center !important;
 }
 .contextualMenuItemIcon{
   flex: 0 0 auto !important;
@@ -394,8 +399,7 @@ fieldset {
 .sidenav .profile-info{float:none!important;width:auto!important;flex:1;margin:0!important}
 .sidenav .user-logout{float:none!important;margin-left:auto}
 .sidenav .user-logout a,
-.sidenav .user-logout #disconnectbutton,
-#disconnectbutton{
+.sidenav .user-logout #disconnectbutton{
  display:inline-flex!important;
  align-items:center!important;
  justify-content:center!important;
@@ -413,19 +417,26 @@ fieldset {
  box-sizing:border-box!important;
  cursor:pointer!important;
 }
-.sidenav .user-logout a:hover,
-#disconnectbutton:hover{
+.sidenav .user-logout a:hover{
  background:#b91c1c!important;
  color:#fff!important;
 }
 .sidenav .user-logout .logout-icon,
 .sidenav .user-logout .logout-text,
-#disconnectbutton .logout-icon,
-#disconnectbutton .logout-text,
-#disconnectbutton .fas{
+.sidenav .user-logout .fas{
  color:#fff!important;
  font-size:14px!important;
 }
+.nav-menu #disconnectbutton,
+.nav-menu #disconnectbutton label,
+.nav-menu #disconnectbutton .fas{
+ color:#dc2626!important;
+ background:transparent!important;
+ min-width:unset!important;
+ min-height:unset!important;
+ padding:0!important;
+}
+.nav-menu #openside.nav-more{padding-top:0!important}
 .sidenav .side-actions{display:flex;gap:8px;width:100%;margin-top:10px}
 .sidenav .side-actions>span{flex:1}
 .sidenav .side-actions a{
@@ -502,9 +513,12 @@ body:not(.spartan-in) .login-box label{text-align:left}
  position:fixed;left:50%;bottom:1.4rem;transform:translateX(-50%);z-index:6000;
  background:#2b2d31;color:#f2f3f5;border:1px solid #dc2626;border-radius:10px;
  padding:.7rem 1.1rem;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:min(92vw,420px)}
-#spartan-dlg{position:fixed;inset:0;z-index:6001;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center}
+#spartan-dlg{position:fixed;inset:0;z-index:6001;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:1rem}
 #spartan-dlg[hidden],#spartan-toast[hidden]{display:none!important}
-.spartan-dlg-acts{margin-top:.8rem}
+#spartan-dlg .spartan-reg-card{text-align:center;margin:0 auto;width:fit-content;max-width:min(360px,92vw);min-width:0;padding:.9rem 1.1rem}
+#spartan-dlg-msg{margin:0;text-align:center;line-height:1.45;color:#f2f3f5;font-weight:600}
+.spartan-dlg-acts{margin-top:.85rem;display:flex;justify-content:center;gap:.45rem}
+#spartan-dlg .spartan-dlg-acts button{margin:0}
 
 /* spartan-v16 */
 html.spartan-rejoin body:not(.spartan-in) #login-container{
@@ -892,13 +906,18 @@ body.spartan-in #left-sidebar{
 #hideownbutton:not(.hiding),
 #hideownbutton:not(.hiding) label,
 #hideownbutton:not(.hiding) .fas{
- color:#dc2626!important;
+ color:#22c55e!important;
 }
 #hideownbutton.hiding,
 #hideownbutton.hiding label,
 #hideownbutton.hiding .fas{
- color:#22c55e!important;
+ color:#dc2626!important;
 }
+#hideownbutton label{
+ overflow:visible!important;
+ text-overflow:clip!important;
+ white-space:nowrap!important;
+ max-width:none!important}
 
 #peers.peers-split{
  grid-template-columns:unset;
@@ -938,6 +957,9 @@ body.spartan-in #left-sidebar{
  color:#dbdee1;
  background:none!important;
  background-image:none!important;
+ -webkit-touch-callout:none;
+ -webkit-user-select:none;
+ user-select:none;
 }
 .user-row{
  display:flex;
@@ -975,6 +997,13 @@ body.spartan-in #left-sidebar{
  text-overflow:ellipsis;
  white-space:nowrap;
 }
+.user-mute-wrap{
+ margin-top:6px;
+}
+.user-mute-wrap .user-mute-btn{
+ width:100%;
+ display:block;
+}
 .user-mute-btn{
  flex:0 0 auto;
  background:#3f4147;
@@ -986,9 +1015,62 @@ body.spartan-in #left-sidebar{
  font-weight:700;
  cursor:pointer;
 }
+.user-mute-btn.mute-local{
+ background:#eab308;
+ color:#111;
+}
+.user-mute-btn.mute-remote,
 .user-mute-btn.on{
  background:#dc2626;
  color:#fff;
+}
+.user-mute-btn.mute-both{
+ background:linear-gradient(90deg,#eab308 0 50%,#dc2626 50% 100%);
+ color:#111;
+ text-shadow:0 0 2px #fff;
+}
+.user-vol-menu{
+ display:flex;
+ flex-direction:column;
+ align-items:stretch;
+ gap:6px;
+ padding:4px 4px 8px;
+ text-align:center;
+ box-sizing:border-box;
+ width:100%;
+}
+.user-vol-menu-title{
+ font-size:12px;
+ font-weight:600;
+ color:#dbdee1;
+ width:100%;
+ text-align:center;
+}
+.user-vol-menu .user-mute-btn{
+ width:100%;
+ padding:8px 10px;
+ font-size:13px;
+}
+.user-vol-row{
+ display:flex;
+ align-items:center;
+ gap:8px;
+ width:100%;
+}
+.user-vol-slider{
+ flex:1 1 auto;
+ width:auto;
+ min-width:0;
+ margin:0;
+ accent-color:#dc2626;
+ cursor:pointer;
+}
+.user-vol-lab{
+ font-size:11px;
+ font-weight:700;
+ color:#9aa0a6;
+ min-width:2.6rem;
+ text-align:right;
 }
 .user-lives{
  display:flex;

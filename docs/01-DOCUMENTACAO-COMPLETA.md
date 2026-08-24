@@ -1,7 +1,7 @@
 # Spartan Chat (Galene) — documentação completa da implantação
 
 **Data da implantação:** 20 de agosto de 2026  
-**Última revisão deste documento:** 21 de agosto de 2026  
+**Última revisão deste documento:** 24 de agosto de 2026  
 **Objetivo deste arquivo:** registrar *como o stack ficou no teu servidor*, para operação, backup e GitHub.  
 **Segredos:** nenhuma senha de produção, hash real do servidor, `sidecar.auth` vivo ou credencial operacional aparece aqui. Contas e senhas **da instalação** ficam só no servidor (`groups/*.json`, `data/config.json`, `data/sidecar.auth`).  
 **Exceção documentada:** o pacote `factory-reset/` traz a senha de fábrica `Mudar@123` (admin + convidados) de propósito — só para zerar o Docker; no primeiro login o admin **obrigatoriamente** troca as duas.
@@ -230,6 +230,7 @@ Comportamentos de sessão:
 - F5 na mesma sala reentra; ir para outra sala depois de Sair pede nick/senha.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: handoff `localStorage` para abrir o painel já logado.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=54`, `galene-spartan.css?v=53`). Estático só: copiar para `static/` e hard refresh; **sem** restart do Docker.
 
 Painel admin:
 
@@ -250,8 +251,16 @@ Painel admin:
 - Histórico de chat pulado para guests/temps e antes do timestamp `created`.
 - “Solicitar registro” só para convite, não para pública.
 - Sem kick HTTP nativo: o cliente sai sozinho no purge / bloqueio.
-- Multi-live: botões Tela/Câmera por stream; cabeçalho preto acima do vídeo.
+- Multi-live: botões Tela/Câmera por stream (rótulo da live **sempre** visível se `camera`/`screenshare`); cabeçalho preto acima do vídeo.
+- **Fluência:** live **assistida** (clicada) pede vídeo alto; as outras pedem áudio só (sem imagem), salvo tela sem áudio (`video-low` só para não sumir o botão Tela). `contentHint` de tela = `motion`.
+- **Uma** live na sala: já entra em foco; clique extra nela não faz nada. Duas ou mais: clique escolhe o foco.
+- **Minhas lives:** ícones de olho; verde = mostrando, vermelho = ocultando. O X nas lives dos outros esconde; o X na **própria** live **para** aquele share.
+- **Sair** no cabeçalho (vermelho `#dc2626`), com confirmação. Engrenagem: rótulo **Configurações**.
 - **Ouvinte** (`body.spartan-ouvinte`): microfone ok; sem lives, sem chat texto, sem câmera/tela.
+- Lista de usuários: clique esquerdo (PC) abre o menu. No **celular**, o drawer da lista desliza da esquerda; o menu do usuário só com **segurar 1 s**, em `position:fixed` por cima do drawer (`z-index` alto). Soltar o dedo **não** fecha o menu (o clique sintético é ignorado ~900 ms).
+- Menu do outro usuário: **Mudo** (só o teu fone), **Volume (seu fone)** 0–400% em passos de 5%, e se fores admin: apresentar / **Silenciar microfone** (muta o mic **dele** para toda a sala) / Expulsar. Sem Identificar (não manda IP) e sem enviar arquivo.
+- **Mudo** no menu: cinza = nada. Abaixo do nome o botão **só aparece** se houver estado: amarelo = tu não ouves; vermelho = ele mutou ou um admin silenciou (`user.data.muted`, publicado quando há câmera + mic local mudo); metade a metade = os dois.
+- Volume acima de 100% usa Web Audio (`GainNode`); até 100% usa `media.volume`. Não altera o que os outros ouvem.
 
 ---
 

@@ -278,6 +278,7 @@ Iguais à secção 4.4 e 4.6.
 - Temporários = só salas **sem** senha de amigos. Convite = senha de amigos.
 - **Cargos:** Admin (`op`), Verificado (`present`), Ouvinte (`["present"]` sem message). Temporário nasce Ouvinte; convidado nasce Verificado.
 - **Sair** limpa sessão. **Voltar à sala** no admin **não** desloga.
+- Sala: lives (foco, Tela/Câmera, olho verde/vermelho, fluência: só a assistida em vídeo alto); volume 0–400% e Mudo no menu do nick (PC clique; telemóvel segurar 1 s, menu por cima do drawer); Mudo visível na lista só se amarelo/vermelho; admin pode silenciar o mic do outro. Sem Identificar e sem enviar arquivo no menu.
 - Inputs de senha: `autocomplete=off` / `new-password`. CSP do Galene **proíbe** JS inline (`onfocus=...`).
 - Purge das públicas na hora cheia (`TZ` em `registry.py`, default `America/Sao_Paulo`).
 - `BAN_IP = False` no Python; `True` se quiseres suspender IP 24 h após o purge.
