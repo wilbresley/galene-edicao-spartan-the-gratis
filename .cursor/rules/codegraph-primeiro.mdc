@@ -1,0 +1,18 @@
+---
+description: Preferir CodeGraph antes de Grep/Read ao explorar ou editar código
+alwaysApply: true
+---
+
+# CodeGraph primeiro
+
+Ao entender, localizar ou editar código deste repositório:
+
+1. **Primeiro** use o MCP CodeGraph (`codegraph_explore`) — pergunta em linguagem natural ou nomes de símbolos/arquivos. Passe `projectPath` para esta pasta se a sessão não estiver nela.
+2. Trate o source retornado como já lido; **não** reabra os mesmos arquivos com Read só para “conferir”.
+3. Só use Grep/Glob/Read quando:
+   - o projeto **não** estiver indexado (sem `.codegraph/`) ou o MCP CodeGraph estiver indisponível;
+   - a resposta do CodeGraph não cobrir o detalhe (configs, docs, assets, CSV, YAML, strings de UI fora do grafo);
+   - precisar do arquivo inteiro além do trecho que o grafo devolveu;
+   - houver banner de staleness apontando arquivos editados — aí Read **só** esses arquivos.
+4. Não rode `codegraph init` / `uninstall` sozinho; se faltar índice, oriente o usuário a rodar `codegraph init` na pasta do projeto.
+5. Não diga “usei CodeGraph” em toda resposta — só use a ferramenta e responda a pergunta.

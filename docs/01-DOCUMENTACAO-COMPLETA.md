@@ -230,7 +230,7 @@ Comportamentos de sessão:
 - F5 na mesma sala reentra; ir para outra sala depois de Sair pede nick/senha.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: handoff `localStorage` para abrir o painel já logado.
-- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=54`, `galene-spartan.css?v=53`). Estático só: copiar para `static/` e hard refresh; **sem** restart do Docker.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=66`, `galene-spartan.css?v=58`). Estático só: copiar para `static/` e hard refresh; **sem** restart do Docker.
 
 Painel admin:
 
@@ -259,7 +259,8 @@ Painel admin:
 - **Ouvinte** (`body.spartan-ouvinte`): microfone ok; sem lives, sem chat texto, sem câmera/tela.
 - Lista de usuários: clique esquerdo (PC) abre o menu. No **celular**, o drawer da lista desliza da esquerda; o menu do usuário só com **segurar 1 s**, em `position:fixed` por cima do drawer (`z-index` alto). Soltar o dedo **não** fecha o menu (o clique sintético é ignorado ~900 ms).
 - Menu do outro usuário: **Mudo** (só o teu fone), **Volume (seu fone)** 0–400% em passos de 5%, e se fores admin: apresentar / **Silenciar microfone** (muta o mic **dele** para toda a sala) / Expulsar. Sem Identificar (não manda IP) e sem enviar arquivo.
-- **Mudo** no menu: cinza = nada. Abaixo do nome o botão **só aparece** se houver estado: amarelo = tu não ouves; vermelho = ele mutou ou um admin silenciou (`user.data.muted`, publicado quando há câmera + mic local mudo); metade a metade = os dois.
+- Bolinha: **cinza** off; **amarelo** mic ligado parado; **verde** falando; **vermelho** mutado. Publish segue a **faixa** (`enabled`+`live` → `on`; senão `localMute` → `muted`) e reenvia o estado a cada ~2,5 s. Nos outros, `micstate === 'muted'` é absoluto (analisador/stats não pintam amarelo). Desmutar / falar com faixa viva publica `on` mesmo que o `localMute` da sessão tenha ficado preso.
+- Avisos Toastify (erro/aviso/info) e `#spartan-toast`: caixa **verde sólida** `#16a34a`, sem degradê. Silêncio de admin: «Seu microfone foi silenciado por Nome».
 - Volume acima de 100% usa Web Audio (`GainNode`); até 100% usa `media.volume`. Não altera o que os outros ouvem.
 
 ---
