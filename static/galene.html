@@ -10,7 +10,7 @@
     <link rel="icon" type="image/jpeg" href="/icone-separtan.jpg"/>
     <link rel="stylesheet" type="text/css" href="/common.css"/>
     <link rel="stylesheet" type="text/css" href="/galene.css"/>
-    <link rel="stylesheet" type="text/css" href="/galene-spartan.css?v=40"/>
+    <link rel="stylesheet" type="text/css" href="/galene-spartan.css?v=53"/>
     <link rel="author" href="https://www.irif.fr/~jch/"/>
     <link rel="stylesheet" type="text/css" href="/third-party/fontawesome/css/fontawesome.min.css"/>
     <link rel="stylesheet" type="text/css" href="/third-party/fontawesome/css/solid.min.css"/>
@@ -73,9 +73,9 @@
                   </button>
                 </li>
                 <li>
-                  <div id="hideownbutton" class="invisible nav-link nav-button">
+                  <div id="hideownbutton" class="invisible nav-link nav-button" title="Oculta ou mostra suas lives só na sua tela. Os outros continuam vendo.">
                     <span><i class="fas fa-eye" aria-hidden="true"></i></span>
-                    <label>Ocultar o meu</label>
+                    <label>Minhas lives</label>
                   </div>
                 </li>
                 <li>
@@ -97,8 +97,15 @@
                   </div>
                 </li>
                 <li>
-                  <div class="nav-button nav-link nav-more" id="openside">
+                  <div class="nav-button nav-link nav-more" id="openside" title="Configurações">
                     <span><i class="fas fa-cog" aria-hidden="true"></i></span>
+                    <label>Configurações</label>
+                  </div>
+                </li>
+                <li>
+                  <div id="disconnectbutton" class="nav-link nav-button" title="Sair da sala" role="button">
+                    <span><i class="fas fa-sign-out-alt" aria-hidden="true"></i></span>
+                    <label>Sair</label>
                   </div>
                 </li>
               </ul>
@@ -200,12 +207,6 @@
             <div class="profile-info">
               <span id="userspan"></span>
               <span id="permspan"></span>
-            </div>
-            <div class="user-logout">
-              <a id="disconnectbutton">
-                <span class="logout-icon"><i class="fas fa-sign-out-alt"></i></span>
-                <span class="logout-text">Sair</span>
-              </a>
             </div>
           </div>
           <div class="side-actions">
@@ -369,7 +370,7 @@
     <script src="/third-party/contextual/contextual.js" defer></script>
     <script src="/settings.js" defer></script>
     <script src="/filter.js" defer></script>
-    <script src="/galene.js?v=40" defer></script>
+    <script src="/galene.js?v=54" defer></script>
   <div id="spartan-toast" hidden></div>
 <div id="spartan-dlg" hidden><div class="spartan-reg-card">
 <p id="spartan-dlg-msg"></p>

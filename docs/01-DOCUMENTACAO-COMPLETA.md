@@ -1,7 +1,7 @@
 # Spartan Chat (Galene) — documentação completa da implantação
 
 **Data da implantação:** 20 de agosto de 2026  
-**Última revisão deste documento:** 21 de agosto de 2026  
+**Última revisão deste documento:** 24 de agosto de 2026  
 **Objetivo deste arquivo:** registrar *como o stack ficou no teu servidor*, para operação, backup e GitHub.  
 **Segredos:** nenhuma senha de produção, hash real do servidor, `sidecar.auth` vivo ou credencial operacional aparece aqui. Contas e senhas **da instalação** ficam só no servidor (`groups/*.json`, `data/config.json`, `data/sidecar.auth`).  
 **Exceção documentada:** o pacote `factory-reset/` traz a senha de fábrica `Mudar@123` (admin + convidados) de propósito — só para zerar o Docker; no primeiro login o admin **obrigatoriamente** troca as duas.
@@ -24,11 +24,11 @@ No lugar entrou o **[Galene](https://galene.org)** (SFU + TURN nativo, Juliusz C
 
 | Item | Valor |
 |---|---|
-| Host | Debian (usuário do servidor) |
-| Pasta | `~/galene-edicao-spartan-the-gratis` |
-| IP LAN | `IP_LAN` |
-| IP público | `IP_PUBLICO` |
-| Domínio | `https://SEU_DOMINIO` |
+| Host | Debian (usuário `bresley`) |
+| Pasta | `~/docker/galene` |
+| IP LAN | `192.168.100.16` |
+| IP público | `45.4.107.171` |
+| Domínio | `https://chat.bresley.win` |
 | Proxy | Nginx Proxy Manager (já existente) + SSL Cloudflare |
 | Relógio | `America/Sao_Paulo` (limpeza de salas públicas na hora cheia) |
 
@@ -41,8 +41,8 @@ Internet / 4G
     │  HTTPS 443 (Cloudflare)
     ▼
 Nginx Proxy Manager
-    │  /              →  IP_LAN:8443   (Galene, WebSocket ligado)
-    │  /spartan-api/  →  IP_LAN:8091   (sidecar Python)
+    │  /              →  192.168.100.16:8443   (Galene, WebSocket ligado)
+    │  /spartan-api/  →  192.168.100.16:8091   (sidecar Python)
     ▼
 Debian (Docker, network_mode: host)
     ├── galene          TCP 8443 (HTTP -insecure, TLS fica no NPM)
@@ -59,7 +59,7 @@ O Galene sobe com `-http :8443 -insecure`. Quem termina TLS é o NPM.
 
 ## 4. Portas (firewall e roteador)
 
-Abrir **no roteador (WAN → IP_LAN)** e no **UFW** do Debian:
+Abrir **no roteador (WAN → 192.168.100.16)** e no **UFW** do Debian:
 
 | Porta | Protocolo | Serviço |
 |---|---|---|
@@ -68,7 +68,7 @@ Abrir **no roteador (WAN → IP_LAN)** e no **UFW** do Debian:
 | 1194 | TCP **e** UDP | TURN nativo |
 | 50000–50100 | UDP | Mídia RTP |
 
-No log do Galene, `Relay test failed` no primeiro boot é normal **enquanto o 1194 WAN não estiver aberto**. Depois do encaminhamento, o TURN deve anunciar `Starting built-in TURN server on IP_PUBLICO:1194`.
+No log do Galene, `Relay test failed` no primeiro boot é normal **enquanto o 1194 WAN não estiver aberto**. Depois do encaminhamento, o TURN deve anunciar `Starting built-in TURN server on 45.4.107.171:1194`.
 
 ---
 
@@ -77,7 +77,7 @@ No log do Galene, `Relay test failed` no primeiro boot é normal **enquanto o 11
 Imagem do Galene: **`galene:local`**, a mesma salva no Debian (`docker save`, 20/08/2026), no repo em `images/galene-local.tgz`. O `compose.yaml` **não** faz `build`: carrega essa imagem com `docker load`. Fonte pinado em `vendor/galene` (commit `9e03b36ba93f05e88fcfd6c3ea5468c16bcbae32`) só entra se alguém recompilar de propósito.
 
 ```
-~/galene-edicao-spartan-the-gratis/
+~/docker/galene/
   Dockerfile
   images/galene-local.tgz  imagem Docker exata (docker load)
   vendor/galene/           fonte do Galene congelado (rebuild opcional)
@@ -105,14 +105,14 @@ Serviços típicos no `compose.yaml`:
 
 ## 6. Nginx Proxy Manager
 
-Host: `SEU_DOMINIO`
+Host: `chat.bresley.win`
 
-1. Forward: `http://IP_LAN:8443`  
+1. Forward: `http://192.168.100.16:8443`  
    Websockets **ligado**. SSL Cloudflare como já estava.
-2. Custom Location: `/spartan-api/` → `http://IP_LAN:8091`  
+2. Custom Location: `/spartan-api/` → `http://192.168.100.16:8091`  
    (barra final importa; o sidecar aceita o prefixo e corta).
 
-`canonicalHost` / `proxyURL` no Galene: `https://SEU_DOMINIO/`.
+`canonicalHost` / `proxyURL` no Galene: `https://chat.bresley.win/`.
 
 ---
 
@@ -230,6 +230,7 @@ Comportamentos de sessão:
 - F5 na mesma sala reentra; ir para outra sala depois de Sair pede nick/senha.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: handoff `localStorage` para abrir o painel já logado.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=54`, `galene-spartan.css?v=53`). Estático só: copiar para `static/` e hard refresh; **sem** restart do Docker.
 
 Painel admin:
 
@@ -250,15 +251,23 @@ Painel admin:
 - Histórico de chat pulado para guests/temps e antes do timestamp `created`.
 - “Solicitar registro” só para convite, não para pública.
 - Sem kick HTTP nativo: o cliente sai sozinho no purge / bloqueio.
-- Multi-live: botões Tela/Câmera por stream; cabeçalho preto acima do vídeo.
+- Multi-live: botões Tela/Câmera por stream (rótulo da live **sempre** visível se `camera`/`screenshare`); cabeçalho preto acima do vídeo.
+- **Fluência:** live **assistida** (clicada) pede vídeo alto; as outras pedem áudio só (sem imagem), salvo tela sem áudio (`video-low` só para não sumir o botão Tela). `contentHint` de tela = `motion`.
+- **Uma** live na sala: já entra em foco; clique extra nela não faz nada. Duas ou mais: clique escolhe o foco.
+- **Minhas lives:** ícones de olho; verde = mostrando, vermelho = ocultando. O X nas lives dos outros esconde; o X na **própria** live **para** aquele share.
+- **Sair** no cabeçalho (vermelho `#dc2626`), com confirmação. Engrenagem: rótulo **Configurações**.
 - **Ouvinte** (`body.spartan-ouvinte`): microfone ok; sem lives, sem chat texto, sem câmera/tela.
+- Lista de usuários: clique esquerdo (PC) abre o menu. No **celular**, o drawer da lista desliza da esquerda; o menu do usuário só com **segurar 1 s**, em `position:fixed` por cima do drawer (`z-index` alto). Soltar o dedo **não** fecha o menu (o clique sintético é ignorado ~900 ms).
+- Menu do outro usuário: **Mudo** (só o teu fone), **Volume (seu fone)** 0–400% em passos de 5%, e se fores admin: apresentar / **Silenciar microfone** (muta o mic **dele** para toda a sala) / Expulsar. Sem Identificar (não manda IP) e sem enviar arquivo.
+- **Mudo** no menu: cinza = nada. Abaixo do nome o botão **só aparece** se houver estado: amarelo = tu não ouves; vermelho = ele mutou ou um admin silenciou (`user.data.muted`, publicado quando há câmera + mic local mudo); metade a metade = os dois.
+- Volume acima de 100% usa Web Audio (`GainNode`); até 100% usa `media.volume`. Não altera o que os outros ouvem.
 
 ---
 
 ## 13. Comandos úteis no Debian
 
 ```bash
-cd ~/galene-edicao-spartan-the-gratis
+cd ~/docker/galene
 docker compose ps
 docker logs galene --tail 50
 docker logs spartan-reg --tail 50
@@ -269,7 +278,7 @@ curl -sS http://127.0.0.1:8091/spartan-api/site; echo
 Rebuild da imagem Galene **só se quiser sair da imagem congelada**:
 
 ```bash
-cd ~/galene-edicao-spartan-the-gratis
+cd ~/docker/galene
 docker compose build --no-cache galene
 docker compose up -d
 ```
@@ -281,7 +290,7 @@ Mudança só em `static/` ou `registry.py`: em geral **não** precisa rebuild; `
 `registry.json` às vezes fica `root:root` (o sidecar grava como root). Para editar no host:
 
 ```bash
-sudo chown "$USER:$USER" ~/galene-edicao-spartan-the-gratis/data/registry.json
+sudo chown "$USER:$USER" ~/docker/galene/data/registry.json
 ```
 
 ---
@@ -290,7 +299,7 @@ sudo chown "$USER:$USER" ~/galene-edicao-spartan-the-gratis/data/registry.json
 
 - Pasta do servidor: `03-COMANDO-BACKUP.md` (zip **privado**, tem hashes e `sidecar.auth`).
 - Imagem Docker: `docker save galene:local | gzip > ~/galene-local-image.tgz` — cópia no Git em `images/galene-local.tgz`.
-- Repo público: https://github.com/wilbresley/galene-edicao-spartan-the-gratis — **sem** senhas. Clone + `docker load` + `compose up -d`.
+- Repo privado: https://github.com/wilbresley/galene-edicao-spartan — **sem** senhas. Clone + `docker load` + `compose up -d`.
 
 A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export do chat.
 
@@ -310,7 +319,7 @@ A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export 
 10. Outras salas: busca, 5 por página, altura fixa.
 11. Sala main protegida; home apontável; `/admin/` e `/salas/` sem `.html`.
 12. Login com wallpaper/rodapé; rodapé sem cortar a arte.
-13. Documentação + repo Git privado `wilbresley/galene-edicao-spartan-the-gratis`.
+13. Documentação + repo Git privado `wilbresley/galene-edicao-spartan`.
 14. Fonte Galene congelado em `vendor/galene` (commit `9e03b36`).
 15. Imagem `galene:local` no repo (`images/galene-local.tgz`); compose **sem** `build`.
 

@@ -86,12 +86,12 @@ git clone URL_DO_REPO galene
 cd galene
 ```
 
-Ou descompacta o zip limpo em `~/galene-edicao-spartan-the-gratis`.
+Ou descompacta o zip limpo em `~/docker/galene`.
 
 ### 4.2 Ficheiros teus (não copies senhas de ninguém)
 
 ```bash
-cd ~/galene-edicao-spartan-the-gratis
+cd ~/docker/galene
 cp .env.example .env
 nano .env
 # TURN_PUBLIC_IP= o IP público (curl -4 ifconfig.me) — NÃO o da LAN
@@ -153,7 +153,7 @@ Ajusta a rede LAN à tua (`192.168.100.0/24`, etc.).
 ### 4.5 Carregar a imagem e subir
 
 ```bash
-cd ~/galene-edicao-spartan-the-gratis
+cd ~/docker/galene
 docker load -i images/galene-local.tgz
 docker compose up -d
 docker compose ps
@@ -192,8 +192,8 @@ Usa isto se **não** tens o `images/galene-local.tgz` e queres compilar o Galene
 ### 5.1 Pasta
 
 ```bash
-mkdir -p ~/galene-edicao-spartan-the-gratis/{data,groups,recordings,static}
-cd ~/galene-edicao-spartan-the-gratis
+mkdir -p ~/docker/galene/{data,groups,recordings,static}
+cd ~/docker/galene
 ```
 
 ### 5.2 Dockerfile (compila de um commit fixo, não do `master` vivo)
@@ -235,7 +235,7 @@ IP do TURN no `.env` (`TURN_PUBLIC_IP`), **nunca** o da LAN.
 Primeira subida com compile:
 
 ```bash
-cd ~/galene-edicao-spartan-the-gratis
+cd ~/docker/galene
 docker compose build
 docker compose up -d
 ```
@@ -278,6 +278,7 @@ Iguais à secção 4.4 e 4.6.
 - Temporários = só salas **sem** senha de amigos. Convite = senha de amigos.
 - **Cargos:** Admin (`op`), Verificado (`present`), Ouvinte (`["present"]` sem message). Temporário nasce Ouvinte; convidado nasce Verificado.
 - **Sair** limpa sessão. **Voltar à sala** no admin **não** desloga.
+- Sala: lives (foco, Tela/Câmera, olho verde/vermelho, fluência: só a assistida em vídeo alto); volume 0–400% e Mudo no menu do nick (PC clique; telemóvel segurar 1 s, menu por cima do drawer); Mudo visível na lista só se amarelo/vermelho; admin pode silenciar o mic do outro. Sem Identificar e sem enviar arquivo no menu.
 - Inputs de senha: `autocomplete=off` / `new-password`. CSP do Galene **proíbe** JS inline (`onfocus=...`).
 - Purge das públicas na hora cheia (`TZ` em `registry.py`, default `America/Sao_Paulo`).
 - `BAN_IP = False` no Python; `True` se quiseres suspender IP 24 h após o purge.
@@ -369,7 +370,7 @@ Quem partilha o ecrã e quer que os outros ouçam **o jogo e a voz** precisa dos
 ## 9. Comandos úteis no dia a dia
 
 ```bash
-cd ~/galene-edicao-spartan-the-gratis
+cd ~/docker/galene
 docker compose ps
 docker logs galene --tail 50
 docker logs spartan-reg --tail 50
@@ -384,7 +385,7 @@ Mudança em `static/`: Ctrl+Shift+R (e incrementa `?v=`).
 `registry.json` às vezes fica `root:root` (o sidecar grava como root):
 
 ```bash
-sudo chown "$USER:$USER" ~/galene-edicao-spartan-the-gratis/data/registry.json
+sudo chown "$USER:$USER" ~/docker/galene/data/registry.json
 ```
 
 Backup da pasta (privado, tem hashes e `sidecar.auth`):
