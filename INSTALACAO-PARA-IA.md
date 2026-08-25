@@ -126,7 +126,7 @@ docker compose restart
 docker restart spartan-reg
 ```
 
-HTML/CSS/JS da sala: copiar para `static/`, **sem** restart. Confira o `?v=` no HTML (`galene.js`, `admin.js`).
+HTML/CSS/JS da sala: copiar para `static/`, **sem** restart. Confira o `?v=` no HTML (`galene.js?v=94`, `admin.js?v=33`).
 
 ---
 
@@ -134,8 +134,11 @@ HTML/CSS/JS da sala: copiar para `static/`, **sem** restart. Confira o `?v=` no 
 
 - [ ] Containers `galene` e `spartan-reg` up  
 - [ ] Entra na sala com admin  
-- [ ] Painel `/admin/` abre com a mesma conta  
+- [ ] Painel `/admin/` abre com a mesma conta admin da sala principal  
 - [ ] A raiz `/` é a landing (Cadê a Live?), não o formulário do admin  
+- [ ] Senha errada na sala **não** entra na call nem spamma toast; fica no login  
+- [ ] Duas lives abrem **lado a lado** (não uma em cima da outra)  
+- [ ] Fechar a câmera no celular **mantém** o mic se ele estiver ligado  
 - [ ] Domínio HTTPS no proxy (se for o caso)  
 - [ ] WebSocket no proxy  
 - [ ] `.env` com IP **público** no TURN  
@@ -148,7 +151,7 @@ Usuários antigos **não** voltam sem backup zip da pasta `data/` + `groups/`. I
 
 ## Diferença entre os dois repos (para a IA explicar se perguntarem)
 
-| | **Privado** `galene-edicao-spartan` | **Público** `…-the-gratis` |
+| | **Privado** [`galene-edicao-spartan`](https://github.com/wilbresley/galene-edicao-spartan) | **Público** [`galene-edicao-spartan-the-gratis`](https://github.com/wilbresley/galene-edicao-spartan-the-gratis) |
 |---|---|---|
 | Senhas de produção | Não (gitignore) | Não |
 | Código / UI / imagem | Sim | Sim (pacote “pronto”) |

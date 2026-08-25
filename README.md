@@ -43,7 +43,7 @@ No final o script lista o que você ainda precisa fazer no DNS, Nginx/NPM, firew
 
 Pronto. Abra:
 
-- Home: http://127.0.0.1:8443/
+- Home: http://127.0.0.1:8443/  (landing — não é o painel)
 - Sala: http://127.0.0.1:8443/group/spartan/
 - Admin: http://127.0.0.1:8443/admin/
 
@@ -70,6 +70,18 @@ Logs: `docker compose logs -f`
 | **registry.py** | Sidecar (`spartan-reg`): convites, temporários, logs, IDs, beacon |
 | **groups/spartan.json** | Sala principal (modo **convite** na fábrica) |
 | **data/** | Config, contas, registry, sidecar.auth |
+
+### O que você vê na prática
+
+Várias pessoas no mesmo canal, com microfone, câmera e compartilhamento de tela. O Galene relê a mídia no servidor (SFU + TURN), então funciona atrás de NAT e no 4G — diferente de app P2P que trava sem TURN.
+
+- **Home** (`/`) — marca e “Cadê a Live?”. Não é o login do painel.
+- **Sala** (`/group/<id>/`) — nick + senha (convite) ou nick (pública). A call **só** abre depois do servidor aceitar o login; senha errada fica no login, um aviso, sem loop.
+- **Microfone, câmera e tela** no header. Mic sozinho = bolinha na lista, sem botão Câmera. Fechar a câmera **não** desliga o mic.
+- **Lives** — 1 em foco; 2 **lado a lado**; 3–4 em grid 2×2. Clique foca; outro clique tira o foco.
+- **Chat** — abre sozinho em mensagem nova (dá para desligar); textos somem depois de 24 h.
+- **Lista** — bolinha cinza/amarelo/verde/vermelho; mudo e volume só no teu fone; admin pode silenciar o mic do outro ou expulsar.
+- **Painel** (`/admin/`) — cadastrados, convites, salas, logs. Só admin da sala principal. Anfitrião de sala 24 h não entra.
 
 ### Cargos (3)
 

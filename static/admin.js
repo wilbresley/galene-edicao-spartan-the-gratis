@@ -4,7 +4,9 @@ function uiDlg(msg,kind){return new Promise(function(resolve){var d=document.get
 function uiConfirm(m){return uiDlg(m,'confirm');}
 function uiPrompt(m){return uiDlg(m,'prompt');}
 
-const API='/spartan-api/gapi', REG='/spartan-api';
+const API_BASES=['/galene-api/v0','/spartan-api/gapi'];
+let API=API_BASES[0];
+const REG='/spartan-api';
 let GROUP='spartan', user='', pass='', registry={}, SITE={main:'spartan',home:'spartan'};
 async function loadSite(){ try{ SITE=await (await fetch(REG+'/site',{cache:'no-store'})).json(); }catch(e){ SITE={main:'spartan',home:'spartan'}; } GROUP=SITE.main||'spartan'; bindBackToRoom(); }
 function roomGid(){
@@ -55,12 +57,23 @@ function authHeader(){return 'Basic '+btoa(unescape(encodeURIComponent(user+':'+
 async function api(path,opt){
  opt=opt||{};
  const hdr=Object.assign({'Authorization':authHeader(),'X-Spartan-Auth':authHeader()},opt.headers||{});
- const r=await fetch(API+path,{method:opt.method||'GET',headers:hdr,body:opt.body});
- const text=await r.text();
- if(r.status===401) throw new Error('Usuário ou senha inválidos');
- if(!r.ok) throw new Error((text||r.statusText||String(r.status)).slice(0,220));
- if(!text) return null;
- try{return JSON.parse(text);}catch(e){return text;}
+ const order=API===API_BASES[1] ? [API_BASES[1], API_BASES[0]] : API_BASES.slice();
+ let lastErr=null;
+ for(let i=0;i<order.length;i++){
+  const r=await fetch(order[i]+path,{method:opt.method||'GET',headers:hdr,body:opt.body});
+  const text=await r.text();
+  if(r.ok){
+   API=order[i];
+   if(!text) return null;
+   try{return JSON.parse(text);}catch(e){return text;}
+  }
+  lastErr=new Error((text||r.statusText||String(r.status)).slice(0,220));
+  if(i<order.length-1 && (r.status===404 || r.status===401)) continue;
+  if(r.status===401) throw new Error('Usuário ou senha inválidos');
+  throw lastErr;
+ }
+ if(lastErr && /401/.test(String(lastErr.message))) throw new Error('Usuário ou senha inválidos');
+ throw lastErr;
 }
 async function reg(path,body){
  const r=await fetch(REG+path,{method:body?'POST':'GET',headers:{'Authorization':authHeader(),'X-Spartan-Auth':authHeader(),'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
@@ -464,11 +477,16 @@ async function loadNetLogs(){
 }
 async function afterLogin(){
  await loadSite();
- await api('/.groups/'+GROUP+'/.users/');
  document.documentElement.classList.remove('admin-gate');
  $('login-box').hidden=true; $('panel').hidden=false;
  $('who').textContent='Logado: '+user;
- await loadUsers(); await loadRooms(); await loadGuests(); await loadBlocked(); await loadTemps(); await loadLogs(); await loadNetLogs();
+ try{ await loadUsers(); }catch(e){ uiMsg(e.message); }
+ try{ await loadRooms(); }catch(e){}
+ try{ await loadGuests(); }catch(e){}
+ try{ await loadBlocked(); }catch(e){}
+ try{ await loadTemps(); }catch(e){}
+ try{ await loadLogs(); }catch(e){}
+ try{ await loadNetLogs(); }catch(e){}
 }
 $('btn-login').onclick=async()=>{
  user=($('u').value||'').trim().toLowerCase(); $('u').value=user; pass=$('p').value; $('login-err').textContent='';

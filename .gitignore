@@ -13,6 +13,7 @@ __pycache__/
 static/_pack.tgz
 .idea/
 .vscode/
+docs/exports/
 
 .codegraph/
 

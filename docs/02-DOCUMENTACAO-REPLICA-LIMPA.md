@@ -21,8 +21,8 @@ O Galene oficial sobe uma videoconferência SFU + TURN. Por cima foi feita uma i
 
 1. **Home** com wallpaper, marca, botão da sala da home, contador de gente online.
 2. **`/salas/`** — lista outras salas (busca, A–Z / Recentes, 5 linhas de altura fixa).
-3. **`/admin/`** — painel (usuários, convites, bloqueados, temporários, logs, oscilações, salas). Login com o mesmo visual da home. **Não** sirvas o admin em `/`.
-4. **Sala** `/group/<id>/` — login no estilo da home; sala **pública** esconde senha (com botão para conta cadastrada); sala **convite** pede senha.
+3. **`/admin/`** — painel (`static/admin/index.html`). A raiz `/` é a landing, **nunca** o login do admin.
+4. **Sala** `/group/<id>/` — login no estilo da home; a call **só** abre depois do join certo. Pública esconde senha (botão para conta cadastrada); convite pede senha. Duas lives lado a lado; fechar câmera mantém o mic.
 5. **Sidecar** `registry.py` na porta **8091**, no proxy em `/spartan-api/`.
 6. Salas **públicas** (só nick, ou conta cadastrada) **sempre 24h** vs **convite extra** (definitiva **ou** 24h). A **principal** não expira.
 7. Sala **principal** (`site.json` → `main`) não apaga pelo painel; **home** pode apontar para outra (não para sala de 24h).
@@ -31,6 +31,8 @@ O Galene oficial sobe uma videoconferência SFU + TURN. Por cima foi feita uma i
 10. Rodapé: crédito **obrigatório** do Galene/Juliusz; o do meio podes trocar pelo teu nome.
 
 Isto **não** é o MiroTalk. MiroTalk P2P trava em NAT/4G sem TURN. Galene relê a mídia.
+
+Cache da sala (hoje): `galene.js?v=94`, `galene-spartan.css?v=74`. Painel: `admin.js?v=33`, `admin.css?v=22`. Sobe o `?v=` se o browser ficar com JS velho.
 
 ---
 
@@ -49,7 +51,7 @@ Sem TURN acessível da internet, celular em 4G **não** fecha vídeo.
 
 | Porta | Protocolo | Uso |
 |---|---|---|
-| **443** | TCP | HTTPS no proxy (único que o utilizador vê) |
+| **443** | TCP | HTTPS no proxy (único que o usuário vê) |
 | **8443** | TCP | HTTP interno do Galene (`-insecure`) |
 | **8091** | TCP | Sidecar `/spartan-api/` |
 | **1194** | TCP **e** UDP | TURN nativo |
@@ -178,7 +180,7 @@ No log do Galene tem de aparecer o TURN no **IP público**. `Relay test failed` 
 |---|---|
 | `https://SEU_DOMINIO/` | Home |
 | `/salas/` | Outras salas |
-| `/admin/` | Painel |
+| `/admin/` | Painel (`static/admin/index.html`) |
 | `/group/sala-principal/` | Sala (ajusta o slug) |
 
 Ctrl+Shift+R se o CSS/JS parecer velho.
@@ -273,29 +275,29 @@ Iguais à secção 4.4 e 4.6.
 
 - Home: botão lê `/spartan-api/site` + `/public-groups.json`. `static/index.html` é a landing — **nunca** a substituas por `admin.html`.
 - `/salas/`: busca, A–Z ou Recentes, **5 linhas** de altura fixa; paginação se houver mais.
-- `/admin/`: **não** uses `/admin.html` na barra de endereço (há `static/admin/index.html`).
-- Sala pública: classe `html.spartan-open-room`, senha oculta; botão **fora** do `.connect` para login com conta cadastrada (`html.spartan-named-login`); `.login-box` com `height:auto` (a caixa não rebenta).
+- Painel: **`/admin/`** (`static/admin/index.html`). A raiz `/` é a landing — nunca o login do admin.
+- Sala pública: classe `html.spartan-open-room`, senha oculta; botão **fora** do `.connect` para login com conta cadastrada (`html.spartan-named-login`); `.login-box` com `height:auto` (a caixa não rebenta). Nick+senha só passam para a sala depois do Galene aceitar o join; senha errada fica no login (um toast, sem loop).
 - Temporários = só salas **sem** senha de amigos. Convite = senha de amigos.
 - **Cargos:** Admin (`op`), Verificado (`present`), Ouvinte (`["present"]` sem message). Temporário nasce Ouvinte; convidado nasce Verificado.
 - **Sair** limpa sessão. **Voltar à sala**: se a aba da call estiver aberta (`BroadcastChannel`), foca-a; senão reentra já logado. Não desloga a call.
-- Sala: lives (foco, Tela/Câmera, olho verde/vermelho, fluência: live assistida **sempre** em vídeo alto, mesmo a transmitir); volume 0–400% e Mudo no menu do nick (PC clique; telemóvel segurar 1 s, menu por cima do drawer); Mudo visível na lista só se amarelo/vermelho; admin pode silenciar o mic do outro. Sem Identificar e sem enviar arquivo no menu.
+- Sala: lives (foco, Tela/Câmera, olho verde/vermelho, fluência: live assistida **sempre** em vídeo alto, mesmo a transmitir). **Uma** live entra em foco; **duas** abrem **lado a lado** na primeira vez; 3–4 em grid 2×2. Fechar a câmera (X ou botão) **mantém o mic** se ele estiver ligado. Volume 0–400% e Mudo no menu do nick (PC clique; celular segurar 1 s, menu por cima do drawer); Mudo visível na lista só se amarelo/vermelho; admin pode silenciar o mic do outro. Sem Identificar e sem enviar arquivo no menu.
 - Botão **Painel Admin** na sala: só `POST /can-panel` (cadastrado da main). Anfitrião 24h **não** vê. Nova aba.
 - Inputs de senha: `autocomplete=off` / `new-password`. CSP do Galene **proíbe** JS inline (`onfocus=...`).
 - Extra **pública** sempre ganha `ttl` 24h. Extra **convite** só se o painel marcar **Sala temporária (24h)** (`POST /create-room` com `ttl: true`). A main não expira. `BAN_IP = False` no Python; `True` se quiseres suspender IP 24 h.
 - Contador `#spartan-ttl` reconstitui no `start()` (`sessionStorage spartanTtl:<grupo>` + `GET /temp-status`), inclusive no F5 e para op/admin.
 - `writableGroups: true` no `config.json` para o painel criar/apagar salas.
 
-API do sidecar (prefixo `/spartan-api`): `health`, `rooms`, `site`, `beacon`, `status`, `temp-status`, `registry`, `site-home`, `rename-main`, `create-room` (`ttl`, `open`, `host` só com ttl), `join-named`, `can-panel`, `net-event` (público), `net-log` / `access-log` (admin), convites (`register`, `approve`, `quick`, `deny`, `block`, `unblock`, `forget`), **`/panel-login`** (só admin da sala principal / `sidecar.auth`) e **`/gapi/*`**. O painel **não** aceita o anfitrião temporário de uma sala 24h.
+API do sidecar (prefixo `/spartan-api`): `health`, `rooms`, `site`, `beacon`, `status`, `temp-status`, `registry`, `site-home`, `rename-main`, `create-room` (`ttl`, `open`, `host` só com ttl), `join-named`, `can-panel`, `net-event` (público), `net-log` / `access-log` (admin), convites (`register`, `approve`, `quick`, `deny`, `block`, `unblock`, `forget`), **`/panel-login`** (só admin da sala principal / `sidecar.auth`) e **`/gapi/*`**. O `/gapi` completa a barra final das listas (`.users/`); sem isso o Galene devolve `404 page not found` no login do painel. O painel **não** aceita o anfitrião temporário de uma sala 24h.
 
 ---
 
 ## 7. Customizar visual (cores, imagens, textos)
 
-A UI **não** está “dentro” da imagem Docker no que o utilizador vê: o volume `./static` **substitui** o static da imagem. Mudas ficheiros em `static/` e dás Ctrl+Shift+R. **Não** precisas rebuild.
+A UI **não** está “dentro” da imagem Docker no que o usuário vê: o volume `./static` **substitui** o static da imagem. Muda arquivos em `static/` e dá Ctrl+Shift+R. **Não** precisa rebuild.
 
 ### 7.1 Wallpaper
 
-Ficheiro: `static/papel-de-parede.jpg`
+Arquivo: `static/papel-de-parede.jpg`
 
 Referências CSS: `spartan.css`, `galene-spartan.css`, `admin.css` (url `/papel-de-parede.jpg?v=…`). Troca o JPG e **sobe o `?v=`** nos CSS/HTML para furar o cache.
 
@@ -305,7 +307,7 @@ Referências CSS: `spartan.css`, `galene-spartan.css`, `admin.css` (url `/papel-
 
 A paleta está sobretudo em:
 
-| Ficheiro | O quê |
+| Arquivo | O quê |
 |---|---|
 | `static/spartan.css` | Home, botões, rodapé |
 | `static/galene-spartan.css` | Sala (login overlay, toasts) |
@@ -353,9 +355,9 @@ Depois: `docker restart spartan-reg`.
 
 Na sala, o microfone começa **desligado** (vermelho) em cada entrada — inclusive ao voltar do admin. O primeiro clique pede o microfone; os seguintes só mutam. A câmera fica num botão à parte. Ativar/Desativar da barra original estão escondidos.
 
-Lives com imagem **não** entram sozinhas no ecrã: aparece um botão verde (Câmera / Tela) sob o nick; o clique abre no teu grid, outro clique tira. Só áudio não ganha botão nem tile. Cada pessoa tem **Mudo** na lista (só no teu cliente). À esquerda do nome há uma bolinha: **cinza** (mic off), **amarelo** (mic ligado, parado), **verde** (falando), **vermelho** (mutado) — igual para si e para os outros. Sons curtos ao **entrar**, **sair** e **receber mensagem** (ficheiros em `static/sounds/*.mp3`; cada um liga/desliga em Configurações e fica gravado neste computador para o teu nick). Header: ícones vermelhos, textos e nome da sala brancos; fundo do grid/lista `#33363d`. Salas de 24h mostram à direita do nome: `Tempo até exclusão desta sala: HH:MM` (permanece no F5). Se a ligação cair, há graça de **30 s** (sem overlay no blip); só depois aparece **Ligação perdida**. A grelha é de pares (1, 2, 4, 6… até 50). **Ocultar o meu** esconde as tuas imagens só para ti. Chat e definições abrem em janela por cima da sala (engrenagem, sem menu a deslizar). A janela de Configurações tem borda vermelha; o X de fechar (configurações, chat, lives e avisos) é um quadradinho vermelho com X branco. Configurações mostra só dispositivos e os três sons da sala; envio ilimitado, duas qualidades automático e a bolinha de fala ficam ligados por baixo, sem opções extra no menu.
+Lives com imagem **não** entram sozinhas na tela: aparece um botão verde (Câmera / Tela) sob o nick; o clique abre no teu grid, outro clique tira. **Duas** lives já abrem **lado a lado** (a primeira em foco não deixa o grid numa coluna só). Só áudio não ganha botão nem tile (mic = só a bolinha). Fechar a câmera **não** desliga o microfone. Mensagem de texto abre o chat sozinho; dá para marcar **Não abrir o chat automaticamente**. Mensagens somem depois de **24 h**. Cada pessoa tem **Mudo** na lista (só no teu cliente). À esquerda do nome há uma bolinha: **cinza** (mic off), **amarelo** (mic ligado, parado), **verde** (falando), **vermelho** (mutado) — igual para si e para os outros. Sons curtos ao **entrar**, **sair** e **receber mensagem** (arquivos em `static/sounds/*.mp3`; cada um liga/desliga em Configurações e fica gravado neste computador para o teu nick). Header: ícones vermelhos, textos e nome da sala brancos; fundo do grid/lista `#33363d`. Salas de 24h mostram à direita do nome: `Tempo até exclusão desta sala: HH:MM` (permanece no F5). Se a ligação cair, há graça de **30 s** (sem overlay no blip); só depois aparece **Ligação perdida**. O grid é de pares (1, 2, 4, 6… até 50). **Ocultar o meu** esconde as tuas imagens só para ti. Chat e definições abrem em janela por cima da sala (engrenagem, sem menu a deslizar). A janela de Configurações tem borda vermelha; o X de fechar (configurações, chat, lives e avisos) é um quadradinho vermelho com X branco. Configurações mostra só dispositivos e os três sons da sala; envio ilimitado, duas qualidades automático e a bolinha de fala ficam ligados por baixo, sem opções extra no menu.
 
-Quem partilha o ecrã e quer que os outros ouçam **o jogo e a voz** precisa dos **dois** ao mesmo tempo: microfone ligado **e** partilha com áudio. No Chrome/Edge no **Windows**, no popup: escolhe **ecrã inteiro** ou **aba**, e marca **partilhar áudio**. Partilhar só uma janela quase nunca traz o som do PC. No Linux o browser muitas vezes só captura áudio de aba; no Safari/iPhone não há áudio de sistema.
+Quem compartilha a tela e quer que os outros ouçam **o jogo e a voz** precisa dos **dois** ao mesmo tempo: microfone ligado **e** compartilhamento com áudio. No Chrome/Edge no **Windows**, no popup: escolhe **tela inteira** ou **aba**, e marca **compartilhar áudio**. Compartilhar só uma janela quase nunca traz o som do PC. No Linux o browser muitas vezes só captura áudio de aba; no Safari/iPhone não há áudio de sistema.
 
 ---
 

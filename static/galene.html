@@ -16,7 +16,7 @@
     <link rel="stylesheet" type="text/css" href="/third-party/fontawesome/css/regular.min.css"/>
     <link rel="stylesheet" type="text/css" href="/third-party/toastify/toastify.css"/>
     <link rel="stylesheet" type="text/css" href="/third-party/contextual/contextual.css"/>
-    <link rel="stylesheet" type="text/css" href="/galene-spartan.css?v=69"/>
+    <link rel="stylesheet" type="text/css" href="/galene-spartan.css?v=74"/>
   </head>
 
   <body>
@@ -186,6 +186,10 @@
       <div id="chatbox">
         <div class="chat-overlay-bar">
           <span>Chat do Canal</span>
+          <label class="chat-noauto" for="chat-no-auto">
+            <input type="checkbox" id="chat-no-auto"/>
+            Não abrir o chat automaticamente
+          </label>
           <button type="button" class="close-chat" id="close-chat" title="Ocultar chat">
             <span class="close-icon"></span>
           </button>
@@ -388,7 +392,7 @@
     <script src="/third-party/contextual/contextual.js" defer></script>
     <script src="/settings.js" defer></script>
     <script src="/filter.js" defer></script>
-    <script src="/galene.js?v=81" defer></script>
+    <script src="/galene.js?v=94" defer></script>
   <div id="spartan-toast" hidden></div>
 <div id="spartan-drop" hidden>
   <div class="spartan-reg-card">

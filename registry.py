@@ -272,7 +272,20 @@ def is_open(gid):
     except Exception: return False
     pw=(g.get("wildcard-user") or {}).get("password")
     return (not pw) or (isinstance(pw, dict) and pw.get("type")=="wildcard")
+def galene_collection_path(path):
+    """Listas da API Galene (.users / .groups / .tokens) só existem com barra final.
+    Sem a barra o servidor devolve o texto cru '404 page not found' — e o painel
+    mostra isso embaixo do botão Entrar depois do panel-login já ter passado."""
+    if not path: return path
+    base, _, qs = path.partition("?")
+    if base.endswith("/.password"):
+        return path
+    for suf in ("/.users", "/.groups", "/.tokens"):
+        if base.endswith(suf):
+            return base+"/"+(("?"+qs) if qs else "")
+    return path
 def galene(method, path, auth, body=None, ctype="application/json", extra_headers=None):
+    path=galene_collection_path(path)
     data=None if body is None else (body.encode() if isinstance(body, str) else body)
     headers={"Authorization":auth or "","Content-Type":ctype}
     if extra_headers:
@@ -582,6 +595,7 @@ class H(BaseHTTPRequestHandler):
             self.send_json(404, {"error":"not found"}); return
         rest=path[len("/gapi"):] or "/"
         if not rest.startswith("/"): rest="/"+rest
+        rest=galene_collection_path(rest)
         parts=rest.split("/")
         try:
             if ".users" in parts:
@@ -590,6 +604,7 @@ class H(BaseHTTPRequestHandler):
                     parts[i+1]=norm_nick(parts[i+1])
                     rest="/".join(parts)
         except Exception: pass
+        rest=galene_collection_path(rest)
         gpath="/galene-api/v0"+rest
         auth=self.headers.get("Authorization") or self.headers.get("X-Spartan-Auth") or ""
         user, password=parse_basic(auth)

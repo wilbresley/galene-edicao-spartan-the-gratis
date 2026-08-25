@@ -607,9 +607,9 @@ function spartanRefreshAllMedia() {
                 spartanFillUserLives(uid, row);
         }
     }
-    resizePeers();
     showVideo();
     spartanSyncLiveFocus();
+    resizePeers();
 }
 
 /**
@@ -619,11 +619,13 @@ function spartanRefreshAllMedia() {
 function spartanStreamShowsLiveBtn(c) {
     if(!c)
         return false;
-    if(c.label === 'screenshare' || c.label === 'camera')
+    if(c.label === 'screenshare')
         return true;
-    if(spartanHasVideo[c.id])
+    if(streamHasRealVideo(c.stream))
         return true;
-    return streamHasRealVideo(c.stream);
+    if(c.up)
+        return false;
+    return c.label === 'camera' && !!c.source && spartanRemoteCamLive(c.source);
 }
 
 /**
@@ -741,6 +743,7 @@ function spartanToggleUserMute(userId) {
 }
 
 let spartanLastMicstate = undefined;
+let spartanLastCamlive = undefined;
 let spartanLastMicPublishAt = 0;
 let spartanMicSeq = 0;
 let spartanMicArmed = false;
@@ -762,11 +765,30 @@ function spartanLocalAudioLive() {
     });
 }
 
+function spartanLocalCamLive() {
+    if(!serverConnection)
+        return false;
+    for(let id in serverConnection.up) {
+        if(streamHasRealVideo(serverConnection.up[id].stream))
+            return true;
+    }
+    return false;
+}
+
+function spartanRemoteCamLive(userId) {
+    if(!serverConnection || !serverConnection.users)
+        return false;
+    let u = serverConnection.users[userId];
+    let d = (u && u.data) || {};
+    return d.camlive === true || d.camlive === 1 || d.camlive === '1';
+}
+
 function spartanPublishMicMuted() {
     if(!serverConnection || !serverConnection.id)
         return;
     let hasCam = !!findUpMedia('camera');
     let live = spartanLocalAudioLive();
+    let camlive = spartanLocalCamLive();
     let localMute = !!getSettings().localMute;
     if(live)
         spartanMicArmed = true;
@@ -776,9 +798,10 @@ function spartanPublishMicMuted() {
     else if(spartanMicArmed && hasCam && localMute)
         state = 'muted';
     let now = Date.now();
-    if(state === spartanLastMicstate && now - spartanLastMicPublishAt < 2500)
+    if(state === spartanLastMicstate && camlive === spartanLastCamlive && now - spartanLastMicPublishAt < 2500)
         return;
     spartanLastMicstate = state;
+    spartanLastCamlive = camlive;
     spartanLastMicPublishAt = now;
     spartanMicSeq++;
     try {
@@ -789,6 +812,7 @@ function spartanPublishMicMuted() {
                 micseq: spartanMicSeq,
                 muted: state === 'muted',
                 mic: state === 'on',
+                camlive: camlive,
             },
         );
     } catch(e) {}
@@ -1043,6 +1067,39 @@ function spartanApplyUserVolume(userId) {
     }
 }
 
+function spartanChatNoAuto() {
+    try { return localStorage.getItem('spartanChatNoAuto') === '1'; }
+    catch(e) { return false; }
+}
+
+function spartanChatNoAutoSave(on) {
+    try { localStorage.setItem('spartanChatNoAuto', on ? '1' : '0'); }
+    catch(e) {}
+}
+
+function spartanChatTooOld(time) {
+    if(!time)
+        return false;
+    let t = time instanceof Date ? time.getTime() : Date.parse(String(time));
+    if(!t)
+        return false;
+    return (Date.now() - t) > 24 * 60 * 60 * 1000;
+}
+
+function spartanChatPruneBox() {
+    let box = document.getElementById('box');
+    if(!box)
+        return;
+    let cut = Date.now() - 24 * 60 * 60 * 1000;
+    let rows = box.children;
+    for(let i = rows.length - 1; i >= 0; i--) {
+        let row = rows[i];
+        let ts = row && row.getAttribute && row.getAttribute('data-spartan-ts');
+        if(ts && Number(ts) < cut)
+            box.removeChild(row);
+    }
+}
+
 function spartanSetChatOpen(open) {
     if(open && spartanIsOuvinte())
         open = false;
@@ -1096,6 +1153,9 @@ function closeNav() {
 }
 
 let spartanDidJoin = false;
+let spartanJoinRejected = false;
+let spartanLoginBusy = false;
+let spartanLastAuthToast = {t: 0, m: ''};
 let spartanIntentionalLeave = false;
 let spartanDropShown = false;
 let spartanReconnecting = false;
@@ -1376,6 +1436,46 @@ async function spartanReconnect() {
     }
 }
 
+function spartanAuthFailText(message) {
+    return /not authorised|sem permissão|bad password|senha incorreta|não deu para entrar/i.test(String(message || ''));
+}
+
+function spartanRejectJoin() {
+    spartanJoinRejected = true;
+    spartanDidJoin = false;
+    spartanLoginBusy = false;
+    spartanReconnecting = false;
+    spartanClearGrace();
+    try {
+        sessionStorage.removeItem('spartanSession:' + group);
+        sessionStorage.removeItem('spartanSession');
+        sessionStorage.removeItem('spartanPending');
+    } catch(e) {}
+    window._spartanCred = '';
+    document.documentElement.classList.remove('spartan-rejoin');
+    setConnected(false);
+}
+
+function spartanCommitSession() {
+    try {
+        let username = (serverConnection && serverConnection.username) ||
+            getInputElement('username').value.trim().toLowerCase();
+        let pw = window._spartanCred || '';
+        if(!username)
+            return;
+        let payload = JSON.stringify({user: username, pass: pw, group: group});
+        sessionStorage.removeItem('spartanLoggedOut');
+        sessionStorage.setItem('spartanSession:' + group, payload);
+        sessionStorage.removeItem('spartanSession');
+        sessionStorage.removeItem('spartanPending');
+        if(pw) {
+            let handoff = JSON.stringify({user: username, pass: pw});
+            sessionStorage.setItem('spartanAdmin', handoff);
+            localStorage.setItem('spartanAdminHandoff', handoff);
+        }
+    } catch(e) {}
+}
+
 /**
  * setConnected is called whenever we connect or disconnect to the server.
  *
@@ -1411,7 +1511,8 @@ function setConnected(connected) {
  * @this {ServerConnection}
  */
 async function gotConnected() {
-    setConnected(true);
+    if(spartanDidJoin || spartanDropSince)
+        setConnected(true);
     await join();
 }
 
@@ -1508,10 +1609,8 @@ async function join() {
             console.warn(`Unexpected probing state ${probingState}`);
             probingState = null;
         }
-        let pw = getInputElement('password').value || window._spartanCred || ''; window._spartanCred='';
-        try{var _s=JSON.stringify({user:username,pass:pw,group:group}); sessionStorage.removeItem('spartanLoggedOut'); sessionStorage.setItem('spartanSession:'+group,_s); sessionStorage.removeItem('spartanSession'); sessionStorage.removeItem('spartanPending');
-            if(pw){ var _h={user:username,pass:pw}; sessionStorage.setItem('spartanAdmin',JSON.stringify(_h)); localStorage.setItem('spartanAdminHandoff',JSON.stringify(_h)); }
-        }catch(e){}
+        let pw = getInputElement('password').value || window._spartanCred || '';
+        window._spartanCred = pw;
         getInputElement('password').value = '';
         if(!groupStatus.authServer) {
             pwAuth = true;
@@ -1531,6 +1630,7 @@ async function join() {
         await serverConnection.join(group, username, credentials);
     } catch(e) {
         console.error(e);
+        spartanRejectJoin();
         displayError(e);
         serverConnection.close();
     }
@@ -1559,6 +1659,17 @@ function onPeerConnection() {
 function gotClose(code, reason) {
     if(this !== serverConnection)
         return;
+    if(spartanJoinRejected) {
+        spartanJoinRejected = false;
+        spartanIntentionalLeave = false;
+        spartanDidJoin = false;
+        spartanReconnecting = false;
+        spartanClearGrace();
+        try { closeUpMedia(); } catch(e) {}
+        closeSafariStream();
+        setConnected(false);
+        return;
+    }
     let wasIn = document.body.classList.contains('spartan-in') || spartanDidJoin;
     if(code !== 1000) {
         console.warn('Socket close', code, reason);
@@ -1661,7 +1772,7 @@ function gotDownStream(c) {
     c.onstats = gotDownStats;
     c.setStatsInterval(activityDetectionInterval);
 
-    if(c.label === 'screenshare' || c.label === 'camera')
+    if(c.label === 'screenshare')
         spartanHasVideo[c.id] = true;
     setMedia(c);
     spartanMaybeRestoreWatch(c);
@@ -1761,7 +1872,7 @@ function setButtonsVisibility() {
     let camBtn = document.getElementById('camerabutton');
     if(camBtn) {
         let cam = findUpMedia('camera');
-        let camOn = !!(cam && cam.stream && cam.stream.getVideoTracks().length);
+        let camOn = !!(cam && streamHasRealVideo(cam.stream));
         if(camOn)
             camBtn.classList.add('cam-on');
         else
@@ -1894,6 +2005,22 @@ document.getElementById('mutebutton').onclick = async function(e) {
     setLocalMute(!getSettings().localMute, true);
 };
 
+async function spartanStopCameraKeepMic() {
+    let cam = findUpMedia('camera');
+    if(!cam)
+        return;
+    let keepMic = !getSettings().localMute;
+    if(keepMic) {
+        await addLocalMedia(cam.localId, true);
+        setLocalMute(false, true);
+    } else {
+        cam.close();
+        setLocalMute(true, true);
+    }
+    setButtonsVisibility();
+    spartanRefreshAllMedia();
+}
+
 document.getElementById('camerabutton').onclick = async function(e) {
     e.preventDefault();
     if(spartanIsOuvinte()) {
@@ -1904,8 +2031,10 @@ document.getElementById('camerabutton').onclick = async function(e) {
     try {
         if(!cam)
             await addLocalMedia();
-        else if(!cam.stream || cam.stream.getVideoTracks().length === 0)
-            replaceCameraStream();
+        else if(!cam.stream || !streamHasRealVideo(cam.stream))
+            await addLocalMedia(cam.localId);
+        else
+            await spartanStopCameraKeepMic();
     } catch(err) {
         console.error(err);
         displayError(err);
@@ -3210,6 +3339,7 @@ async function setMedia(c, mirror, video) {
     setMediaStatus(c);
 
     showVideo();
+    spartanSyncLiveFocus();
     resizePeers();
     spartanRefreshHideOwnButton();
     if(c.source || c.up) {
@@ -3241,6 +3371,8 @@ function spartanBindPeerUi(div, media) {
                 spartanHasVideo[c.id] = true;
             }
             spartanRefreshAllMedia();
+            if(c && c.up)
+                spartanPublishMicMuted();
             return;
         }
         resizePeers();
@@ -3267,6 +3399,7 @@ function spartanBindPeerUi(div, media) {
             vc.classList.add('peer-focus-mode');
         }
         delete vc.dataset.spartanAutoFocus;
+        spartanSyncLiveFocus();
         resizePeers();
     });
 }
@@ -3454,9 +3587,12 @@ function registerControlHandlers(localId, media, container) {
                 vc.classList.remove('peer-focus-mode');
             try {
                 let c = spartanFindByLocalId(localId);
-                if(c && c.up) {
+                if(c && c.up && c.label === 'camera' && streamHasRealVideo(c.stream)) {
+                    spartanStopCameraKeepMic();
+                } else if(c && c.up) {
                     c.close();
                     setButtonsVisibility();
+                    setLocalMute(getSettings().localMute, true);
                     spartanRefreshAllMedia();
                 } else if(c)
                     spartanToggleLive(c);
@@ -3584,6 +3720,7 @@ function delMedia(localId) {
     mediadiv.removeChild(peer);
 
     setButtonsVisibility();
+    spartanSyncLiveFocus();
     resizePeers();
     hideVideo();
 }
@@ -4677,6 +4814,7 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
             setVisibility('passwordform', false);
         } else {
             token = null;
+            spartanRejectJoin();
             displayError('O servidor disse: ' + message);
         }
         closeSafariStream();
@@ -4711,6 +4849,12 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
         } else {
             token = null;
         }
+        if(kind === 'join') {
+            spartanJoinRejected = false;
+            spartanLoginBusy = false;
+            spartanCommitSession();
+            setConnected(true);
+        }
         // don't discard endPoint and friends
         for(let key in status)
             groupStatus[key] = status[key];
@@ -4728,6 +4872,7 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
         break;
     default:
         token = null;
+        spartanRejectJoin();
         displayError('Não deu para entrar na sala');
         closeSafariStream();
         this.close();
@@ -5200,19 +5345,32 @@ let lastMessage = {};
  * @param {string|HTMLElement} message
  */
 function addToChatbox(id, peerId, dest, nick, time, privileged, history, kind, message) {
+    if(spartanChatTooOld(time))
+        return;
     if(history && (window._spartanNoHist || (window._spartanSince && time && time.getTime() < window._spartanSince))) return;
     if(kind === 'caption') {
         displayCaption(message);
         return;
     }
-    if(!history && peerId && serverConnection && peerId !== serverConnection.id) {
-        spartanPlayRoomSound('mensagem');
-        if(!spartanChatIsOpen())
-            spartanSetChatUnread(true);
+    if(!history && peerId && !spartanReconnecting) {
+        if(serverConnection && peerId !== serverConnection.id)
+            spartanPlayRoomSound('mensagem');
+        if(!spartanChatIsOpen()) {
+            if(spartanChatNoAuto())
+                spartanSetChatUnread(true);
+            else
+                spartanSetChatOpen(true);
+        }
     }
 
     let row = document.createElement('div');
     row.classList.add('message-row');
+    if(time) {
+        let ts = time instanceof Date ? time.getTime() : Date.parse(String(time));
+        if(ts)
+            row.setAttribute('data-spartan-ts', String(ts));
+    }
+    spartanChatPruneBox();
     let container = document.createElement('div');
     container.classList.add('message');
     row.appendChild(container);
@@ -6246,6 +6404,12 @@ function spartanErr(message){
 function displayError(message, level) {
     message = spartanErr(message);
     if(level==='kicked' || /not authorised|sem permissão|bad password|senha incorreta/i.test(String(message))){ try{ sessionStorage.removeItem('spartanSession:'+group); sessionStorage.removeItem('spartanSession'); sessionStorage.removeItem('spartanPending'); }catch(e){} window._spartanCred=''; }
+    if(spartanAuthFailText(message)) {
+        let now = Date.now();
+        if(spartanLastAuthToast.m === message && (now - spartanLastAuthToast.t) < 8000)
+            return;
+        spartanLastAuthToast = {t: now, m: message};
+    }
     if(!level)
         level = "error";
     let position = 'center';
@@ -6294,6 +6458,9 @@ document.getElementById('loginform').onsubmit = async function(e) {
     let form = this;
     if(!(form instanceof HTMLFormElement))
         throw new Error('Bad type for loginform');
+    if(spartanLoginBusy)
+        return;
+    spartanLoginBusy = true;
 
     setVisibility('passwordform', true);
 
@@ -6309,15 +6476,15 @@ document.getElementById('loginform').onsubmit = async function(e) {
     await spartanHistFlags(_u);
     try{
       const ts=await (await fetch('/spartan-api/temp-status?group='+encodeURIComponent(group)+'&user='+encodeURIComponent(_u))).json();
-      if(ts.banned){ displayError('Este IP está suspenso nesta sala por 24 horas.'); return; }
+      if(ts.banned){ spartanLoginBusy=false; displayError('Este IP está suspenso nesta sala por 24 horas.'); return; }
       const named=document.documentElement.classList.contains('spartan-named-login');
-      if(ts.open && ts.taken && !named){ displayError('Esse nick já é de uma conta ou convite. Escolhe outro.'); return; }
+      if(ts.open && ts.taken && !named){ spartanLoginBusy=false; displayError('Esse nick já é de uma conta ou convite. Escolhe outro.'); return; }
       if(named){
         const pw=getInputElement('password').value;
-        if(!pw){ displayError('Digite a senha da conta cadastrada.'); return; }
+        if(!pw){ spartanLoginBusy=false; displayError('Digite a senha da conta cadastrada.'); return; }
         const rr=await fetch('/spartan-api/join-named',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({group:group,user:_u.toLowerCase(),password:pw})});
         let jj={}; try{ jj=await rr.json(); }catch(e){}
-        if(!rr.ok){ displayError((jj&&jj.error)||'Não deu para entrar com essa conta.'); return; }
+        if(!rr.ok){ spartanLoginBusy=false; displayError((jj&&jj.error)||'Não deu para entrar com essa conta.'); return; }
       }
       if(ts.open) window._spartanOpenRoom=true;
       window._spartanPurge=ts.purge;
@@ -6419,6 +6586,14 @@ if(chatBtn) {
     };
 }
 
+let chatNoAuto = document.getElementById('chat-no-auto');
+if(chatNoAuto) {
+    chatNoAuto.checked = spartanChatNoAuto();
+    chatNoAuto.onchange = function() {
+        spartanChatNoAutoSave(!!chatNoAuto.checked);
+    };
+}
+
 document.getElementById('collapse-video').onclick = function(e) {
     e.preventDefault();
     setVisibility('collapse-video', false);
@@ -6485,6 +6660,7 @@ async function serverConnect() {
             return;
         }
         displayError(`Não conectou em ${url}: ${e.message}`);
+        spartanLoginBusy = false;
     }
 }
 
