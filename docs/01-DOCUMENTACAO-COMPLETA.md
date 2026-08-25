@@ -240,7 +240,7 @@ Comportamentos de sessão:
 - Contador 24h (`#spartan-ttl`) reconstitui no `start()` (não só no submit do login): `spartanTtlRestore` + `GET /temp-status`. Anfitrião/op também faz poll.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: handoff `localStorage` para abrir o painel já logado.
-- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=91`, `galene-spartan.css?v=74`, `protocol.js?v=2`, `toastify.js?v=3`, `spartan-boot.js?v=7`). Home: `custom-home.js?v=3`. Painel: `admin.js?v=33`, `admin.css?v=22`. Copiar **`admin.html` para o caminho `static/admin`** (arquivo, sem extensão). Se lá existir uma **pasta** `admin/`, apaga a pasta antes (`rm -rf .../static/admin`) senão `/admin` continua 404. Nunca copiar o painel por cima de `index.html`.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=92`, `galene-spartan.css?v=74`, `protocol.js?v=2`, `toastify.js?v=3`, `spartan-boot.js?v=7`). Home: `custom-home.js?v=3`. Painel: `admin.js?v=33`, `admin.css?v=22`. Copiar **`admin.html` para o caminho `static/admin`** (arquivo, sem extensão). Se lá existir uma **pasta** `admin/`, apaga a pasta antes (`rm -rf .../static/admin`) senão `/admin` continua 404. Nunca copiar o painel por cima de `index.html`.
 
 Painel admin:
 
@@ -349,6 +349,7 @@ A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export 
 20. 25/08/2026: mic não mostra Câmera (só bolinha); Tela/Câmera só com live de verdade; chat abre sozinho (checkbox para não abrir); mensagens somem em 24 h. Grid/lives iguais ao item 19. Cache: `galene.js?v=90`, `galene-spartan.css?v=74`. Painel: `/admin/` (pasta `static/admin/index.html`).
 21. 25/08/2026: login do painel não trava mais no `404 page not found` (a lista de usuários ia para `/spartan-api/gapi`; o painel que funcionava usa `/galene-api/v0`, com fallback). Cache: `admin.js?v=33`.
 22. 25/08/2026: botão **Câmera** no nick e ícone do header só com faixa de vídeo real (`streamHasRealVideo`); mic sozinho não marca `spartanHasVideo` só porque o Galene chama o stream de `camera`. Cache: `galene.js?v=91`.
+23. 25/08/2026: quem transmite câmera avisa os outros com `camlive` no `setdata` — o botão Câmera aparece no PC mesmo antes de pedir o vídeo alto. Mic continua sem botão. Cache: `galene.js?v=92`.
 
 ---
 

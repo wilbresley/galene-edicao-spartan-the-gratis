@@ -621,7 +621,11 @@ function spartanStreamShowsLiveBtn(c) {
         return false;
     if(c.label === 'screenshare')
         return true;
-    return streamHasRealVideo(c.stream);
+    if(streamHasRealVideo(c.stream))
+        return true;
+    if(c.up)
+        return false;
+    return c.label === 'camera' && !!c.source && spartanRemoteCamLive(c.source);
 }
 
 /**
@@ -739,6 +743,7 @@ function spartanToggleUserMute(userId) {
 }
 
 let spartanLastMicstate = undefined;
+let spartanLastCamlive = undefined;
 let spartanLastMicPublishAt = 0;
 let spartanMicSeq = 0;
 let spartanMicArmed = false;
@@ -760,11 +765,30 @@ function spartanLocalAudioLive() {
     });
 }
 
+function spartanLocalCamLive() {
+    if(!serverConnection)
+        return false;
+    for(let id in serverConnection.up) {
+        if(streamHasRealVideo(serverConnection.up[id].stream))
+            return true;
+    }
+    return false;
+}
+
+function spartanRemoteCamLive(userId) {
+    if(!serverConnection || !serverConnection.users)
+        return false;
+    let u = serverConnection.users[userId];
+    let d = (u && u.data) || {};
+    return d.camlive === true || d.camlive === 1 || d.camlive === '1';
+}
+
 function spartanPublishMicMuted() {
     if(!serverConnection || !serverConnection.id)
         return;
     let hasCam = !!findUpMedia('camera');
     let live = spartanLocalAudioLive();
+    let camlive = spartanLocalCamLive();
     let localMute = !!getSettings().localMute;
     if(live)
         spartanMicArmed = true;
@@ -774,9 +798,10 @@ function spartanPublishMicMuted() {
     else if(spartanMicArmed && hasCam && localMute)
         state = 'muted';
     let now = Date.now();
-    if(state === spartanLastMicstate && now - spartanLastMicPublishAt < 2500)
+    if(state === spartanLastMicstate && camlive === spartanLastCamlive && now - spartanLastMicPublishAt < 2500)
         return;
     spartanLastMicstate = state;
+    spartanLastCamlive = camlive;
     spartanLastMicPublishAt = now;
     spartanMicSeq++;
     try {
@@ -787,6 +812,7 @@ function spartanPublishMicMuted() {
                 micseq: spartanMicSeq,
                 muted: state === 'muted',
                 mic: state === 'on',
+                camlive: camlive,
             },
         );
     } catch(e) {}
@@ -3272,6 +3298,8 @@ function spartanBindPeerUi(div, media) {
                 spartanHasVideo[c.id] = true;
             }
             spartanRefreshAllMedia();
+            if(c && c.up)
+                spartanPublishMicMuted();
             return;
         }
         resizePeers();
