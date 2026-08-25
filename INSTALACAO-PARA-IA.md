@@ -115,15 +115,18 @@ Abrir:
 
 - Local: `http://IP_LAN:8443/group/<sala>/`  
 - Depois do proxy: `https://DOMINIO/group/<sala>/`  
+- Landing (marca + Cadê a Live?): `https://DOMINIO/` — **não** é o login do admin  
 - Admin: `https://DOMINIO/admin/`
 
 Reinício depois de mudar config:
 
 ```bash
 docker compose restart
-# se mudou só registry.py:
+# se mudou só registry.py (API do sidecar, logs, oscilações):
 docker restart spartan-reg
 ```
+
+HTML/CSS/JS da sala: copiar para `static/`, **sem** restart. Confira o `?v=` no HTML (`galene.js`, `admin.js`).
 
 ---
 
@@ -132,6 +135,7 @@ docker restart spartan-reg
 - [ ] Containers `galene` e `spartan-reg` up  
 - [ ] Entra na sala com admin  
 - [ ] Painel `/admin/` abre com a mesma conta  
+- [ ] A raiz `/` é a landing (Cadê a Live?), não o formulário do admin  
 - [ ] Domínio HTTPS no proxy (se for o caso)  
 - [ ] WebSocket no proxy  
 - [ ] `.env` com IP **público** no TURN  

@@ -8,9 +8,9 @@
 <link rel="icon" type="image/jpeg" href="/icone-separtan.jpg"/>
 <link rel="stylesheet" href="/common.css"/>
 <link rel="stylesheet" href="/spartan-pages.css?v=5"/>
-<link rel="stylesheet" href="/admin.css?v=19"/>
+<link rel="stylesheet" href="/admin.css?v=22"/>
 <link rel="stylesheet" href="/spartan.css?v=22"/>
-<script src="/admin.js?v=29" defer></script>
+<script src="/admin.js?v=32" defer></script>
 </head>
 <body>
 <header class="admin-top">
@@ -36,6 +36,7 @@
 <button type="button" class="tab" data-tab="blocked">Bloqueados</button>
 <button type="button" class="tab" data-tab="temps">Temporários</button>
 <button type="button" class="tab" data-tab="logs">Logs</button>
+<button type="button" class="tab" data-tab="net">Oscilações</button>
 <button type="button" class="tab" data-tab="rooms">Salas</button>
 </nav>
 <div id="tab-users" class="tab-page">
@@ -65,14 +66,6 @@
 <button type="button" id="btn-create">Criar</button>
 <p id="create-msg" class="ok"></p>
 <p class="hint">Admin: moderar e tudo. Verificado: lives, transmitir e chats. Ouvinte: só voz (sem lives, sem texto, sem transmitir).</p>
-</section>
-<section class="admin-card">
-<h2>Senha dos amigos (qualquer nick)</h2>
-<p class="hint">Quem não tem usuário próprio entra com qualquer nome e esta senha.</p>
-<label for="wp">Nova senha compartilhada</label>
-<input id="wp" type="password"/>
-<button type="button" id="btn-wild">Salvar senha dos amigos</button>
-<p id="wild-msg" class="ok"></p>
 </section>
 </div>
 </div>
@@ -120,6 +113,18 @@
 <input id="log-ip" type="text" placeholder="Filtrar por IP"/>
 </div>
 <div id="logs"></div>
+</section>
+</div>
+<div id="tab-net" class="tab-page" hidden>
+<section class="admin-card">
+<h2>Oscilações de rede</h2>
+<p class="hint">Quedas do WebSocket (blip e queda de 30 s). Sem deduplicar. Horário de Brasília. Arquivo no servidor: data/net.log (30 dias).</p>
+<div class="log-filters">
+<input id="net-nick" type="text" placeholder="Filtrar por nick"/>
+<input id="net-sala" type="text" placeholder="Filtrar por sala"/>
+<input id="net-ip" type="text" placeholder="Filtrar por IP"/>
+</div>
+<div id="net-log"></div>
 </section>
 </div>
 <div id="tab-rooms" class="tab-page" hidden>

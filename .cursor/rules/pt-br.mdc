@@ -1,0 +1,26 @@
+---
+description: Português brasileiro em tudo — UI, docs, commits, chat do agente
+alwaysApply: true
+---
+
+# Idioma: só PT-BR
+
+Este projeto é **português do Brasil**. Não use português de Portugal.
+
+Vale para: textos da interface, documentação, commits, PRs, README, comentários que o usuário lê, e **as respostas do agente neste chat**.
+
+## Use (BR)
+
+você, tela, arquivo, celular, senha, usuário, conectar, cair a internet, pasta
+
+## Não use (PT-PT)
+
+tu / tens / estás / clicaste, ecrã, ficheiro, telemóvel, palavra-passe, utilizador, gajo, pá, autocarro, “não há” no lugar de “não tem”
+
+## Commits e GitHub
+
+Mensagens de commit e descrição de PR em PT-BR, curto e direto (o *porquê*). Sem europeísmo.
+
+## Código
+
+Identificadores, rotas e chaves JSON **não** traduz. Só o que aparece na tela e o que se escreve para humano.

@@ -366,9 +366,11 @@ function spartanApplyDownRequest(c) {
         c.request(['audio']);
         return;
     }
-    // Live aberta (clicou Tela/Câmera): sempre qualidade alta. Nunca video-low.
+    // Live aberta (clicou Tela/Câmera): sempre qualidade alta. Nunca video-low,
+    // mesmo com a tua câmara/tela ligadas ou o jogo aberto.
     if(spartanWatch[c.id]) {
         c.request(['audio', 'video']);
+        spartanBoostWatchedReceivers(c);
         return;
     }
     // Não clicou: não baixa imagem. Só áudio, se existir.
@@ -378,6 +380,45 @@ function spartanApplyDownRequest(c) {
         c.request(['audio']);
     else
         c.request(['audio', 'video-low']);
+}
+
+function spartanBoostWatchedReceivers(c) {
+    if(!c || c.up || !spartanWatch[c.id])
+        return;
+    try {
+        if(c.stream && c.stream.getVideoTracks) {
+            c.stream.getVideoTracks().forEach(function(t) {
+                try { t.contentHint = 'detail'; } catch(e) {}
+            });
+        }
+        if(!c.pc)
+            return;
+        c.pc.getReceivers().forEach(function(r) {
+            if(!r.track || r.track.kind !== 'video')
+                return;
+            try { r.track.contentHint = 'detail'; } catch(e) {}
+        });
+        c.pc.getTransceivers().forEach(function(tr) {
+            let s = tr.sender;
+            if(!s || !s.track || s.track.kind !== 'video')
+                return;
+            try {
+                let p = s.getParameters();
+                p.degradationPreference = 'maintain-resolution';
+                s.setParameters(p);
+            } catch(e) {}
+        });
+    } catch(e) {}
+}
+
+function spartanRefreshWatchedQuality() {
+    if(!serverConnection)
+        return;
+    for(let id in serverConnection.down) {
+        let c = serverConnection.down[id];
+        if(c && spartanWatch[c.id])
+            spartanApplyDownRequest(c);
+    }
 }
 
 function spartanIsOuvinte() {
@@ -1061,6 +1102,137 @@ let spartanReconnecting = false;
 let spartanDropTimer = 0;
 let spartanDropAttempt = 0;
 let spartanPrevPeerId = null;
+let spartanDropSince = 0;
+let spartanGraceTimer = 0;
+let spartanLastWs = {code: 0, reason: ''};
+const SPARTAN_GRACE_MS = 30000;
+
+function spartanNetEvent(ev) {
+    ev = ev || {};
+    try {
+        let u = (serverConnection && serverConnection.username) || '';
+        try {
+            if(!u) {
+                let el = document.getElementById('username');
+                u = (el && el.value) || '';
+            }
+        } catch(e) {}
+        let payload = {
+            group: group,
+            user: u,
+            phase: ev.phase || 'drop',
+            duration_ms: ev.duration_ms != null ? ev.duration_ms : (spartanDropSince ? (Date.now() - spartanDropSince) : 0),
+            code: ev.code,
+            reason: ev.reason || '',
+            ua: (navigator.userAgent || '').slice(0, 180),
+        };
+        fetch('/spartan-api/net-event', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+            keepalive: true,
+        }).catch(function() {});
+    } catch(e) {}
+}
+
+function spartanClearGrace() {
+    spartanDropSince = 0;
+    if(spartanGraceTimer) {
+        clearTimeout(spartanGraceTimer);
+        spartanGraceTimer = 0;
+    }
+}
+
+function spartanSnapshotWatch() {
+    let out = [];
+    if(!serverConnection)
+        return out;
+    for(let id in spartanWatch) {
+        if(!spartanWatch[id])
+            continue;
+        let c = serverConnection.down[id];
+        if(!c)
+            continue;
+        let u = serverConnection.users[c.source];
+        let name = (u && u.username) || '';
+        if(name)
+            out.push(name + '\t' + (c.label || ''));
+    }
+    return out;
+}
+
+function spartanMaybeRestoreWatch(c) {
+    if(!c || c.up)
+        return;
+    let snap = window._spartanWatchSnap;
+    if(!snap || !snap.length)
+        return;
+    let uname = '';
+    try {
+        let u = serverConnection && serverConnection.users[c.source];
+        uname = (u && u.username) || '';
+    } catch(e) {}
+    if(!uname)
+        return;
+    if(snap.indexOf(uname + '\t' + (c.label || '')) >= 0)
+        spartanWatch[c.id] = true;
+}
+
+function spartanSnapshotUps(sc) {
+    let keep = [];
+    if(!sc)
+        return keep;
+    for(let id in sc.up) {
+        let c = sc.up[id];
+        if(c && c.stream && c.label)
+            keep.push({label: c.label, stream: c.stream, localId: c.localId});
+    }
+    return keep;
+}
+
+async function spartanRepublishUps(keep) {
+    if(!keep || !keep.length || !serverConnection)
+        return;
+    for(let i = 0; i < keep.length; i++) {
+        let item = keep[i];
+        if(!item.stream || !item.stream.getTracks)
+            continue;
+        if(!item.stream.getTracks().some(function(t) { return t.readyState === 'live'; }))
+            continue;
+        if(findUpMedia(item.label))
+            continue;
+        try {
+            let c = newUpStream(item.localId);
+            c.label = item.label;
+            await setUpStream(c, item.stream);
+            await setMedia(c, item.label === 'camera' ? getSettings().mirrorView : false);
+        } catch(e) {
+            console.warn(e);
+        }
+    }
+}
+
+function spartanRoomBind() {
+    try { localStorage.setItem('spartanLastRoom', group); } catch(e) {}
+    if(typeof BroadcastChannel === 'undefined')
+        return;
+    if(window._spartanRoomCh)
+        return;
+    try {
+        let ch = new BroadcastChannel('spartan-room');
+        window._spartanRoomCh = ch;
+        ch.onmessage = function(ev) {
+            let d = ev.data || {};
+            if(d.group !== group)
+                return;
+            if(d.t === 'ping')
+                ch.postMessage({t: 'pong', group: group});
+            if(d.t === 'focus') {
+                try { window.focus(); } catch(e) {}
+            }
+        };
+    } catch(e) {}
+}
 
 function spartanDropEls() {
     return {
@@ -1094,6 +1266,20 @@ function spartanHideDropOverlay() {
     spartanPaintDrop(false);
 }
 
+function spartanScheduleSilentRetry(ms) {
+    if(spartanDropTimer) {
+        clearTimeout(spartanDropTimer);
+        spartanDropTimer = 0;
+    }
+    if(spartanDropShown || spartanReconnecting || !spartanDropSince)
+        return;
+    spartanDropTimer = setTimeout(function() {
+        spartanDropTimer = 0;
+        if(!spartanDropShown && !spartanReconnecting && spartanDropSince)
+            spartanSilentReconnect();
+    }, ms || 3000);
+}
+
 function spartanScheduleRetry(ms) {
     if(spartanDropTimer) {
         clearTimeout(spartanDropTimer);
@@ -1122,11 +1308,32 @@ function spartanShowDropOverlay() {
 }
 
 function spartanFailReconnect() {
-    if(!spartanDropShown)
-        return;
     spartanReconnecting = false;
+    if(!spartanDropShown) {
+        if(spartanDropSince)
+            spartanScheduleSilentRetry(3000);
+        return;
+    }
     spartanPaintDrop(false);
     spartanScheduleRetry(2500);
+}
+
+async function spartanSilentReconnect() {
+    if(spartanReconnecting || spartanDropShown)
+        return;
+    spartanReconnecting = true;
+    try {
+        let s = JSON.parse(sessionStorage.getItem('spartanSession:' + group) || 'null');
+        if(s && s.user)
+            getInputElement('username').value = s.user;
+        if(s && s.pass)
+            window._spartanCred = s.pass;
+    } catch(e) {}
+    try {
+        await serverConnect();
+    } catch(e) {
+        spartanFailReconnect();
+    }
 }
 
 async function spartanReconnect() {
@@ -1180,8 +1387,10 @@ function setConnected(connected) {
     let userbox = document.getElementById('profile');
     let connectionbox = document.getElementById('login-container');
     if(connected) {
+        let recovering = !!spartanDropSince && !spartanDropShown;
         spartanHideDropOverlay();
-        clearChat();
+        if(!recovering)
+            clearChat();
         userbox.classList.remove('invisible');
         connectionbox.classList.add('invisible');
         displayUsername();
@@ -1216,15 +1425,17 @@ function setAdminPanel(forceOff) {
  let s = document.getElementById('adminspan');
  if(!s) return;
  if(forceOff) { s.classList.add('invisible'); window._spartanPanelAdmin=false; return; }
- let p = serverConnection && serverConnection.permissions;
- let op = p && (p.indexOf('op') >= 0 || p.indexOf('admin') >= 0);
- if(!op){ s.classList.add('invisible'); window._spartanPanelAdmin=false; return; }
  let cred=null;
  try{
   let pend=JSON.parse(sessionStorage.getItem('spartanSession:'+group)||'null');
   if(pend&&pend.user&&pend.pass) cred=pend;
  }catch(e){}
- if(!cred){ s.classList.add('invisible'); window._spartanPanelAdmin=false; return; }
+ if(!cred){
+  let u=(serverConnection&&serverConnection.username)||'';
+  try{ if(!u){ let el=document.getElementById('username'); u=(el&&el.value)||''; } }catch(e){}
+  if(u && window._spartanCred) cred={user:u, pass:window._spartanCred};
+ }
+ if(!cred || !cred.pass){ s.classList.add('invisible'); window._spartanPanelAdmin=false; return; }
  fetch('/spartan-api/can-panel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:cred.user,password:cred.pass})})
   .then(function(r){return r.json();})
   .then(function(j){
@@ -1349,15 +1560,12 @@ function gotClose(code, reason) {
     if(this !== serverConnection)
         return;
     let wasIn = document.body.classList.contains('spartan-in') || spartanDidJoin;
-    if(serverConnection)
-        closeUpMedia();
-    closeSafariStream();
     if(code !== 1000) {
         console.warn('Socket close', code, reason);
     }
+    spartanLastWs = {code: code, reason: String(reason || '')};
     if(spartanReconnecting) {
-        if(this === serverConnection)
-            spartanFailReconnect();
+        spartanFailReconnect();
         return;
     }
     let loggedOut = false;
@@ -1365,13 +1573,36 @@ function gotClose(code, reason) {
     if(spartanIntentionalLeave || loggedOut || !wasIn) {
         spartanIntentionalLeave = false;
         spartanDidJoin = false;
+        try { closeUpMedia(); } catch(e) {}
+        closeSafariStream();
         setConnected(false);
         return;
     }
     if(serverConnection && serverConnection.id)
         spartanPrevPeerId = serverConnection.id;
-    spartanResetRoomState();
-    spartanShowDropOverlay();
+    if(!spartanDropSince) {
+        spartanDropSince = Date.now();
+        try { window._spartanWatchSnap = spartanSnapshotWatch(); } catch(e) {}
+        spartanNetEvent({phase: 'drop', code: code, reason: String(reason || '')});
+    }
+    if(!spartanGraceTimer) {
+        spartanGraceTimer = setTimeout(function() {
+            spartanGraceTimer = 0;
+            if(!spartanDropSince)
+                return;
+            try { closeUpMedia(); } catch(e) {}
+            try { closeSafariStream(); } catch(e) {}
+            spartanResetRoomState();
+            spartanShowDropOverlay();
+            spartanNetEvent({
+                phase: 'gone',
+                duration_ms: Date.now() - spartanDropSince,
+                code: spartanLastWs.code,
+                reason: spartanLastWs.reason,
+            });
+        }, SPARTAN_GRACE_MS);
+    }
+    spartanSilentReconnect();
 }
 
 /**
@@ -1403,6 +1634,8 @@ function gotDownStream(c) {
         if(track && track.kind === 'video' && streamHasRealVideo(c.stream))
             spartanHasVideo[c.id] = true;
         setMedia(c);
+        if(track && track.kind === 'video')
+            spartanBoostWatchedReceivers(c);
         if(track && track.kind === 'audio' && c.source) {
             track.onmute = function() {
                 spartanPaintTalkDot(c.source);
@@ -1431,8 +1664,8 @@ function gotDownStream(c) {
     if(c.label === 'screenshare' || c.label === 'camera')
         spartanHasVideo[c.id] = true;
     setMedia(c);
-    if(!spartanWatch[c.id])
-        spartanApplyDownRequest(c);
+    spartanMaybeRestoreWatch(c);
+    spartanApplyDownRequest(c);
 }
 
 // Store current browser viewport height in css variable
@@ -2652,6 +2885,7 @@ async function addLocalMedia(localId, audioOnly) {
         spartanPublishMicMuted();
         if(serverConnection)
             spartanPaintTalkDot(serverConnection.id);
+        spartanRefreshWatchedQuality();
     } catch(e) {
         console.error(e);
         displayError(e);
@@ -2713,6 +2947,7 @@ async function addShareMedia() {
     await setUpStream(c, stream);
     await setMedia(c);
     setButtonsVisibility();
+    spartanRefreshWatchedQuality();
 }
 
 /**
@@ -4054,7 +4289,7 @@ function spartanResetRoomState() {
     try { hideVideo(true); } catch(e) {}
 }
 
-function spartanAbandonConnection(sc) {
+function spartanAbandonConnection(sc, silent) {
     if(!sc)
         return;
     sc.onclose = null;
@@ -4068,12 +4303,24 @@ function spartanAbandonConnection(sc) {
     sc.onfiletransfer = null;
     sc.onpeerconnection = null;
     try {
-        for(let id in sc.up)
-            sc.up[id].close();
+        for(let id in sc.up) {
+            try {
+                if(silent)
+                    sc.up[id].onclose = null;
+                sc.up[id].close(!!silent);
+            } catch(e) {}
+        }
     } catch(e) {}
     try {
-        for(let id in sc.down)
-            sc.down[id].close();
+        for(let id in sc.down) {
+            try {
+                if(silent) {
+                    sc.down[id].onclose = null;
+                    sc.down[id].ondowntrack = null;
+                }
+                sc.down[id].close(!!silent);
+            } catch(e) {}
+        }
     } catch(e) {}
     try {
         if(sc.socket)
@@ -4504,8 +4751,23 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
 
     setLocalMute(true, true);
     spartanDidJoin = true;
+    if(spartanDropSince) {
+        spartanNetEvent({
+            phase: 'recovered',
+            duration_ms: Date.now() - spartanDropSince,
+            code: spartanLastWs.code,
+            reason: spartanLastWs.reason,
+        });
+    }
+    spartanClearGrace();
+    spartanRoomBind();
+    try {
+        await spartanRepublishUps(window._spartanKeepUp);
+    } catch(e) {}
+    window._spartanKeepUp = [];
     spartanArmRoomSounds();
     spartanPurgeStaleSelf();
+    spartanRefreshWatchedQuality();
 
     if(('mediaDevices' in navigator) &&
        ('getUserMedia' in navigator.mediaDevices) &&
@@ -6082,16 +6344,30 @@ if(_dropBtn)
         spartanReconnect();
     };
 window.addEventListener('online', function() {
-    if(!spartanDropShown)
+    if(spartanDropShown) {
+        spartanDropAttempt++;
+        spartanReconnecting = false;
+        try {
+            if(serverConnection && serverConnection.socket)
+                serverConnection.close();
+        } catch(e) {}
+        spartanReconnect();
         return;
-    spartanDropAttempt++;
-    spartanReconnecting = false;
-    try {
-        if(serverConnection && serverConnection.socket)
-            serverConnection.close();
-    } catch(e) {}
-    spartanReconnect();
+    }
+    if(spartanDropSince && !spartanReconnecting)
+        spartanSilentReconnect();
 });
+
+(function() {
+    let a = document.getElementById('admin-link');
+    if(!a || a.dataset.bound)
+        return;
+    a.dataset.bound = '1';
+    a.addEventListener('click', function(e) {
+        e.preventDefault();
+        window.open('/admin/', '_blank', 'noopener');
+    });
+})();
 
 document.getElementById('sidebarCollapse').onclick = function(e) {
     document.getElementById("left-sidebar").classList.toggle("active");
@@ -6169,8 +6445,12 @@ document.getElementById('show-chat').onclick = function(e) {
 
 async function serverConnect() {
     let old = serverConnection;
-    if(old)
-        spartanAbandonConnection(old);
+    let silent = !!spartanDropSince && !spartanDropShown;
+    if(old) {
+        if(silent)
+            window._spartanKeepUp = spartanSnapshotUps(old);
+        spartanAbandonConnection(old, silent);
+    }
     if(spartanDropShown)
         spartanResetRoomState();
     serverConnection = new ServerConnection();
@@ -6200,7 +6480,7 @@ async function serverConnect() {
         await serverConnection.connect(url);
     } catch(e) {
         console.error(e);
-        if(spartanDropShown) {
+        if(spartanDropShown || spartanDropSince) {
             spartanFailReconnect();
             return;
         }
