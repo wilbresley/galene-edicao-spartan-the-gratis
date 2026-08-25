@@ -50,9 +50,9 @@ docker compose up -d
 echo
 echo "=============================================="
 echo " Pronto!"
+echo " Home:   http://127.0.0.1:8443/          (landing — não é o painel)"
 echo " Sala:   http://127.0.0.1:8443/group/spartan/"
 echo " Admin:  http://127.0.0.1:8443/admin/"
-echo " Home:   http://127.0.0.1:8443/"
 echo
 echo " Login fábrica (troque no 1º acesso):"
 echo "   usuário: admin"

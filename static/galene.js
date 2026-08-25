@@ -607,9 +607,9 @@ function spartanRefreshAllMedia() {
                 spartanFillUserLives(uid, row);
         }
     }
-    resizePeers();
     showVideo();
     spartanSyncLiveFocus();
+    resizePeers();
 }
 
 /**
@@ -2005,6 +2005,22 @@ document.getElementById('mutebutton').onclick = async function(e) {
     setLocalMute(!getSettings().localMute, true);
 };
 
+async function spartanStopCameraKeepMic() {
+    let cam = findUpMedia('camera');
+    if(!cam)
+        return;
+    let keepMic = !getSettings().localMute;
+    if(keepMic) {
+        await addLocalMedia(cam.localId, true);
+        setLocalMute(false, true);
+    } else {
+        cam.close();
+        setLocalMute(true, true);
+    }
+    setButtonsVisibility();
+    spartanRefreshAllMedia();
+}
+
 document.getElementById('camerabutton').onclick = async function(e) {
     e.preventDefault();
     if(spartanIsOuvinte()) {
@@ -2015,8 +2031,10 @@ document.getElementById('camerabutton').onclick = async function(e) {
     try {
         if(!cam)
             await addLocalMedia();
-        else if(!cam.stream || cam.stream.getVideoTracks().length === 0)
-            replaceCameraStream();
+        else if(!cam.stream || !streamHasRealVideo(cam.stream))
+            await addLocalMedia(cam.localId);
+        else
+            await spartanStopCameraKeepMic();
     } catch(err) {
         console.error(err);
         displayError(err);
@@ -3321,6 +3339,7 @@ async function setMedia(c, mirror, video) {
     setMediaStatus(c);
 
     showVideo();
+    spartanSyncLiveFocus();
     resizePeers();
     spartanRefreshHideOwnButton();
     if(c.source || c.up) {
@@ -3380,6 +3399,7 @@ function spartanBindPeerUi(div, media) {
             vc.classList.add('peer-focus-mode');
         }
         delete vc.dataset.spartanAutoFocus;
+        spartanSyncLiveFocus();
         resizePeers();
     });
 }
@@ -3567,9 +3587,12 @@ function registerControlHandlers(localId, media, container) {
                 vc.classList.remove('peer-focus-mode');
             try {
                 let c = spartanFindByLocalId(localId);
-                if(c && c.up) {
+                if(c && c.up && c.label === 'camera' && streamHasRealVideo(c.stream)) {
+                    spartanStopCameraKeepMic();
+                } else if(c && c.up) {
                     c.close();
                     setButtonsVisibility();
+                    setLocalMute(getSettings().localMute, true);
                     spartanRefreshAllMedia();
                 } else if(c)
                     spartanToggleLive(c);
@@ -3697,6 +3720,7 @@ function delMedia(localId) {
     mediadiv.removeChild(peer);
 
     setButtonsVisibility();
+    spartanSyncLiveFocus();
     resizePeers();
     hideVideo();
 }

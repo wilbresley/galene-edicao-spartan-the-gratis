@@ -5,8 +5,10 @@ const path = require("path");
 const SRC =
   "C:/Users/wilian.bresley/.cursor/projects/s-workspace-smart-castro-app/agent-transcripts/9c35dbb1-0ff3-4dd3-ad70-d720a2b8e206/9c35dbb1-0ff3-4dd3-ad70-d720a2b8e206.jsonl";
 const dir = __dirname;
-const OUT_MD = path.join(dir, "conversa-spartan-20260824.md");
-const OUT_RAW = path.join(dir, "conversa-spartan-raw.jsonl");
+const STAMP = "20260825";
+const OUT_MD = path.join(dir, `conversa-spartan-${STAMP}.md`);
+const OUT_RAW = path.join(dir, `conversa-spartan-${STAMP}.jsonl`);
+const OUT_RAW_LATEST = path.join(dir, "conversa-spartan-raw.jsonl");
 
 const SECRET =
   /(sidecar\.auth\s*[:=]\s*\S+|(?:password|credential|secret|token)["']?\s*[:=]\s*["'][^"']{8,}["'])/gi;
@@ -17,11 +19,13 @@ function redact(s) {
 
 const raw = fs.readFileSync(SRC, "utf8");
 fs.writeFileSync(OUT_RAW, raw, "utf8");
+fs.writeFileSync(OUT_RAW_LATEST, raw, "utf8");
 
 const parts = [
   "# Export da conversa Cursor — Galene/Spartan\n",
-  "\nGerado em: 2026-08-24 (noite)\n",
+  `\nGerado em: 2026-08-25\n`,
   "Fonte: agent-transcripts/9c35dbb1-0ff3-4dd3-ad70-d720a2b8e206\n",
+  "\nComo importar noutro chat: leia `COMO-IMPORTAR.md` nesta pasta.\n",
   "\nTexto dos pedidos e respostas. Chamadas de ferramenta aparecem só como `[tool: nome]`. Sem senhas de produção.\n",
 ];
 

@@ -6,6 +6,24 @@ Repositório **privado** de [wilbresley](https://github.com/wilbresley). **Não*
 
 **Exceção:** `factory-reset/` traz a senha de fábrica conhecida `Mudar@123` (só para reset do Docker; o 1º login força troca). Hashes nesse pacote correspondem a essa senha de fábrica, não às senhas do servidor em produção.
 
+Pacote público (mesmo código, sem dados desta instalação): [galene-edicao-spartan-the-gratis](https://github.com/wilbresley/galene-edicao-spartan-the-gratis).
+
+## O que o programa faz
+
+Sala de voz e vídeo **auto-hospedada**: várias pessoas no mesmo canal, com microfone, câmera e compartilhamento de tela. O Galene relê a mídia no servidor (SFU + TURN), então funciona atrás de NAT e no 4G — diferente de app P2P que trava sem TURN.
+
+Na prática o cidadão / convidado vê:
+
+- **Home** (`/`) — marca, “Cadê a Live?”, entrada da sala da home. Não é o login do painel.
+- **Sala** (`/group/<id>/`) — nick + senha (convite) ou nick (pública). A tela da call **só** abre depois do servidor aceitar o login; senha errada fica no login, um aviso, sem loop.
+- **Microfone, câmera e tela** no header. Mic sozinho = bolinha na lista, sem botão Câmera. Fechar a câmera **não** desliga o mic.
+- **Lives** — 1 em foco; 2 **lado a lado**; 3–4 em grid 2×2. Clique foca; outro clique tira o foco.
+- **Chat** — abre sozinho em mensagem nova (dá para desligar); textos somem depois de 24 h.
+- **Lista** — bolinha cinza/amarelo/verde/vermelho; mudo e volume só no teu fone; admin pode silenciar o mic do outro ou expulsar.
+- **Painel** (`/admin/`) — cadastrados, convites, salas, logs, oscilações. Só admin da sala principal. Anfitrião de sala 24 h não entra.
+
+Cargos: **Admin**, **Verificado**, **Ouvinte**. Extra no painel: convite definitiva, convite 24 h ou pública 24 h.
+
 ## O que tem aqui
 
 | Caminho | Função |
@@ -92,5 +110,5 @@ chmod +x scripts/instalar-completo.sh && ./scripts/instalar-completo.sh
 
 Sempre cria **sala convite**. Extra no painel: convite definitiva (padrão), convite 24h ou pública 24h (anfitrião só nas de 24h).
 Guia para IA: [INSTALACAO-PARA-IA.md](INSTALACAO-PARA-IA.md).
-Exports de conversa: docs/exports/.
+Exports de conversa: [docs/exports/](docs/exports/) (só neste repo privado — como importar: [COMO-IMPORTAR.md](docs/exports/COMO-IMPORTAR.md)).
 Regras Cursor: `.cursor/rules/` (CodeGraph + convenções Spartan).

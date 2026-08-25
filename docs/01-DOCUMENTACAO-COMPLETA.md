@@ -240,7 +240,7 @@ Comportamentos de sessão:
 - Contador 24h (`#spartan-ttl`) reconstitui no `start()` (não só no submit do login): `spartanTtlRestore` + `GET /temp-status`. Anfitrião/op também faz poll.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: handoff `localStorage` para abrir o painel já logado.
-- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=93`, `galene-spartan.css?v=74`, `protocol.js?v=2`, `toastify.js?v=3`, `spartan-boot.js?v=7`). Home: `custom-home.js?v=3`. Painel: `admin.js?v=33`, `admin.css?v=22`. Copiar **`admin.html` para o caminho `static/admin`** (arquivo, sem extensão). Se lá existir uma **pasta** `admin/`, apaga a pasta antes (`rm -rf .../static/admin`) senão `/admin` continua 404. Nunca copiar o painel por cima de `index.html`.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=94`, `galene-spartan.css?v=74`, `protocol.js?v=2`, `toastify.js?v=3`, `spartan-boot.js?v=7`). Home: `custom-home.js?v=3`. Painel: `admin.js?v=33`, `admin.css?v=22`. Painel em **`/admin/`** (`static/admin/index.html`). Nunca copiar o painel por cima de `index.html` da raiz.
 
 Painel admin:
 
@@ -268,8 +268,8 @@ Painel admin:
 - Multi-live: botão **Tela** só no compartilhamento de tela; **Câmera** só com faixa de vídeo (mic sozinho = só a bolinha, sem texto Câmera). Cabeçalho preto acima do vídeo.
 - **Fluência:** live **assistida** (clicada) pede sempre `['audio','video']` — nunca `video-low`, mesmo se tu estiveres a transmitir ou com o jogo aberto. Nos receivers dessas lives: `contentHint=detail` e `degradationPreference=maintain-resolution`. As outras pedem áudio só (sem imagem), salvo tela sem áudio (`video-low` só para não sumir o botão Tela). `contentHint` de tela que **envias** = `motion`.
 - **Painel Admin** (botão na sala): depende **só** de `POST /can-panel` (conta cadastrada da main / sidecar). Não exige `op` da sala atual. Anfitrião 24h não vê o botão. Abre sempre em nova aba (`window.open` + handoff `spartanAdminHandoff`).
-- **Uma** live na sala: já entra em foco; clique extra nela não faz nada. Duas ou mais: clique escolhe o foco.
-- **Minhas lives:** ícones de olho; verde = mostrando, vermelho = ocultando. O X nas lives dos outros esconde; o X na **própria** live **para** aquele share.
+- **Uma** live na sala: já entra em foco; clique extra nela não faz nada. Duas lives: **lado a lado** já na primeira abertura (o foco automático da primeira não deixa o grid numa coluna só). Três ou quatro: grid 2×2. Clique escolhe o foco.
+- **Minhas lives:** ícones de olho; verde = mostrando, vermelho = ocultando. O X nas lives dos outros esconde; o X na **própria** live **para** aquele share. Fechar a **câmera** (header ou X) com o mic ligado **mantém o microfone**; o ícone verde do mic acompanha o estado real.
 - Engrenagem: rótulo **Configurações**. Painel só com o que a sala usa: perfil (trocar senha / admin), dispositivos (câmera, microfone, espelhar, ruído, áudio HQ) e **Sons da sala** (entrada, saída e mensagem, cada um à parte). As escolhas de som ficam em `localStorage` por nick neste browser. Fora do menu (fixo por baixo): envio **ilimitado**, duas qualidades **automático** (no Firefox, desligado), receber **tudo**, filtros desligados, modo quadro desligado, detectar atividade **sempre ligado** (é a mesma lógica da bolinha).
 - **Sair** no cabeçalho (vermelho `#dc2626`), com confirmação.
 - **Ouvinte** (`body.spartan-ouvinte`): microfone ok; sem lives, sem chat texto, sem câmera/tela.
@@ -277,7 +277,7 @@ Painel admin:
 - Menu do outro usuário: **Mudo** (só o teu fone), **Volume (seu fone)** 0–400% em passos de 5%, e se fores admin: apresentar / **Silenciar microfone** (muta o mic **dele** para toda a sala) / Expulsar. Sem Identificar (não manda IP) e sem enviar arquivo.
 - Bolinha: **cinza** off; **amarelo** mic ligado parado; **verde** falando; **vermelho** mutado. Publish segue a **faixa** (`enabled`+`live` → `on`; senão `localMute` → `muted`) e reenvia o estado a cada ~2,5 s. Nos outros, `micstate === 'muted'` é absoluto (analisador/stats não pintam amarelo). Desmutar / falar com faixa viva publica `on` mesmo que o `localMute` da sessão tenha ficado preso.
 - Sons da sala (`static/sounds/`): `entrar.mp3`, `sair.mp3`, `mensagem.mp3`. Toca para os **outros** (não para ti, não no histórico, não no lote dos 1,5 s ao entrares). Configurações: três interruptores (entrada / saída / mensagem), ligados por defeito, gravados neste computador por nick. O browser só liberta o áudio depois do primeiro clique/tecla.
-- Queda da ligação, depois de já teres entrado: **graça de 30 s**. Blip curto não mostra overlay, não limpa o ecrã e tenta o WebSocket em silêncio (~3 s). Só depois de 30 s seguidos: overlay **Ligação perdida**, limpa tiles e trata como queda. Aí tenta sozinho aos 2 s / ~2,5 s e no evento `online`. O Galene larga o peer no servidor quando o WS cai — os outros podem ver um piscar; o que se evita é o teu overlay a cada 2 s. **Sair**, `/leave` e kick não entram nesta graça. Cada blip/recuperação/queda vai para `POST /net-event`.
+- Queda da ligação, depois de já teres entrado: **graça de 30 s**. Blip curto não mostra overlay, não limpa a tela e tenta o WebSocket em silêncio (~3 s). Só depois de 30 s seguidos: overlay **Ligação perdida**, limpa tiles e trata como queda. Aí tenta sozinho aos 2 s / ~2,5 s e no evento `online`. O Galene larga o peer no servidor quando o WS cai — os outros podem ver um piscar; o que se evita é o teu overlay a cada 2 s. **Sair**, `/leave` e kick não entram nesta graça. Cada blip/recuperação/queda vai para `POST /net-event`.
 - Avisos Toastify (erro/aviso/info) e `#spartan-toast`: caixa **preta** com borda vermelha 2px. O X de fechar (toasts, Configurações, chat e lives) é um `×` branco em Arial (o `✖` do Toastify no Windows vira emoji roxo). Botão **Chat do Canal** com texto centrado; sininho à direita só com mensagens por ler.
 - Header da sala: fundo preto, linha vermelha embaixo; **ícones** vermelhos (verde quando mic/câmera/tela estão ligados); **textos** dos itens (Microfone, Câmera, etc.) e o **nome da sala** em branco. Em salas de 24h, à **direita do nome**: `Tempo até exclusão desta sala: HH:MM` (permanece no F5 / rejoin). Lista de nicks à esquerda: caixinhas pretas com borda vermelha; fundo do grid e da lista `#33363d`. Sidebar com `border-right` vermelho 4px. Janelas (configurações, chat, convite, menus) borda vermelha 2px e cantos 12px.
 - Volume acima de 100% usa Web Audio (`GainNode`); até 100% usa `media.volume`. Não altera o que os outros ouvem.
@@ -320,6 +320,8 @@ sudo chown "$USER:$USER" ~/docker/galene/data/registry.json
 - Pasta do servidor: `03-COMANDO-BACKUP.md` (zip **privado**, tem hashes e `sidecar.auth`).
 - Imagem Docker: `docker save galene:local | gzip > ~/galene-local-image.tgz` — cópia no Git em `images/galene-local.tgz`.
 - Repo privado: https://github.com/wilbresley/galene-edicao-spartan — **sem** senhas. Clone + `docker load` + `compose up -d`.
+- Repo público (pacote para clonar): https://github.com/wilbresley/galene-edicao-spartan-the-gratis
+- Histórico desta conversa Cursor (privado): `docs/exports/` — markdown + JSONL para importar noutro chat.
 
 A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export do chat.
 
@@ -351,6 +353,7 @@ A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export 
 22. 25/08/2026: botão **Câmera** no nick e ícone do header só com faixa de vídeo real (`streamHasRealVideo`); mic sozinho não marca `spartanHasVideo` só porque o Galene chama o stream de `camera`. Cache: `galene.js?v=91`.
 23. 25/08/2026: quem transmite câmera avisa os outros com `camlive` no `setdata` — o botão Câmera aparece no PC mesmo antes de pedir o vídeo alto. Mic continua sem botão. Cache: `galene.js?v=92`.
 24. 25/08/2026: senha errada não entra na sala nem fica em loop de toast. O WebSocket conecta, mas a UI da canal só abre no `joined`; falha de auth volta ao login (um aviso) e não dispara a graça de 30 s. Cache: `galene.js?v=93`.
+25. 25/08/2026: duas lives abrem **lado a lado** já na primeira vez. Fechar a câmera no celular **não** mata o microfone nem deixa o ícone verde; vira de novo só áudio. Cache: `galene.js?v=94`.
 
 ---
 
