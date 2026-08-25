@@ -6,7 +6,51 @@ function uiPrompt(m){return uiDlg(m,'prompt');}
 
 const API='/spartan-api/gapi', REG='/spartan-api';
 let GROUP='spartan', user='', pass='', registry={}, SITE={main:'spartan',home:'spartan'};
-async function loadSite(){ try{ SITE=await (await fetch(REG+'/site',{cache:'no-store'})).json(); }catch(e){ SITE={main:'spartan',home:'spartan'}; } GROUP=SITE.main||'spartan'; var a=document.querySelector('.btn-back'); if(a) a.href='/group/'+encodeURIComponent(SITE.home||SITE.main||'spartan')+'/'; }
+async function loadSite(){ try{ SITE=await (await fetch(REG+'/site',{cache:'no-store'})).json(); }catch(e){ SITE={main:'spartan',home:'spartan'}; } GROUP=SITE.main||'spartan'; bindBackToRoom(); }
+function roomGid(){
+ var gid=SITE.home||SITE.main||'spartan';
+ try{ var last=localStorage.getItem('spartanLastRoom'); if(last) gid=last; }catch(e){}
+ return gid;
+}
+function bindBackToRoom(){
+ var a=document.querySelector('.btn-back');
+ if(!a) return;
+ var gid=roomGid();
+ a.href='/group/'+encodeURIComponent(gid)+'/';
+ if(a.dataset.bound) return;
+ a.dataset.bound='1';
+ a.addEventListener('click', async function(e){
+  e.preventDefault();
+  var dest=roomGid();
+  var found=false;
+  if(typeof BroadcastChannel!=='undefined'){
+   try{
+    var ch=new BroadcastChannel('spartan-room');
+    found=await new Promise(function(resolve){
+     var t=setTimeout(function(){ try{ch.close();}catch(e){} resolve(false); },500);
+     ch.onmessage=function(ev){
+      var d=ev.data||{};
+      if(d.t==='pong' && d.group===dest){ clearTimeout(t); try{ch.close();}catch(e){} resolve(true); }
+     };
+     ch.postMessage({t:'ping', group:dest});
+    });
+    if(found){
+     var ch2=new BroadcastChannel('spartan-room');
+     ch2.postMessage({t:'focus', group:dest});
+     try{ ch2.close(); }catch(e){}
+     try{ window.close(); }catch(e){}
+     uiMsg('A sala já está aberta noutra aba.');
+     return;
+    }
+   }catch(err){}
+  }
+  try{
+   sessionStorage.setItem('spartanSession:'+dest, JSON.stringify({user:user,pass:pass,group:dest}));
+   sessionStorage.removeItem('spartanLoggedOut');
+  }catch(err){}
+  location.href='/group/'+encodeURIComponent(dest)+'/';
+ });
+}
 function authHeader(){return 'Basic '+btoa(unescape(encodeURIComponent(user+':'+pass)));}
 async function api(path,opt){
  opt=opt||{};
@@ -105,7 +149,7 @@ async function loadUsers(){
   rows.push({name, perm:roleFromPerm((info&&info.permissions)||'present'), rec:(b.seen||{})[name]||{}, id:uid});
  }
  sortItems(rows,'users');
- const uk='u:'+SORT.users+':'+rows.map(r=>r.id+':'+r.name+':'+r.perm).join('|');
+ const uk='u:'+SORT.users+':'+rows.map(r=>r.id+':'+r.name+':'+r.perm+':'+(r.rec.ip||'')+':'+(r.rec.last||'')).join('|');
  if(uk===loadUsers._k) return; loadUsers._k=uk;
  if(boxOps) boxOps.innerHTML='';
  box.innerHTML='';
@@ -116,11 +160,11 @@ async function loadUsers(){
   if(!list.length){target.textContent=empty;return;}
   list.forEach(function(item){
    const name=item.name, perm=item.perm, uid=item.id;
+   const card=document.createElement('div'); card.className='user-card';
    const row=document.createElement('div'); row.className='user-row';
-   row.innerHTML='<div class="who"><b></b></div><button type="button" class="ren">Renomear</button><div class="role-wrap"><button type="button" class="role-btn"></button><div class="role-menu"></div></div><button type="button" class="rst">Redefinir senha</button><button type="button" class="del">Excluir</button><button type="button" class="blk">Bloquear</button>';
+   row.innerHTML='<div class="who"><b></b></div><div class="user-tools"><button type="button" class="det">Detalhes</button><div class="role-wrap"><button type="button" class="role-btn"></button><div class="role-menu"></div></div><div class="user-acts"><button type="button" class="ren">Renomear</button><button type="button" class="rst">Redefinir senha</button></div><div class="user-acts"><button type="button" class="del">Excluir</button><button type="button" class="blk">Bloquear</button></div></div>';
    const title=(uid!=null?('ID '+uid+' · '):'')+name;
    row.querySelector('b').textContent=title;
-   var sm=document.createElement('span'); sm.className='hint'; sm.textContent=fmtSeen(name,GROUP,item.rec); row.querySelector('.who').appendChild(sm);
    const curPerm=['op','present','ouvinte'].indexOf(perm)>=0?perm:'present';
    const roleBtn=row.querySelector('.role-btn');
    const roleMenu=row.querySelector('.role-menu');
@@ -179,7 +223,15 @@ async function loadUsers(){
     try{await reg('/block',{group:GROUP,user:name}); loadUsers._k=null; loadBlocked._k=null; await loadUsers(); await loadGuests(); await loadBlocked();}
     catch(e){uiMsg(e.message);}
    };
-   target.appendChild(row);
+   row.querySelector('.det').onclick=function(){ card.classList.toggle('open'); };
+   const det=document.createElement('div'); det.className='user-details';
+   const rec=item.rec||{};
+   const ip=document.createElement('div'); ip.className='ip'; ip.textContent=rec.ip?('IP '+rec.ip):'IP —';
+   const meta=document.createElement('div');
+   meta.textContent=(GROUP?('Sala '+GROUP):'Sala —')+' · visto '+(fmtQuando(rec.last||rec.first||rec.at)||'—');
+   det.appendChild(meta); det.appendChild(ip);
+   card.appendChild(row); card.appendChild(det);
+   target.appendChild(card);
   });
  }
  render(boxOps, ops, 'Nenhum admin além das contas do servidor.');
@@ -364,13 +416,59 @@ async function loadLogs(){
   if(!box.dataset.ok) box.textContent='Não deu para ler os logs.';
  }
 }
+var NET_CACHE=[];
+function netPhaseLabel(p){return ({drop:'Queda',recovered:'Recuperou',gone:'Caiu de vez'})[p]||p||'—';}
+function netMatchesFilter(e){
+ var nick=((($('net-nick')&&$('net-nick').value)||'').trim().toLowerCase());
+ var sala=((($('net-sala')&&$('net-sala').value)||'').trim().toLowerCase());
+ var ip=((($('net-ip')&&$('net-ip').value)||'').trim().toLowerCase());
+ if(nick && String(e.nick||'').toLowerCase().indexOf(nick)<0) return false;
+ if(sala && String(e.sala||'').toLowerCase().indexOf(sala)<0) return false;
+ if(ip && String(e.ip||'').toLowerCase().indexOf(ip)<0) return false;
+ return true;
+}
+function paintNetLogs(){
+ const box=$('net-log'); if(!box) return;
+ const entries=NET_CACHE.filter(netMatchesFilter);
+ box.innerHTML='';
+ if(!NET_CACHE.length){box.textContent='Nenhuma oscilação registada ainda.';return;}
+ if(!entries.length){box.textContent='Nenhum resultado com estes filtros.';return;}
+ entries.forEach(function(e){
+  const el=document.createElement('div'); el.className='guest-row';
+  const lab=document.createElement('b'); lab.textContent=e.nick||'(sem nick)';
+  const tag=document.createElement('span'); tag.className='tag tag-guest'; tag.textContent=netPhaseLabel(e.phase);
+  const meta=document.createElement('span'); meta.className='hint';
+  var bits=[];
+  bits.push(fmtQuando(e.quando)||'');
+  if(e.sala) bits.push('sala '+e.sala);
+  if(e.ip) bits.push('IP '+e.ip);
+  if(e.duration_ms) bits.push((e.duration_ms/1000).toFixed(1)+' s');
+  if(e.code!=null && e.code!=='') bits.push('WS '+e.code);
+  if(e.reason) bits.push(String(e.reason));
+  meta.textContent=bits.filter(Boolean).join(' · ');
+  el.appendChild(lab); el.appendChild(tag); el.appendChild(meta); box.appendChild(el);
+ });
+}
+async function loadNetLogs(){
+ const box=$('net-log'); if(!box) return;
+ try{
+  const data=await reg('/net-log?limit=400');
+  NET_CACHE=(data&&data.entries)||[];
+  const key='N:'+NET_CACHE.length+':'+(NET_CACHE[0]&&(NET_CACHE[0].quando+NET_CACHE[0].nick+NET_CACHE[0].ip)||'')+':'+(($('net-nick')&&$('net-nick').value)||'')+':'+(($('net-sala')&&$('net-sala').value)||'')+':'+(($('net-ip')&&$('net-ip').value)||'');
+  if(key===loadNetLogs._k){ paintNetLogs(); return; }
+  loadNetLogs._k=key;
+  paintNetLogs();
+ }catch(e){
+  if(!box.dataset.ok) box.textContent='Não deu para ler as oscilações.';
+ }
+}
 async function afterLogin(){
  await loadSite();
  await api('/.groups/'+GROUP+'/.users/');
  document.documentElement.classList.remove('admin-gate');
  $('login-box').hidden=true; $('panel').hidden=false;
  $('who').textContent='Logado: '+user;
- await loadUsers(); await loadRooms(); await loadGuests(); await loadBlocked(); await loadTemps(); await loadLogs();
+ await loadUsers(); await loadRooms(); await loadGuests(); await loadBlocked(); await loadTemps(); await loadLogs(); await loadNetLogs();
 }
 $('btn-login').onclick=async()=>{
  user=($('u').value||'').trim().toLowerCase(); $('u').value=user; pass=$('p').value; $('login-err').textContent='';
@@ -393,15 +491,6 @@ $('btn-create').onclick=async()=>{
   await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(n)+'/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:p});
   $('nu').value=''; $('np').value=''; $('create-msg').textContent='Usuário '+n+' criado'; await loadUsers();
  }catch(e){$('create-msg').textContent=e.message;}
-};
-$('btn-wild').onclick=async()=>{
- const p=$('wp').value; $('wild-msg').textContent='';
- if(!p){$('wild-msg').textContent='Digite a senha';return;}
- try{
-  try{await api('/.groups/'+GROUP+'/.wildcard-user',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:'present'})});}catch(e){}
-  await api('/.groups/'+GROUP+'/.wildcard-user/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:p});
-  $('wp').value=''; $('wild-msg').textContent='Senha dos amigos atualizada';
- }catch(e){$('wild-msg').textContent=e.message;}
 };
 function syncRoomForm(){
  const invite=$('rkind-invite')&&$('rkind-invite').checked;
@@ -466,8 +555,10 @@ document.querySelectorAll('.tab').forEach(b=>{
   $('tab-blocked').hidden=b.dataset.tab!=='blocked';
   $('tab-temps').hidden=b.dataset.tab!=='temps';
   if($('tab-logs')) $('tab-logs').hidden=b.dataset.tab!=='logs';
+  if($('tab-net')) $('tab-net').hidden=b.dataset.tab!=='net';
   $('tab-rooms').hidden=b.dataset.tab!=='rooms';
   if(b.dataset.tab==='logs'){ loadLogs._k=null; loadLogs(); }
+  if(b.dataset.tab==='net'){ loadNetLogs._k=null; loadNetLogs(); }
  };
 });
 try{
@@ -492,8 +583,12 @@ try{
 }catch(e){}
 
 document.querySelectorAll('.list-tools').forEach(function(bar){bar.addEventListener('click',function(e){var btn=e.target.closest('[data-sort]'); if(!btn) return; var tab=bar.getAttribute('data-tab'); SORT[tab]=btn.getAttribute('data-sort'); bar.querySelectorAll('[data-sort]').forEach(function(x){x.classList.toggle('on',x===btn);}); loadUsers._k=loadGuests._k=loadBlocked._k=loadTemps._k=null; if(tab==='users') loadUsers(); else if(tab==='guests') loadGuests(); else if(tab==='blocked') loadBlocked(); else if(tab==='temps') loadTemps();});});
-setInterval(function(){ try{ if($('panel') && !$('panel').hidden){ loadUsers().catch(function(){}); loadGuests().catch(function(){}); loadBlocked().catch(function(){}); loadTemps().catch(function(){}); if($('tab-logs') && !$('tab-logs').hidden) loadLogs().catch(function(){}); } }catch(e){} }, 8000);
+setInterval(function(){ try{ if($('panel') && !$('panel').hidden){ loadUsers().catch(function(){}); loadGuests().catch(function(){}); loadBlocked().catch(function(){}); loadTemps().catch(function(){}); if($('tab-logs') && !$('tab-logs').hidden) loadLogs().catch(function(){}); if($('tab-net') && !$('tab-net').hidden) loadNetLogs().catch(function(){}); } }catch(e){} }, 8000);
 ['log-tipo','log-nick','log-ip'].forEach(function(id){
  var el=$(id); if(!el) return;
  el.addEventListener(id==='log-tipo'?'change':'input', function(){ loadLogs._k=null; paintLogs(); });
+});
+['net-nick','net-sala','net-ip'].forEach(function(id){
+ var el=$(id); if(!el) return;
+ el.addEventListener('input', function(){ loadNetLogs._k=null; paintNetLogs(); });
 });

@@ -1,7 +1,7 @@
 # Spartan Chat (Galene) — documentação completa da implantação
 
 **Data da implantação:** 20 de agosto de 2026  
-**Última revisão deste documento:** 24 de agosto de 2026  
+**Última revisão deste documento:** 25 de agosto de 2026  
 **Objetivo deste arquivo:** registrar *como o stack ficou no teu servidor*, para operação, backup e GitHub.  
 **Segredos:** nenhuma senha de produção, hash real do servidor, `sidecar.auth` vivo ou credencial operacional aparece aqui. Contas e senhas **da instalação** ficam só no servidor (`groups/*.json`, `data/config.json`, `data/sidecar.auth`).  
 **Exceção documentada:** o pacote `factory-reset/` traz a senha de fábrica `Mudar@123` (admin + convidados) de propósito — só para zerar o Docker; no primeiro login o admin **obrigatoriamente** troca as duas.
@@ -197,11 +197,13 @@ Arquivo: `registry.py`. Endpoints úteis (prefixo `/spartan-api` opcional):
 | GET | `/status` | público | status do nick (guest/temp/named/…) |
 | GET | `/temp-status` | público | `open`, `purge`, `banned`, `taken`, `ttl`, `expires_at`, `remaining_s`, `host` |
 | GET | `/access-log` | admin Basic | últimas entradas de `data/access.log` (JSONL, ~1 ano) |
+| GET | `/net-log` | admin Basic | oscilações WS em `data/net.log` (JSONL, 30 dias, sem dedupe) |
 | GET | `/registry` | admin Basic | dump do registry |
 | POST | `/beacon` | sala | IP + visto; em sala pública chama `ensure_open_ouvinte` |
 | POST | `/register` `/approve` `/quick` `/deny` `/block` `/unblock` `/forget` `/stamp` | fluxos de convite | cadastro / moderação |
 | POST | `/panel-login` | painel | só admin da **sala principal** / `config.json` / `sidecar.auth` |
-| POST | `/can-panel` | sala | igual ao panel-login, **sem** gravar log (esconde o botão Painel Admin) |
+| POST | `/can-panel` | sala | igual ao panel-login, **sem** gravar log (mostra o botão Painel Admin **só** se a conta for admin cadastrado; anfitrião 24h = não) |
+| POST | `/net-event` | sala (beacon) | cliente reporta queda/recuperação WS (código, duração, se recuperou) |
 | POST | `/join-named` | sala extra | valida conta da main e copia o user (Verificado, nunca op) para a sala extra |
 | POST | `/create-room` | admin | cria sala extra: `open` (pública = 24h) ou convite; `ttl` opcional no convite; anfitrião só se `ttl` |
 | POST | `/first-setup` | admin | troca senha admin + amigos no 1º login |
@@ -219,9 +221,9 @@ Beacon grava `seen[nick] = {first, last, ip}` para **todo mundo** (inclusive reg
 
 Volume `./static` por cima do static da imagem. Arquivos-chave:
 
-- `index.html` + `custom-home.js` — home, botão segue `/spartan-api/site` + `public-groups.json`
+- `index.html` + `custom-home.js` — **landing** em `/` (marca, “Cade a Live?”, botão da sala `home`). **Nunca** copiar `admin.html` por cima de `index.html`; o login do painel é só `/admin/`.
 - `salas/` — busca, ordenação, paginação (5 linhas de altura fixa)
-- `admin/` — usuários, convidados, bloqueados, temporários, **logs**, salas
+- `admin/` — usuários, convidados, bloqueados, temporários, logs, **oscilações**, salas
 - `galene.html` + `galene.js` + `galene-spartan.css` + `spartan-boot.js` — sala
 - Wallpaper `papel-de-parede.jpg`
 - Sons da sala `static/sounds/` — `entrar.mp3`, `sair.mp3`, `mensagem.mp3` (vão no Git; o instalador avisa se faltarem)
@@ -232,22 +234,25 @@ Comportamentos de sessão:
 - Login da sala **não** usa `autocomplete` de senha do Chrome.
 - Sessão por sala em `sessionStorage` (`spartanSession:<grupo>`).
 - **Sair** (sala ou painel) limpa tudo e marca `spartanLoggedOut`.
-- **Voltar à sala** no painel **não** desloga.
+- **Voltar à sala** no painel: se a aba da call responder (`BroadcastChannel spartan-room`), foca-a e tenta fechar o admin; senão copia o login para `spartanSession:<sala>` e reentra já autenticado. **Não** abre a call na aba do painel se ela já existir.
 - F5 na mesma sala reentra; ir para outra sala depois de Sair pede nick/senha.
 - Contador 24h (`#spartan-ttl`) reconstitui no `start()` (não só no submit do login): `spartanTtlRestore` + `GET /temp-status`. Anfitrião/op também faz poll.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: handoff `localStorage` para abrir o painel já logado.
-- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=80`, `galene-spartan.css?v=69`, `protocol.js?v=2`, `toastify.js?v=3`, `spartan-boot.js?v=7`). Painel: `admin.js?v=29`. O `galene-spartan.css` carrega **depois** do Toastify/contextual para o tema ganhar. Estático só: copiar para `static/` e hard refresh; **sem** restart do Docker. Mudança em `registry.py`: `docker restart spartan-reg`.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=81`, `galene-spartan.css?v=69`, `protocol.js?v=2`, `toastify.js?v=3`, `spartan-boot.js?v=7`). Home: `custom-home.js?v=3`. Painel: `admin.js?v=32`, `admin.css?v=22`. O `galene-spartan.css` carrega **depois** do Toastify/contextual para o tema ganhar. Estático só: copiar para `static/` e hard refresh; **sem** restart do Docker. Mudança em `registry.py`: `docker restart spartan-reg`. Copiar **sempre** o `index.html` da landing (não o do admin).
 
 Painel admin:
 
 - Login com wallpaper + rodapé; depois do login a caixa some (`#login-box[hidden]`).
 - Não divulgar nomes de operadores na tela de login.
 - Temporários = só salas `open` (sem senha).
-- Listas: A–Z (padrão) ou Recentes; meta IP / sala / visto.
+- Cadastrados: ID + nome à esquerda; à direita Detalhes, cargo e pares **Renomear / Redefinir senha** e **Excluir / Bloquear** (largura do texto + padding). **Detalhes** expande sala, IP e último visto.
+- Senha dos amigos **só na aba Salas** (por sala). A aba Usuários não duplica isso.
+- Listas: A–Z (padrão) ou Recentes.
 - Main no topo, sem Apagar; outras podem ir para a home.
 - Cargos: Admin / Verificado / Ouvinte (sem “só chat”).
 - Logs: filtros por tipo, nick e IP; horário Brasília.
+- **Oscilações:** aba própria; `data/net.log` 30 dias; filtros nick/sala/IP; cada queda conta.
 - **Criar sala:** convite definitiva (padrão); checkbox **Sala temporária (24h)**; pública sempre 24h; bloco anfitrião só aparece com ttl.
 
 ---
@@ -260,7 +265,8 @@ Painel admin:
 - “Solicitar registro” só para convite, não para pública.
 - Sem kick HTTP nativo: o cliente sai sozinho no purge / bloqueio.
 - Multi-live: botões Tela/Câmera por stream (rótulo da live **sempre** visível se `camera`/`screenshare`); cabeçalho preto acima do vídeo.
-- **Fluência:** live **assistida** (clicada) pede vídeo alto; as outras pedem áudio só (sem imagem), salvo tela sem áudio (`video-low` só para não sumir o botão Tela). `contentHint` de tela = `motion`.
+- **Fluência:** live **assistida** (clicada) pede sempre `['audio','video']` — nunca `video-low`, mesmo se tu estiveres a transmitir ou com o jogo aberto. Nos receivers dessas lives: `contentHint=detail` e `degradationPreference=maintain-resolution`. As outras pedem áudio só (sem imagem), salvo tela sem áudio (`video-low` só para não sumir o botão Tela). `contentHint` de tela que **envias** = `motion`.
+- **Painel Admin** (botão na sala): depende **só** de `POST /can-panel` (conta cadastrada da main / sidecar). Não exige `op` da sala atual. Anfitrião 24h não vê o botão. Abre sempre em nova aba (`window.open` + handoff `spartanAdminHandoff`).
 - **Uma** live na sala: já entra em foco; clique extra nela não faz nada. Duas ou mais: clique escolhe o foco.
 - **Minhas lives:** ícones de olho; verde = mostrando, vermelho = ocultando. O X nas lives dos outros esconde; o X na **própria** live **para** aquele share.
 - Engrenagem: rótulo **Configurações**. Painel só com o que a sala usa: perfil (trocar senha / admin), dispositivos (câmera, microfone, espelhar, ruído, áudio HQ) e **Sons da sala** (entrada, saída e mensagem, cada um à parte). As escolhas de som ficam em `localStorage` por nick neste browser. Fora do menu (fixo por baixo): envio **ilimitado**, duas qualidades **automático** (no Firefox, desligado), receber **tudo**, filtros desligados, modo quadro desligado, detectar atividade **sempre ligado** (é a mesma lógica da bolinha).
@@ -270,7 +276,7 @@ Painel admin:
 - Menu do outro usuário: **Mudo** (só o teu fone), **Volume (seu fone)** 0–400% em passos de 5%, e se fores admin: apresentar / **Silenciar microfone** (muta o mic **dele** para toda a sala) / Expulsar. Sem Identificar (não manda IP) e sem enviar arquivo.
 - Bolinha: **cinza** off; **amarelo** mic ligado parado; **verde** falando; **vermelho** mutado. Publish segue a **faixa** (`enabled`+`live` → `on`; senão `localMute` → `muted`) e reenvia o estado a cada ~2,5 s. Nos outros, `micstate === 'muted'` é absoluto (analisador/stats não pintam amarelo). Desmutar / falar com faixa viva publica `on` mesmo que o `localMute` da sessão tenha ficado preso.
 - Sons da sala (`static/sounds/`): `entrar.mp3`, `sair.mp3`, `mensagem.mp3`. Toca para os **outros** (não para ti, não no histórico, não no lote dos 1,5 s ao entrares). Configurações: três interruptores (entrada / saída / mensagem), ligados por defeito, gravados neste computador por nick. O browser só liberta o áudio depois do primeiro clique/tecla.
-- Queda da ligação (rede/servidor), depois de já teres entrado: overlay **Ligação perdida** por cima da sala (não volta ao login). O título passa a **A reconectar…** só enquanto tenta; o botão fica **Reconectar**. Tenta sozinho aos 2 s, depois a cada ~2,5 s, e de imediato quando a rede volta (`online`). Tentativa que não fecha em 8 s é abortada e tenta de novo. A reconexão é **limpa como um login novo**: a lista/lives da sessão morta são apagadas, o servidor larga o id antigo (kick da sessão velha se fores admin), e o mesmo nick não fica duplicado para ti nem para os outros. **Sair**, `/leave` e kick não mostram o overlay.
+- Queda da ligação, depois de já teres entrado: **graça de 30 s**. Blip curto não mostra overlay, não limpa o ecrã e tenta o WebSocket em silêncio (~3 s). Só depois de 30 s seguidos: overlay **Ligação perdida**, limpa tiles e trata como queda. Aí tenta sozinho aos 2 s / ~2,5 s e no evento `online`. O Galene larga o peer no servidor quando o WS cai — os outros podem ver um piscar; o que se evita é o teu overlay a cada 2 s. **Sair**, `/leave` e kick não entram nesta graça. Cada blip/recuperação/queda vai para `POST /net-event`.
 - Avisos Toastify (erro/aviso/info) e `#spartan-toast`: caixa **preta** com borda vermelha 2px. O X de fechar (toasts, Configurações, chat e lives) é um `×` branco em Arial (o `✖` do Toastify no Windows vira emoji roxo). Botão **Chat do Canal** com texto centrado; sininho à direita só com mensagens por ler.
 - Header da sala: fundo preto, linha vermelha embaixo; **ícones** vermelhos (verde quando mic/câmera/tela estão ligados); **textos** dos itens (Microfone, Câmera, etc.) e o **nome da sala** em branco. Em salas de 24h, à **direita do nome**: `Tempo até exclusão desta sala: HH:MM` (permanece no F5 / rejoin). Lista de nicks à esquerda: caixinhas pretas com borda vermelha; fundo do grid e da lista `#33363d`. Sidebar com `border-right` vermelho 4px. Janelas (configurações, chat, convite, menus) borda vermelha 2px e cantos 12px.
 - Volume acima de 100% usa Web Audio (`GainNode`); até 100% usa `media.volume`. Não altera o que os outros ouvem.
@@ -337,7 +343,8 @@ A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export 
 15. Imagem `galene:local` no repo (`images/galene-local.tgz`); compose **sem** `build`.
 16. Sala (24/08/2026): fluência das lives, Minhas lives, Sair no header, overlay de reconexão, Configurações só com dispositivos/sons, toasts pretos com X branco, nicks pretos, fundo `#33363d`, labels e nome da sala brancos, sons `static/sounds/*.mp3` no Git.
 17. Salas extra: **pública sempre 24h**; **convite** definitiva (padrão) ou 24h (checkbox); anfitrião só nas de 24h (`op` da sala, sem `/admin/`); login público em dois modos (temporário / conta cadastrada).
-18. Contador `Tempo até exclusão desta sala: HH:MM` à **direita do nome**; reconstitui no boot (`spartanTtlRestore` + `GET /temp-status`) e no rejoin/F5 (também para op/admin). Cache: `galene.js?v=80`, `galene-spartan.css?v=69`, `admin.js?v=29`.
+18. Contador `Tempo até exclusão desta sala: HH:MM` à **direita do nome**; reconstitui no boot (`spartanTtlRestore` + `GET /temp-status`) e no rejoin/F5 (também para op/admin).
+19. 25/08/2026: `/` = landing (nunca o login admin); live assistida sempre em vídeo alto; botão Painel só via `can-panel`; graça WS 30 s; Voltar à sala foca a aba da call; log de oscilações 30 dias; cadastrados com Detalhes expansíveis. Cache: `galene.js?v=81`, `custom-home.js?v=3`, `admin.js?v=32`, `admin.css?v=22`.
 
 ---
 

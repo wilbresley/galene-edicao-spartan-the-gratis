@@ -11,9 +11,11 @@ DATA, GROUPS, GALENE, PORT = Path("/data/registry.json"), Path("/groups"), "http
 SITE=Path("/data/site.json")
 ACCOUNTS=Path("/data/accounts.json")
 ACCESS_LOG=Path("/data/access.log")
+NET_LOG=Path("/data/net.log")
 TZ = ZoneInfo("America/Sao_Paulo")
 BAN_IP = False
 _ACCESS_WRITE = 0
+_NET_WRITE = 0
 _LAST_ACCESS = {}
 # Prefixos comuns da Cloudflare — evita gravar hop do CDN como "IP do usuário"
 _CF_PREFIXES = (
@@ -86,6 +88,53 @@ def read_access_log(limit=300):
     if not ACCESS_LOG.exists(): return []
     try:
         lines=ACCESS_LOG.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return []
+    out=[]
+    for line in reversed(lines):
+        line=line.strip()
+        if not line: continue
+        try: out.append(json.loads(line))
+        except Exception: continue
+        if len(out) >= limit: break
+    return out
+def net_log(rec):
+    """Append JSONL em /data/net.log (retenção 30 dias). Sem dedupe — cada queda conta."""
+    global _NET_WRITE
+    try:
+        NET_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with NET_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False)+"\n")
+        _NET_WRITE += 1
+        if _NET_WRITE % 40 == 0:
+            prune_net_log()
+    except Exception:
+        pass
+def prune_net_log():
+    if not NET_LOG.exists(): return
+    try:
+        cutoff=datetime.now(TZ)-timedelta(days=30)
+        keep=[]
+        with NET_LOG.open("r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line=line.strip()
+                if not line: continue
+                try:
+                    o=json.loads(line)
+                    ts=datetime.fromisoformat(o.get("quando") or "")
+                    if ts.tzinfo is None: ts=ts.replace(tzinfo=TZ)
+                    if ts >= cutoff: keep.append(line)
+                except Exception:
+                    keep.append(line)
+        tmp=NET_LOG.with_suffix(".tmp")
+        tmp.write_text(("\n".join(keep)+("\n" if keep else "")), encoding="utf-8")
+        tmp.replace(NET_LOG)
+    except Exception:
+        pass
+def read_net_log(limit=400):
+    if not NET_LOG.exists(): return []
+    try:
+        lines=NET_LOG.read_text(encoding="utf-8", errors="replace").splitlines()
     except Exception:
         return []
     out=[]
@@ -609,6 +658,13 @@ class H(BaseHTTPRequestHandler):
             except Exception: lim=300
             lim=max(1, min(lim, 2000))
             self.send_json(200, {"entries": read_access_log(lim)}); return
+        if path=="/net-log":
+            ok,_=self.admin_ok()
+            if not ok: self.send_json(401, {"error":"nao autorizado"}); return
+            try: lim=int((q.get("limit") or ["400"])[0])
+            except Exception: lim=400
+            lim=max(1, min(lim, 2000))
+            self.send_json(200, {"entries": read_net_log(lim)}); return
         if path=="/rooms":
             rooms=[]
             d=load()
@@ -698,6 +754,19 @@ class H(BaseHTTPRequestHandler):
             pw=body.get("password") if "password" in body else body.get("pass")
             if pw is None: pw=""
             self.send_json(200, {"ok": panel_login_ok(u, pw)})
+            return
+        if path=="/net-event":
+            nick=norm_nick(body.get("user") or user or "") or "?"
+            sala=(body.get("group") or g or "").strip() or "spartan"
+            ua=(body.get("ua") or self.headers.get("User-Agent") or "")[:180]
+            rec={"quando":now(),"sala":sala,"nick":nick,"ip":self.cip(),
+                 "phase": body.get("phase") or "drop",
+                 "duration_ms": body.get("duration_ms") or 0,
+                 "code": body.get("code"),
+                 "reason": (body.get("reason") or "")[:240],
+                 "ua": ua}
+            net_log(rec)
+            self.send_json(200, {"ok": True})
             return
         if path=="/join-named":
             pw=body.get("password") or ""

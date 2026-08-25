@@ -25,7 +25,7 @@ Este projeto **não** é o Smart Castro. Pasta canónica: `galene-edicao-spartan
 
 ## Deploy estático (sala já no ar)
 
-1. Copiar os ficheiros para `S:\Downloads\galene-sala-static\`
+1. Copiar os arquivos para `S:\Downloads\galene-sala-static\`
 2. No Debian: `cp` de `~/docker/galene/galene-sala-static/` para `~/docker/galene/static/`
 3. **Sem** `docker restart` para HTML/CSS/JS
 4. Subir o `?v=` em `galene.html` (e admin se mexer no painel)

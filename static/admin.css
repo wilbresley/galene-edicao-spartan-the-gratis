@@ -148,3 +148,27 @@ button.ren{background:#16a34a!important;color:#fff!important}
 .log-filters select,.log-filters input{
  flex:1 1 9rem;min-width:8rem;max-width:100%;margin:0!important;
  background:#1e1f22;color:#f2f3f5;border:1px solid #3f4147;border-radius:8px;padding:.45rem .6rem}
+
+/* admin-v20 — cadastrados: ID/nome/botões; detalhes (IP) expansíveis */
+.user-card{display:flex;flex-direction:column;gap:.35rem;padding:.65rem 0;border-bottom:1px solid #3f4147;color:#dbdee1}
+.user-card>.user-row{border-bottom:none;padding:0;margin:0}
+.user-card .user-row{
+ display:flex;flex-wrap:wrap;gap:.4rem;align-items:flex-start}
+.user-card .who{flex:1 1 8rem;min-width:7rem;padding-top:.45rem}
+.user-card .who b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-tools{
+ display:flex;flex-wrap:wrap;gap:.4rem;align-items:flex-start;
+ margin-left:auto;justify-content:flex-end}
+.user-card .det{background:#383a40;font-size:.82rem;padding:.4rem .65rem;width:auto}
+.user-card .role-wrap{min-width:8.5rem}
+.user-acts{
+ display:flex;flex-direction:column;gap:.35rem;
+ width:max-content}
+.user-acts button{
+ width:100%;margin:0!important;box-sizing:border-box;
+ padding:.45rem .85rem;font-size:.82rem;font-weight:700;
+ white-space:nowrap;min-height:0;
+ display:inline-flex;align-items:center;justify-content:center}
+.user-details{display:none;font-size:.82rem;color:#b5bac1;line-height:1.45;padding:.1rem 0 .15rem}
+.user-card.open .user-details{display:block}
+.user-details .ip{word-break:break-all;overflow-wrap:anywhere}
