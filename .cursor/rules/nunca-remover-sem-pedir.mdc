@@ -1,0 +1,30 @@
+---
+description: NUNCA remover, desfazer ou simplificar o que já funciona sem o usuário pedir explicitamente
+alwaysApply: true
+---
+
+# Nunca tira nada sem eu mandar (regra mestre)
+
+Esta regra **ganha** de qualquer plano, “restauração”, “cirurgia”, “voltar ao commit” ou “não mexer no grid”.
+
+## Proibido sem pedido explícito neste chat
+
+- Apagar, reverter, `git restore`, `git checkout` ou reescrever feature, tela, botão, CSS, grid, live, áudio, bolinha, atalho, endpoint ou comportamento que **já exista** no commit ou na sala.
+- “Simplificar” tirando coisa que ninguém mandou tirar.
+- Tratar “não quebra o que funciona” como licença para **desfazer** o que funciona. Não quebrar = **deixar intacto**.
+
+## O grid, as lives, o mic e as bolinhas
+
+O grid da sala (tamanho igual câmera/tela, `resizePeers`, CSS de `.peer`, pedido de vídeo, `showHideMedia`, `gotDownStream`) foi difícil de acertar. **Não mexe** nesses trechos a menos que o usuário diga, nesta mensagem, para mexer neles.
+
+Corrigir rótulo “Câmera” no nick **não** autoriza mudar o grid.
+
+## O que pode
+
+- Só o que o usuário pediu **agora**.
+- Se um patch sujo **depois** do último commit quebrou o grid: repor **só essas funções** para o commit, **sem** apagar o grid do commit e **sem** restore cego de arquivos inteiros que levem embora outras features pedidas.
+
+## Errado vs certo
+
+- Errado: `git restore static/galene.js` “para limpar” → some o que estava no arquivo além do pedido.
+- Certo: repor **apenas** o hunk que o usuário mandou consertar; features pedidas reaplicam-se em cima, sem tocar no grid.

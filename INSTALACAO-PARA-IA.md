@@ -116,7 +116,7 @@ Abrir:
 - Local: `http://IP_LAN:8443/group/<sala>/`  
 - Depois do proxy: `https://DOMINIO/group/<sala>/`  
 - Landing (marca + Cadê a Live?): `https://DOMINIO/` — **não** é o login do admin  
-- Admin: `https://DOMINIO/admin/`
+- Admin: `https://DOMINIO/admin`
 
 Reinício depois de mudar config:
 
@@ -134,7 +134,7 @@ HTML/CSS/JS da sala: copiar para `static/`, **sem** restart. Confira o `?v=` no 
 
 - [ ] Containers `galene` e `spartan-reg` up  
 - [ ] Entra na sala com admin  
-- [ ] Painel `/admin/` abre com a mesma conta  
+- [ ] Painel `/admin` abre com a mesma conta admin da sala principal  
 - [ ] A raiz `/` é a landing (Cadê a Live?), não o formulário do admin  
 - [ ] Domínio HTTPS no proxy (se for o caso)  
 - [ ] WebSocket no proxy  

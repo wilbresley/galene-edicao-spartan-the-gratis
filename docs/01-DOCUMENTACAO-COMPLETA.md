@@ -122,11 +122,11 @@ Host: `chat.bresley.win`
 |---|---|
 | `/` | Home (botão da sala marcada como home) |
 | `/salas/` | Lista de outras salas (busca, A–Z / Recentes, 5 por página) |
-| `/admin/` | Painel (login com wallpaper + rodapé) |
+| `/admin` | Painel. Neste Galene isso é um **arquivo** `static/admin` (cópia do HTML). Se `static/admin` for **pasta**, `/admin` dá 404. |
 | `/group/<id>/` | Sala Galene (login Spartan + sala) |
 | `/spartan-api/...` | API do sidecar |
 
-Cópias estáticas: `static/salas/index.html` e `static/admin/index.html`.
+Cópias estáticas: `static/salas/index.html` e `static/painel/index.html`.
 
 ---
 
@@ -210,6 +210,7 @@ Arquivo: `registry.py`. Endpoints úteis (prefixo `/spartan-api` opcional):
 | POST | `/rename-user` | admin | renomeia por ID imutável |
 | POST | `/site-home` | admin | define sala da home |
 | POST | `/rename-main` | admin | renomeia slug + título da main |
+| * | `/gapi/*` | admin | proxy da API Galene (`/galene-api/v0/...`). Coleções (`.users/`, `.groups/`, `.tokens/`) ganham barra final aqui — sem isso o Galene responde `404 page not found` e o texto aparece embaixo do **Entrar** no painel. |
 
 Salas **extra** de 24h: o sidecar apaga o JSON do grupo quando `expires_at` chega (a cada ~20 s). Quem está dentro vê à **direita do nome da sala** `Tempo até exclusão desta sala: HH:MM`. O relógio liga no boot da página (`temp-status` + `sessionStorage spartanTtl:<grupo>`), então **sobrevive a F5 / rejoin** — não depende do submit do login. A **main** não entra neste prazo. Públicas extra que já existiam sem prazo ganham 24h no próximo start do sidecar. Ban de IP 24h só se `BAN_IP = True` (desligado).
 
@@ -221,7 +222,7 @@ Beacon grava `seen[nick] = {first, last, ip}` para **todo mundo** (inclusive reg
 
 Volume `./static` por cima do static da imagem. Arquivos-chave:
 
-- `index.html` + `custom-home.js` — **landing** em `/` (marca, “Cade a Live?”, botão da sala `home`). **Nunca** copiar `admin.html` por cima de `index.html`; o login do painel é só `/admin/`.
+- `index.html` + `custom-home.js` — **landing** em `/`. **Nunca** copiar o painel por cima de `index.html`. Login do painel: **`/admin`** — arquivo `static/admin` (não pasta).
 - `salas/` — busca, ordenação, paginação (5 linhas de altura fixa)
 - `admin/` — usuários, convidados, bloqueados, temporários, logs, **oscilações**, salas
 - `galene.html` + `galene.js` + `galene-spartan.css` + `spartan-boot.js` — sala
@@ -239,7 +240,7 @@ Comportamentos de sessão:
 - Contador 24h (`#spartan-ttl`) reconstitui no `start()` (não só no submit do login): `spartanTtlRestore` + `GET /temp-status`. Anfitrião/op também faz poll.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: handoff `localStorage` para abrir o painel já logado.
-- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=81`, `galene-spartan.css?v=69`, `protocol.js?v=2`, `toastify.js?v=3`, `spartan-boot.js?v=7`). Home: `custom-home.js?v=3`. Painel: `admin.js?v=32`, `admin.css?v=22`. O `galene-spartan.css` carrega **depois** do Toastify/contextual para o tema ganhar. Estático só: copiar para `static/` e hard refresh; **sem** restart do Docker. Mudança em `registry.py`: `docker restart spartan-reg`. Copiar **sempre** o `index.html` da landing (não o do admin).
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=91`, `galene-spartan.css?v=74`, `protocol.js?v=2`, `toastify.js?v=3`, `spartan-boot.js?v=7`). Home: `custom-home.js?v=3`. Painel: `admin.js?v=33`, `admin.css?v=22`. Copiar **`admin.html` para o caminho `static/admin`** (arquivo, sem extensão). Se lá existir uma **pasta** `admin/`, apaga a pasta antes (`rm -rf .../static/admin`) senão `/admin` continua 404. Nunca copiar o painel por cima de `index.html`.
 
 Painel admin:
 
@@ -261,10 +262,10 @@ Painel admin:
 
 - Erros do Galene traduzidos (ex.: `not authorised` → PT).
 - Sala pública: campo senha oculto por defeito (`html.spartan-open-room`); botão **Entrar com conta cadastrada** / **Entrar como temporário** (`html.spartan-named-login`) fica **fora** do `.connect` para a caixa não rebentar. `.login-box` usa `height:auto`.
-- Histórico de chat pulado para guests/temps e antes do timestamp `created`.
+- Histórico de chat: mensagens com mais de **24 h** não entram na caixa (e as que já estavam saem). Guests/temps continuam sem histórico antigo; o corte `created` segue igual. Mensagem nova abre o chat (quem pode texto), salvo **Não abrir o chat automaticamente** (fica neste browser).
 - “Solicitar registro” só para convite, não para pública.
 - Sem kick HTTP nativo: o cliente sai sozinho no purge / bloqueio.
-- Multi-live: botões Tela/Câmera por stream (rótulo da live **sempre** visível se `camera`/`screenshare`); cabeçalho preto acima do vídeo.
+- Multi-live: botão **Tela** só no compartilhamento de tela; **Câmera** só com faixa de vídeo (mic sozinho = só a bolinha, sem texto Câmera). Cabeçalho preto acima do vídeo.
 - **Fluência:** live **assistida** (clicada) pede sempre `['audio','video']` — nunca `video-low`, mesmo se tu estiveres a transmitir ou com o jogo aberto. Nos receivers dessas lives: `contentHint=detail` e `degradationPreference=maintain-resolution`. As outras pedem áudio só (sem imagem), salvo tela sem áudio (`video-low` só para não sumir o botão Tela). `contentHint` de tela que **envias** = `motion`.
 - **Painel Admin** (botão na sala): depende **só** de `POST /can-panel` (conta cadastrada da main / sidecar). Não exige `op` da sala atual. Anfitrião 24h não vê o botão. Abre sempre em nova aba (`window.open` + handoff `spartanAdminHandoff`).
 - **Uma** live na sala: já entra em foco; clique extra nela não faz nada. Duas ou mais: clique escolhe o foco.
@@ -336,7 +337,7 @@ A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export 
 8. Senhas hasheadas; sessão/autofill; Sair vs Voltar à sala.
 9. Temporários só em sala sem senha; IP/visto em todos; ordenação.
 10. Outras salas: busca, 5 por página, altura fixa.
-11. Sala main protegida; home apontável; `/admin/` e `/salas/` sem `.html`.
+11. Sala main protegida; home apontável; painel em `/admin`; `/salas/` sem `.html`.
 12. Login com wallpaper/rodapé; rodapé sem cortar a arte.
 13. Documentação + repo Git privado `wilbresley/galene-edicao-spartan`.
 14. Fonte Galene congelado em `vendor/galene` (commit `9e03b36`).
@@ -345,6 +346,9 @@ A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export 
 17. Salas extra: **pública sempre 24h**; **convite** definitiva (padrão) ou 24h (checkbox); anfitrião só nas de 24h (`op` da sala, sem `/admin/`); login público em dois modos (temporário / conta cadastrada).
 18. Contador `Tempo até exclusão desta sala: HH:MM` à **direita do nome**; reconstitui no boot (`spartanTtlRestore` + `GET /temp-status`) e no rejoin/F5 (também para op/admin).
 19. 25/08/2026: `/` = landing (nunca o login admin); live assistida sempre em vídeo alto; botão Painel só via `can-panel`; graça WS 30 s; Voltar à sala foca a aba da call; log de oscilações 30 dias; cadastrados com Detalhes expansíveis. Cache: `galene.js?v=81`, `custom-home.js?v=3`, `admin.js?v=32`, `admin.css?v=22`.
+20. 25/08/2026: mic não mostra Câmera (só bolinha); Tela/Câmera só com live de verdade; chat abre sozinho (checkbox para não abrir); mensagens somem em 24 h. Grid/lives iguais ao item 19. Cache: `galene.js?v=90`, `galene-spartan.css?v=74`. Painel: `/admin/` (pasta `static/admin/index.html`).
+21. 25/08/2026: login do painel não trava mais no `404 page not found` (a lista de usuários ia para `/spartan-api/gapi`; o painel que funcionava usa `/galene-api/v0`, com fallback). Cache: `admin.js?v=33`.
+22. 25/08/2026: botão **Câmera** no nick e ícone do header só com faixa de vídeo real (`streamHasRealVideo`); mic sozinho não marca `spartanHasVideo` só porque o Galene chama o stream de `camera`. Cache: `galene.js?v=91`.
 
 ---
 

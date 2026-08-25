@@ -619,9 +619,7 @@ function spartanRefreshAllMedia() {
 function spartanStreamShowsLiveBtn(c) {
     if(!c)
         return false;
-    if(c.label === 'screenshare' || c.label === 'camera')
-        return true;
-    if(spartanHasVideo[c.id])
+    if(c.label === 'screenshare')
         return true;
     return streamHasRealVideo(c.stream);
 }
@@ -1040,6 +1038,39 @@ function spartanApplyUserVolume(userId) {
         let c = serverConnection.down[id];
         if(c.source === userId)
             spartanSetStreamGain(c, lin);
+    }
+}
+
+function spartanChatNoAuto() {
+    try { return localStorage.getItem('spartanChatNoAuto') === '1'; }
+    catch(e) { return false; }
+}
+
+function spartanChatNoAutoSave(on) {
+    try { localStorage.setItem('spartanChatNoAuto', on ? '1' : '0'); }
+    catch(e) {}
+}
+
+function spartanChatTooOld(time) {
+    if(!time)
+        return false;
+    let t = time instanceof Date ? time.getTime() : Date.parse(String(time));
+    if(!t)
+        return false;
+    return (Date.now() - t) > 24 * 60 * 60 * 1000;
+}
+
+function spartanChatPruneBox() {
+    let box = document.getElementById('box');
+    if(!box)
+        return;
+    let cut = Date.now() - 24 * 60 * 60 * 1000;
+    let rows = box.children;
+    for(let i = rows.length - 1; i >= 0; i--) {
+        let row = rows[i];
+        let ts = row && row.getAttribute && row.getAttribute('data-spartan-ts');
+        if(ts && Number(ts) < cut)
+            box.removeChild(row);
     }
 }
 
@@ -1661,7 +1692,7 @@ function gotDownStream(c) {
     c.onstats = gotDownStats;
     c.setStatsInterval(activityDetectionInterval);
 
-    if(c.label === 'screenshare' || c.label === 'camera')
+    if(c.label === 'screenshare')
         spartanHasVideo[c.id] = true;
     setMedia(c);
     spartanMaybeRestoreWatch(c);
@@ -1761,7 +1792,7 @@ function setButtonsVisibility() {
     let camBtn = document.getElementById('camerabutton');
     if(camBtn) {
         let cam = findUpMedia('camera');
-        let camOn = !!(cam && cam.stream && cam.stream.getVideoTracks().length);
+        let camOn = !!(cam && streamHasRealVideo(cam.stream));
         if(camOn)
             camBtn.classList.add('cam-on');
         else
@@ -5200,19 +5231,32 @@ let lastMessage = {};
  * @param {string|HTMLElement} message
  */
 function addToChatbox(id, peerId, dest, nick, time, privileged, history, kind, message) {
+    if(spartanChatTooOld(time))
+        return;
     if(history && (window._spartanNoHist || (window._spartanSince && time && time.getTime() < window._spartanSince))) return;
     if(kind === 'caption') {
         displayCaption(message);
         return;
     }
-    if(!history && peerId && serverConnection && peerId !== serverConnection.id) {
-        spartanPlayRoomSound('mensagem');
-        if(!spartanChatIsOpen())
-            spartanSetChatUnread(true);
+    if(!history && peerId && !spartanReconnecting) {
+        if(serverConnection && peerId !== serverConnection.id)
+            spartanPlayRoomSound('mensagem');
+        if(!spartanChatIsOpen()) {
+            if(spartanChatNoAuto())
+                spartanSetChatUnread(true);
+            else
+                spartanSetChatOpen(true);
+        }
     }
 
     let row = document.createElement('div');
     row.classList.add('message-row');
+    if(time) {
+        let ts = time instanceof Date ? time.getTime() : Date.parse(String(time));
+        if(ts)
+            row.setAttribute('data-spartan-ts', String(ts));
+    }
+    spartanChatPruneBox();
     let container = document.createElement('div');
     container.classList.add('message');
     row.appendChild(container);
@@ -6416,6 +6460,14 @@ if(chatBtn) {
         e.preventDefault();
         let chat = document.getElementById('chat');
         spartanSetChatOpen(!(chat && chat.classList.contains('spartan-chat-open')));
+    };
+}
+
+let chatNoAuto = document.getElementById('chat-no-auto');
+if(chatNoAuto) {
+    chatNoAuto.checked = spartanChatNoAuto();
+    chatNoAuto.onchange = function() {
+        spartanChatNoAutoSave(!!chatNoAuto.checked);
     };
 }
 

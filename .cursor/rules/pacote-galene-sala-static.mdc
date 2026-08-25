@@ -1,0 +1,27 @@
+---
+description: Pacote de envio S:\Downloads\galene-sala-static — zerar, encher, comando SSH
+alwaysApply: true
+---
+
+# Pacote `galene-sala-static`
+
+Tudo que o usuário sobe para o Debian sai **somente** de `S:\Downloads\galene-sala-static`. Ele solta essa pasta em `~/docker/galene/galene-sala-static`.
+
+## Sempre que for montar o pacote
+
+1. **Zerar** a pasta (`S:\Downloads\galene-sala-static`) — apagar o conteúdo inteiro.
+2. **Só então** copiar o que precisa ir agora. Nada de acumular arquivo velho.
+3. Layout fixo:
+   - `registry.py` na raiz do pacote → `~/docker/galene/registry.py`
+   - arquivos da interface em `static/` → `~/docker/galene/static/`
+   - `LEIA-ME.txt` com o comando SSH da vez
+4. **Não** pôr `factory-reset`, senha, `sidecar.auth` vivo, `groups/` de produção.
+5. No chat, **dar o comando SSH** para aplicar (não pedir que ele invente o `cp`).
+
+Comando-base (ajustar só se o pacote da vez não tiver `registry.py`):
+
+```bash
+cd ~/docker/galene && cp -f galene-sala-static/registry.py ./registry.py && cp -a galene-sala-static/static/. ./static/ && docker restart spartan-reg
+```
+
+HTML/CSS/JS sozinho: pode omitir o `docker restart`. `registry.py` manda restart do `spartan-reg`.

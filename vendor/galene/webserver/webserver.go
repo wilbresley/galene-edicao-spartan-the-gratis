@@ -220,7 +220,7 @@ func (fh *fileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/" {
 		p = "."
 	} else {
-		p = r.URL.Path[1:]
+		p = strings.TrimSuffix(r.URL.Path[1:], "/")
 	}
 
 	f, err := fh.root.Open(p)
