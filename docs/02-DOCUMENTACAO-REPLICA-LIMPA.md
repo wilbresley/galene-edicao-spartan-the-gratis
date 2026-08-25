@@ -274,7 +274,7 @@ Iguais à secção 4.4 e 4.6.
 - Home: botão lê `/spartan-api/site` + `/public-groups.json`. `static/index.html` é a landing — **nunca** a substituas por `admin.html`.
 - `/salas/`: busca, A–Z ou Recentes, **5 linhas** de altura fixa; paginação se houver mais.
 - Painel: **`/admin`**. Se `static/admin` for pasta, vira 404; tem que ser o arquivo HTML.
-- Sala pública: classe `html.spartan-open-room`, senha oculta; botão **fora** do `.connect` para login com conta cadastrada (`html.spartan-named-login`); `.login-box` com `height:auto` (a caixa não rebenta).
+- Sala pública: classe `html.spartan-open-room`, senha oculta; botão **fora** do `.connect` para login com conta cadastrada (`html.spartan-named-login`); `.login-box` com `height:auto` (a caixa não rebenta). Nick+senha só passam para a sala depois do Galene aceitar o join; senha errada fica no login (um toast, sem loop).
 - Temporários = só salas **sem** senha de amigos. Convite = senha de amigos.
 - **Cargos:** Admin (`op`), Verificado (`present`), Ouvinte (`["present"]` sem message). Temporário nasce Ouvinte; convidado nasce Verificado.
 - **Sair** limpa sessão. **Voltar à sala**: se a aba da call estiver aberta (`BroadcastChannel`), foca-a; senão reentra já logado. Não desloga a call.

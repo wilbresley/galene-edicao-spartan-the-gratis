@@ -1153,6 +1153,9 @@ function closeNav() {
 }
 
 let spartanDidJoin = false;
+let spartanJoinRejected = false;
+let spartanLoginBusy = false;
+let spartanLastAuthToast = {t: 0, m: ''};
 let spartanIntentionalLeave = false;
 let spartanDropShown = false;
 let spartanReconnecting = false;
@@ -1433,6 +1436,46 @@ async function spartanReconnect() {
     }
 }
 
+function spartanAuthFailText(message) {
+    return /not authorised|sem permissão|bad password|senha incorreta|não deu para entrar/i.test(String(message || ''));
+}
+
+function spartanRejectJoin() {
+    spartanJoinRejected = true;
+    spartanDidJoin = false;
+    spartanLoginBusy = false;
+    spartanReconnecting = false;
+    spartanClearGrace();
+    try {
+        sessionStorage.removeItem('spartanSession:' + group);
+        sessionStorage.removeItem('spartanSession');
+        sessionStorage.removeItem('spartanPending');
+    } catch(e) {}
+    window._spartanCred = '';
+    document.documentElement.classList.remove('spartan-rejoin');
+    setConnected(false);
+}
+
+function spartanCommitSession() {
+    try {
+        let username = (serverConnection && serverConnection.username) ||
+            getInputElement('username').value.trim().toLowerCase();
+        let pw = window._spartanCred || '';
+        if(!username)
+            return;
+        let payload = JSON.stringify({user: username, pass: pw, group: group});
+        sessionStorage.removeItem('spartanLoggedOut');
+        sessionStorage.setItem('spartanSession:' + group, payload);
+        sessionStorage.removeItem('spartanSession');
+        sessionStorage.removeItem('spartanPending');
+        if(pw) {
+            let handoff = JSON.stringify({user: username, pass: pw});
+            sessionStorage.setItem('spartanAdmin', handoff);
+            localStorage.setItem('spartanAdminHandoff', handoff);
+        }
+    } catch(e) {}
+}
+
 /**
  * setConnected is called whenever we connect or disconnect to the server.
  *
@@ -1468,7 +1511,8 @@ function setConnected(connected) {
  * @this {ServerConnection}
  */
 async function gotConnected() {
-    setConnected(true);
+    if(spartanDidJoin || spartanDropSince)
+        setConnected(true);
     await join();
 }
 
@@ -1565,10 +1609,8 @@ async function join() {
             console.warn(`Unexpected probing state ${probingState}`);
             probingState = null;
         }
-        let pw = getInputElement('password').value || window._spartanCred || ''; window._spartanCred='';
-        try{var _s=JSON.stringify({user:username,pass:pw,group:group}); sessionStorage.removeItem('spartanLoggedOut'); sessionStorage.setItem('spartanSession:'+group,_s); sessionStorage.removeItem('spartanSession'); sessionStorage.removeItem('spartanPending');
-            if(pw){ var _h={user:username,pass:pw}; sessionStorage.setItem('spartanAdmin',JSON.stringify(_h)); localStorage.setItem('spartanAdminHandoff',JSON.stringify(_h)); }
-        }catch(e){}
+        let pw = getInputElement('password').value || window._spartanCred || '';
+        window._spartanCred = pw;
         getInputElement('password').value = '';
         if(!groupStatus.authServer) {
             pwAuth = true;
@@ -1588,6 +1630,7 @@ async function join() {
         await serverConnection.join(group, username, credentials);
     } catch(e) {
         console.error(e);
+        spartanRejectJoin();
         displayError(e);
         serverConnection.close();
     }
@@ -1616,6 +1659,17 @@ function onPeerConnection() {
 function gotClose(code, reason) {
     if(this !== serverConnection)
         return;
+    if(spartanJoinRejected) {
+        spartanJoinRejected = false;
+        spartanIntentionalLeave = false;
+        spartanDidJoin = false;
+        spartanReconnecting = false;
+        spartanClearGrace();
+        try { closeUpMedia(); } catch(e) {}
+        closeSafariStream();
+        setConnected(false);
+        return;
+    }
     let wasIn = document.body.classList.contains('spartan-in') || spartanDidJoin;
     if(code !== 1000) {
         console.warn('Socket close', code, reason);
@@ -4736,6 +4790,7 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
             setVisibility('passwordform', false);
         } else {
             token = null;
+            spartanRejectJoin();
             displayError('O servidor disse: ' + message);
         }
         closeSafariStream();
@@ -4770,6 +4825,12 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
         } else {
             token = null;
         }
+        if(kind === 'join') {
+            spartanJoinRejected = false;
+            spartanLoginBusy = false;
+            spartanCommitSession();
+            setConnected(true);
+        }
         // don't discard endPoint and friends
         for(let key in status)
             groupStatus[key] = status[key];
@@ -4787,6 +4848,7 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
         break;
     default:
         token = null;
+        spartanRejectJoin();
         displayError('Não deu para entrar na sala');
         closeSafariStream();
         this.close();
@@ -6318,6 +6380,12 @@ function spartanErr(message){
 function displayError(message, level) {
     message = spartanErr(message);
     if(level==='kicked' || /not authorised|sem permissão|bad password|senha incorreta/i.test(String(message))){ try{ sessionStorage.removeItem('spartanSession:'+group); sessionStorage.removeItem('spartanSession'); sessionStorage.removeItem('spartanPending'); }catch(e){} window._spartanCred=''; }
+    if(spartanAuthFailText(message)) {
+        let now = Date.now();
+        if(spartanLastAuthToast.m === message && (now - spartanLastAuthToast.t) < 8000)
+            return;
+        spartanLastAuthToast = {t: now, m: message};
+    }
     if(!level)
         level = "error";
     let position = 'center';
@@ -6366,6 +6434,9 @@ document.getElementById('loginform').onsubmit = async function(e) {
     let form = this;
     if(!(form instanceof HTMLFormElement))
         throw new Error('Bad type for loginform');
+    if(spartanLoginBusy)
+        return;
+    spartanLoginBusy = true;
 
     setVisibility('passwordform', true);
 
@@ -6381,15 +6452,15 @@ document.getElementById('loginform').onsubmit = async function(e) {
     await spartanHistFlags(_u);
     try{
       const ts=await (await fetch('/spartan-api/temp-status?group='+encodeURIComponent(group)+'&user='+encodeURIComponent(_u))).json();
-      if(ts.banned){ displayError('Este IP está suspenso nesta sala por 24 horas.'); return; }
+      if(ts.banned){ spartanLoginBusy=false; displayError('Este IP está suspenso nesta sala por 24 horas.'); return; }
       const named=document.documentElement.classList.contains('spartan-named-login');
-      if(ts.open && ts.taken && !named){ displayError('Esse nick já é de uma conta ou convite. Escolhe outro.'); return; }
+      if(ts.open && ts.taken && !named){ spartanLoginBusy=false; displayError('Esse nick já é de uma conta ou convite. Escolhe outro.'); return; }
       if(named){
         const pw=getInputElement('password').value;
-        if(!pw){ displayError('Digite a senha da conta cadastrada.'); return; }
+        if(!pw){ spartanLoginBusy=false; displayError('Digite a senha da conta cadastrada.'); return; }
         const rr=await fetch('/spartan-api/join-named',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({group:group,user:_u.toLowerCase(),password:pw})});
         let jj={}; try{ jj=await rr.json(); }catch(e){}
-        if(!rr.ok){ displayError((jj&&jj.error)||'Não deu para entrar com essa conta.'); return; }
+        if(!rr.ok){ spartanLoginBusy=false; displayError((jj&&jj.error)||'Não deu para entrar com essa conta.'); return; }
       }
       if(ts.open) window._spartanOpenRoom=true;
       window._spartanPurge=ts.purge;
@@ -6565,6 +6636,7 @@ async function serverConnect() {
             return;
         }
         displayError(`Não conectou em ${url}: ${e.message}`);
+        spartanLoginBusy = false;
     }
 }
 
