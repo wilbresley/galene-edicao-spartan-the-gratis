@@ -243,7 +243,7 @@ Comportamentos de sessão:
 - Contador 24h (`#spartan-ttl`) reconstitui no `start()` (não só no submit do login): `spartanTtlRestore` + `GET /temp-status`. Anfitrião/op também faz poll.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: handoff `localStorage` para abrir o painel já logado.
-- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=115`, `galene-spartan.css?v=98`, `protocol.js?v=3`, `toastify.js?v=3`, `spartan-boot.js?v=9`). Home shell: `spartan-shell.js?v=4`, `spartan-shell.css?v=8`, `custom-home.js?v=4`, `salas.js?v=5`. Painel: `admin.js?v=38`, `admin.css?v=25`. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=115`, `galene-spartan.css?v=99`, `protocol.js?v=3`, `toastify.js?v=3`, `spartan-boot.js?v=9`). Home shell: `spartan-shell.js?v=4`, `spartan-shell.css?v=8`, `custom-home.js?v=4`, `salas.js?v=5`. Painel: `admin.js?v=38`, `admin.css?v=25`. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar.
 
 Painel admin:
 
@@ -367,7 +367,7 @@ A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export 
 27. 01/09/2026: lista de salas sem 24h; slug aleatório 15 chars nas temporárias; login persiste entre salas; config compacta; FPS/bitrate via stats Galene. Cache: `galene.js?v=98`, `protocol.js?v=3`, `salas.js?v=5`, `admin.js?v=36`. Reiniciar `spartan-reg` após `registry.py`.
 28. 04/09/2026: **presença no servidor** — header = tempo da sala (`HH:MM:SS`, branco); menu do nick = tempo individual; sala vazia > 60 s zera o timer da sala; `POST /presence`, `GET /presence-room` / `presence-user`; lista de salas com online + live. **Reconexão** graça 60 s (preserva mic/live). Shell SPA centralizado; sem flash de login ao trocar sala. Cache: `galene.js?v=110`, `galene-spartan.css?v=98`, `spartan-boot.js?v=9`, `spartan-salas.js?v=4`, `spartan-shell.css?v=8`. Reiniciar `spartan-reg`.
 29. 04/09/2026: botão **Câmera**/**Tela** sob o nick só com vídeo/tela reais (mic = bolinha; sem atalho `camlive`). Reconexão: **&lt; 60 s** preserva mic/tela/câmera sem mute forçado (`_spartanRecoveringMedia`, `hadMicOnly`); **≥ 60 s** fecha mídia e overlay. Cache: `galene.js?v=112`.
-30. 04/09/2026: **tela Full HD jogável** — FPS-alvo 60; tetos 12/10/5 Mbps (auto/1080p/720p); bypass REMB (~200 kbps) no offer da screenshare; sem `min` no getDisplayMedia; HUD `alvo · fps · kbps/teto`. 12 Mbps basta para 1080p60 em jogos frenéticos; use 720p em upload lento ou distância. Cache: `galene.js?v=115`.
+30. 04/09/2026: **tela Full HD jogável** — FPS-alvo 60; tetos 12/10/5 Mbps (auto/1080p/720p); bypass REMB (~200 kbps) no offer da screenshare; sem `min` no getDisplayMedia; HUD `alvo · fps · kbps/teto`. 12 Mbps basta para 1080p60 em jogos frenéticos; use 720p em upload lento ou distância. Contador da sala no header: branco forçado (`galene-spartan.css?v=99`). Cache: `galene.js?v=115`.
 
 ---
 

@@ -2020,6 +2020,14 @@ button.toast-close::after{
  font-variant-numeric:tabular-nums;
  letter-spacing:.03em;
 }
+#spartan-live,
+#spartan-live.is-on,
+#spartan-live-clock,
+#header #spartan-live,
+#header #spartan-live-clock,
+#header #spartan-live *{
+ color:#fff!important;
+}
 #spartan-live{
  display:none;
  position:static!important;
@@ -2040,7 +2048,6 @@ button.toast-close::after{
  gap:.35rem;
 }
 #spartan-live-clock{
- color:#fff!important;
  font-size:.82rem;
  font-weight:700;
  white-space:nowrap;
