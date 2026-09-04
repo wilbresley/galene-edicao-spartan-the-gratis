@@ -10,9 +10,17 @@ async function atualizarSpartan(){
   var n=g&&typeof g.clientCount==='number'?g.clientCount:0;
   if(badge) badge.textContent='Candangos online '+n;
   if(btn){
-   btn.href=(g&&g.location)||('/group/'+encodeURIComponent(homeId)+'/');
+   var gid=homeId;
+   btn.href='#/group/'+encodeURIComponent(gid);
+   btn.setAttribute('data-spartan-route','group:'+gid);
    btn.textContent='Entrar na sala '+(g&&(g.displayName||g.description||g.name)||homeId);
   }
- }catch(e){ if(badge) badge.textContent='Candangos online —'; if(btn) btn.href='/group/'+encodeURIComponent(homeId)+'/'; }
+ }catch(e){
+  if(badge) badge.textContent='Candangos online —';
+  if(btn){
+   btn.href='#/group/'+encodeURIComponent(homeId);
+   btn.setAttribute('data-spartan-route','group:'+homeId);
+  }
+ }
 }
 atualizarSpartan(); setInterval(atualizarSpartan,5000);

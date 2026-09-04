@@ -1,7 +1,7 @@
 # Spartan Chat (Galene) — documentação completa da implantação
 
 **Data da implantação:** 20 de agosto de 2026  
-**Última revisão deste documento:** 25 de agosto de 2026  
+**Última revisão deste documento:** 4 de setembro de 2026  
 **Objetivo deste arquivo:** registrar *como o stack ficou no teu servidor*, para operação, backup e GitHub.  
 **Segredos:** nenhuma senha de produção, hash real do servidor, `sidecar.auth` vivo ou credencial operacional aparece aqui. Contas e senhas **da instalação** ficam só no servidor (`groups/*.json`, `data/config.json`, `data/sidecar.auth`).  
 **Exceção documentada:** o pacote `factory-reset/` traz a senha de fábrica `Mudar@123` (admin + convidados) de propósito — só para zerar o Docker; no primeiro login o admin **obrigatoriamente** troca as duas.
@@ -240,7 +240,7 @@ Comportamentos de sessão:
 - Contador 24h (`#spartan-ttl`) reconstitui no `start()` (não só no submit do login): `spartanTtlRestore` + `GET /temp-status`. Anfitrião/op também faz poll.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: handoff `localStorage` para abrir o painel já logado.
-- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=94`, `galene-spartan.css?v=74`, `protocol.js?v=2`, `toastify.js?v=3`, `spartan-boot.js?v=7`). Home: `custom-home.js?v=3`. Painel: `admin.js?v=33`, `admin.css?v=22`. Painel em **`/admin/`** (`static/admin/index.html`). Nunca copiar o painel por cima de `index.html` da raiz.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=115`, `galene-spartan.css?v=99`, `protocol.js?v=3`, `toastify.js?v=3`, `spartan-boot.js?v=9`). Home shell: `spartan-shell.js?v=4`, `spartan-shell.css?v=8`, `custom-home.js?v=4`, `salas.js?v=5`. Painel: `admin.js?v=38`, `admin.css?v=25`. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar. Painel em **`/admin/`** (`static/admin/index.html`). Nunca copiar o painel por cima de `index.html` da raiz.
 
 Painel admin:
 
@@ -266,7 +266,7 @@ Painel admin:
 - “Solicitar registro” só para convite, não para pública.
 - Sem kick HTTP nativo: o cliente sai sozinho no purge / bloqueio.
 - Multi-live: botão **Tela** só no compartilhamento de tela; **Câmera** só com faixa de vídeo (mic sozinho = só a bolinha, sem texto Câmera). Cabeçalho preto acima do vídeo.
-- **Fluência:** live **assistida** (clicada) pede sempre `['audio','video']` — nunca `video-low`, mesmo se tu estiveres a transmitir ou com o jogo aberto. Nos receivers dessas lives: `contentHint=detail` e `degradationPreference=maintain-resolution`. As outras pedem áudio só (sem imagem), salvo tela sem áudio (`video-low` só para não sumir o botão Tela). `contentHint` de tela que **envias** = `motion`.
+- **Fluência:** live **assistida** (clicada) pede sempre `['audio','video']` — nunca `video-low`. Tela que **envias**: FPS-alvo **60** (`frameRate` ideal/max sem `min` — Chrome rejeita `min` no getDisplayMedia), `maxFramerate` + `maintain-framerate`, `contentHint=motion` (modo jogo). Bitrate da tela **independente** do “Enviar” da câmera: auto **12 Mbps**, 1080p **10 Mbps**, 720p **5 Mbps**. Offer da screenshare **sem `goog-remb`** (senão o Galene prende ~200 kbps). HUD: `alvo 60 · N fps · kbps/teto`. Oscilar em torno do teto (com pico curto acima) é normal. Receivers assistidos: `degradationPreference=maintain-resolution`. As outras pedem áudio só (sem imagem), salvo tela sem áudio (`video-low` só para não sumir o botão Tela).
 - **Painel Admin** (botão na sala): depende **só** de `POST /can-panel` (conta cadastrada da main / sidecar). Não exige `op` da sala atual. Anfitrião 24h não vê o botão. Abre sempre em nova aba (`window.open` + handoff `spartanAdminHandoff`).
 - **Uma** live na sala: já entra em foco; clique extra nela não faz nada. Duas lives: **lado a lado** já na primeira abertura (o foco automático da primeira não deixa o grid numa coluna só). Três ou quatro: grid 2×2. Clique escolhe o foco.
 - **Minhas lives:** ícones de olho; verde = mostrando, vermelho = ocultando. O X nas lives dos outros esconde; o X na **própria** live **para** aquele share. Fechar a **câmera** (header ou X) com o mic ligado **mantém o microfone**; o ícone verde do mic acompanha o estado real.
@@ -274,10 +274,15 @@ Painel admin:
 - **Sair** no cabeçalho (vermelho `#dc2626`), com confirmação.
 - **Ouvinte** (`body.spartan-ouvinte`): microfone ok; sem lives, sem chat texto, sem câmera/tela.
 - Lista de usuários: clique esquerdo (PC) abre o menu. No **celular**, o drawer da lista desliza da esquerda; o menu do usuário só com **segurar 1 s**, em `position:fixed` por cima do drawer (`z-index` alto). Soltar o dedo **não** fecha o menu (o clique sintético é ignorado ~900 ms).
-- Menu do outro usuário: **Mudo** (só o teu fone), **Volume (seu fone)** 0–400% em passos de 5%, e se fores admin: apresentar / **Silenciar microfone** (muta o mic **dele** para toda a sala) / Expulsar. Sem Identificar (não manda IP) e sem enviar arquivo.
+- Menu do outro usuário: **Mudo** (só o teu fone), **Volume (seu fone)** 0–400% em passos de 5%, e se for admin: apresentar / **Silenciar microfone** (muta o mic **dele** para toda a sala) / Expulsar. Sem Identificar (não manda IP) e sem enviar arquivo.
 - Bolinha: **cinza** off; **amarelo** mic ligado parado; **verde** falando; **vermelho** mutado. Publish segue a **faixa** (`enabled`+`live` → `on`; senão `localMute` → `muted`) e reenvia o estado a cada ~2,5 s. Nos outros, `micstate === 'muted'` é absoluto (analisador/stats não pintam amarelo). Desmutar / falar com faixa viva publica `on` mesmo que o `localMute` da sessão tenha ficado preso.
-- Sons da sala (`static/sounds/`): `entrar.mp3`, `sair.mp3`, `mensagem.mp3`. Toca para os **outros** (não para ti, não no histórico, não no lote dos 1,5 s ao entrares). Configurações: três interruptores (entrada / saída / mensagem), ligados por defeito, gravados neste computador por nick. O browser só liberta o áudio depois do primeiro clique/tecla.
-- Queda da ligação, depois de já teres entrado: **graça de 30 s**. Blip curto não mostra overlay, não limpa a tela e tenta o WebSocket em silêncio (~3 s). Só depois de 30 s seguidos: overlay **Ligação perdida**, limpa tiles e trata como queda. Aí tenta sozinho aos 2 s / ~2,5 s e no evento `online`. O Galene larga o peer no servidor quando o WS cai — os outros podem ver um piscar; o que se evita é o teu overlay a cada 2 s. **Sair**, `/leave` e kick não entram nesta graça. Cada blip/recuperação/queda vai para `POST /net-event`.
+- Sons da sala (`static/sounds/`): `entrar.mp3`, `sair.mp3`, `mensagem.mp3`. Toca para os **outros** (não para você, não no histórico, não no lote dos 1,5 s ao entrar). Configurações: três interruptores (entrada / saída / mensagem), ligados por padrão, gravados neste computador por nick. O browser só libera o áudio depois do primeiro clique/tecla.
+- Queda da ligação, depois que você já entrou: **graça de 60 s** (corte único).
+  - **&lt; 60 s:** reconecta em silêncio (sem overlay), **não** força mute e republica mic/câmera/tela no mesmo estado (`hadCamera` = vídeo real; `hadMicOnly` = só áudio; nunca promove mic-só a câmera). Flag `_spartanRecoveringMedia`. O Galene larga o peer no servidor — os outros podem ver um piscar; no seu PC a mídia local fica.
+  - **≥ 60 s:** fecha ups locais (`closeUpMedia`), limpa o snapshot, mostra overlay **Ligação perdida** e trata como queda. Ao voltar depois disso, entra “limpo” (mic desligado; precisa religar tela/câmera).
+  - Tentativas: silencioso ~1,5 s na graça; depois do overlay, 2 s / ~2,5 s e evento `online`. **Sair**, `/leave` e kick não entram nesta graça. Cada blip/recuperação/queda → `POST /net-event`.
+- Botão **Câmera**/**Tela** sob o nick: só com vídeo/tela reais (`streamHasRealVideo` / `screenshare`). Mic sozinho = bolinha; sem atalho `camlive` para inventar botão Câmera.
+- Header da sala permanente: timer branco `HH:MM:SS` = **tempo da sala** (servidor). Conta só com gente online; sala vazia > **60 s** zera. Menu do nick: **tempo individual** na sala (também do servidor). `pagehide` avisa saída para o registry.
 - Avisos Toastify (erro/aviso/info) e `#spartan-toast`: caixa **preta** com borda vermelha 2px. O X de fechar (toasts, Configurações, chat e lives) é um `×` branco em Arial (o `✖` do Toastify no Windows vira emoji roxo). Botão **Chat do Canal** com texto centrado; sininho à direita só com mensagens por ler.
 - Header da sala: fundo preto, linha vermelha embaixo; **ícones** vermelhos (verde quando mic/câmera/tela estão ligados); **textos** dos itens (Microfone, Câmera, etc.) e o **nome da sala** em branco. Em salas de 24h, à **direita do nome**: `Tempo até exclusão desta sala: HH:MM` (permanece no F5 / rejoin). Lista de nicks à esquerda: caixinhas pretas com borda vermelha; fundo do grid e da lista `#33363d`. Sidebar com `border-right` vermelho 4px. Janelas (configurações, chat, convite, menus) borda vermelha 2px e cantos 12px.
 - Volume acima de 100% usa Web Audio (`GainNode`); até 100% usa `media.volume`. Não altera o que os outros ouvem.
@@ -354,6 +359,11 @@ A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export 
 23. 25/08/2026: quem transmite câmera avisa os outros com `camlive` no `setdata` — o botão Câmera aparece no PC mesmo antes de pedir o vídeo alto. Mic continua sem botão. Cache: `galene.js?v=92`.
 24. 25/08/2026: senha errada não entra na sala nem fica em loop de toast. O WebSocket conecta, mas a UI da canal só abre no `joined`; falha de auth volta ao login (um aviso) e não dispara a graça de 30 s. Cache: `galene.js?v=93`.
 25. 25/08/2026: duas lives abrem **lado a lado** já na primeira vez. Fechar a câmera no celular **não** mata o microfone nem deixa o ícone verde; vira de novo só áudio. Cache: `galene.js?v=94`.
+26. 01/09/2026: **shell SPA** na home; modo jogo; tela 720p/1080p; HUD FPS/bitrate; VP8 primeiro. Espelho público alinhado.
+27. 01–04/09/2026: lista de salas sem 24h; slug aleatório; login entre salas.
+28. 04/09/2026: **presença no servidor** — header = tempo da sala (`HH:MM:SS`); menu nick = tempo individual; sala vazia > 60 s zera; APIs `/presence`, `/presence-room`, `/presence-user`. **Reconexão** graça 60 s. Cache: `galene.js?v=110`+. Reiniciar `spartan-reg`.
+29. 04/09/2026: botão **Câmera**/**Tela** só com vídeo/tela reais (`hadMicOnly`); recover sem mute forçado. Cache: `galene.js?v=112`.
+30. 04/09/2026: **tela Full HD jogável** — FPS-alvo 60; bitrate auto 12 / 1080p 10 / 720p 5 Mbps; bypass REMB (~200 kbps) no offer da screenshare; HUD `alvo · fps · kbps/teto`; contador branco (`galene-spartan.css?v=99`). Cache: `galene.js?v=115`.
 
 ---
 

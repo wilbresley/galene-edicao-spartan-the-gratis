@@ -8,9 +8,9 @@
 <link rel="icon" type="image/jpeg" href="/icone-separtan.jpg"/>
 <link rel="stylesheet" href="/common.css"/>
 <link rel="stylesheet" href="/spartan-pages.css?v=5"/>
-<link rel="stylesheet" href="/admin.css?v=22"/>
+<link rel="stylesheet" href="/admin.css?v=28"/>
 <link rel="stylesheet" href="/spartan.css?v=22"/>
-<script src="/admin.js?v=33" defer></script>
+<script src="/admin.js?v=40" defer></script>
 </head>
 <body>
 <header class="admin-top">
@@ -127,29 +127,55 @@
 <div id="net-log"></div>
 </section>
 </div>
-<div id="tab-rooms" class="tab-page" hidden>
-<div class="split">
-<section class="admin-card">
-<h2>Salas existentes</h2>
-<p class="hint">A sala principal fica no topo e não pode ser apagada. Dá para mudar o nome, o endereço e a senha de amigos. Outra sala pode ser marcada para aparecer na home.</p>
-<div id="rooms"></div>
-</section>
-<section class="admin-card">
-<h2>Criar sala</h2>
-<p class="hint">Convite definitiva fica para sempre. Pública some em 24h. Convite também pode ser de 24h, com anfitrião opcional.</p>
-<label for="rn">Nome na URL (minúsculo, sem espaço)</label>
-<input id="rn" type="text" placeholder="ex: jogos"/>
-<label for="rd">Título na home</label>
-<input id="rd" type="text" placeholder="ex: Jogos"/>
-<label class="chk"><input type="radio" name="rkind" id="rkind-invite" value="invite" checked/> Convite — senha para entrar (pode ser definitiva)</label>
-<label class="chk"><input type="radio" name="rkind" id="rkind-open" value="open"/> Pública — só nick, some em 24h</label>
-<div id="rp-wrap">
-<label for="rp">Senha de convite desta sala</label>
-<input id="rp" type="password" placeholder="mínimo 8 caracteres"/>
+<div id="tab-rooms" class="tab-page tab-rooms-page" hidden>
+<div class="rooms-toolbar">
+<h2 class="rooms-title">Salas</h2>
+<button type="button" id="btn-room-open" class="btn-create-room">+ Criar sala</button>
 </div>
-<label class="chk" id="rttl-row"><input id="rttl" type="checkbox"/> Sala temporária (some em 24h)</label>
+<div class="rooms-body">
+<div class="rooms-grid">
+<div class="rooms-col rooms-col-perm">
+<h3 class="rooms-col-title">Sala principal</h3>
+<div id="rooms-main" class="rooms-main-slot"></div>
+<h3 class="rooms-col-title rooms-section-title">Permanentes <span id="rooms-perm-count" class="rooms-count"></span></h3>
+<p class="hint rooms-section-hint">Aparecem na lista pública. Podem ser definidas como entrada do site.</p>
+<div id="rooms-perm" class="rooms-col-scroll"></div>
+</div>
+<div class="rooms-col rooms-col-temp">
+<h3 class="rooms-col-title">Temporárias (24h) <span id="rooms-temp-count" class="rooms-count"></span></h3>
+<p class="hint rooms-section-hint">Só você vê aqui. Somem sozinhas; não entram na lista pública.</p>
+<div id="rooms-temp" class="rooms-col-scroll"></div>
+</div>
+</div>
+</div>
+</div>
+<div id="room-create-dlg" hidden>
+<div class="room-create-panel admin-card">
+<div class="room-create-head">
+<h2>Criar sala</h2>
+<button type="button" id="room-create-close" class="ghost room-create-x" aria-label="Fechar">✕</button>
+</div>
+<div id="room-create-form">
+<label for="rd">Título na interface</label>
+<input id="rd" type="text" placeholder="ex: Jogos"/>
+<fieldset class="room-type-field">
+<legend>Tipo</legend>
+<label class="chk"><input type="radio" name="rtype" id="rtype-def" value="def" checked/> Convite definitiva — senha, fica para sempre</label>
+<label class="chk"><input type="radio" name="rtype" id="rtype-inv24" value="inv24"/> Convite 24h — some sozinha, só por link</label>
+<label class="chk"><input type="radio" name="rtype" id="rtype-pub24" value="pub24"/> Pública 24h — só nick, some sozinha</label>
+</fieldset>
+<label id="rn-label" for="rn">Endereço na URL</label>
+<div class="slug-row">
+<input id="rn" type="text" placeholder="ex: jogos" autocomplete="off" spellcheck="false"/>
+<button type="button" id="rn-regen" class="slug-regen" hidden title="Gerar outro código">↻ Novo código</button>
+</div>
+<p id="rn-hint" class="hint slug-hint" hidden>Código aleatório de 15 caracteres. Só quem tem o link entra.</p>
+<div id="rp-wrap">
+<label for="rp">Senha de convite</label>
+<input id="rp" type="password" placeholder="mínimo 8 caracteres" autocomplete="new-password"/>
+</div>
 <div id="rhost-block" hidden>
-<label class="chk"><input id="rhost" type="checkbox"/> Ter anfitrião (admin só desta sala; some com ela em 24h)</label>
+<label class="chk"><input id="rhost" type="checkbox"/> Ter anfitrião (admin só desta sala; some com ela)</label>
 <div id="rhost-wrap" hidden>
 <label for="rhost-nick">Nick do anfitrião</label>
 <input id="rhost-nick" type="text" placeholder="ex: dono" autocomplete="off"/>
@@ -157,9 +183,20 @@
 <input id="rhost-pw" type="password" placeholder="mínimo 8 caracteres" autocomplete="new-password"/>
 </div>
 </div>
+<p id="room-msg" class="err"></p>
+<div class="room-create-foot">
+<button type="button" id="room-create-cancel" class="ghost">Cancelar</button>
 <button type="button" id="btn-room">Criar sala</button>
-<p id="room-msg" class="ok"></p>
-</section>
+</div>
+</div>
+<div id="room-create-done" hidden>
+<p id="room-done-msg" class="ok"></p>
+<p class="room-done-link-wrap"><code id="room-done-link"></code></p>
+<div class="room-create-foot">
+<button type="button" id="room-done-copy" class="okbtn">Copiar link</button>
+<button type="button" id="room-done-close" class="ghost">Fechar</button>
+</div>
+</div>
 </div>
 </div>
 </div>

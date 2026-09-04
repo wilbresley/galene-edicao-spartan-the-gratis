@@ -8,10 +8,11 @@
 <link rel="icon" type="image/jpeg" href="/icone-separtan.jpg"/>
 <link rel="stylesheet" href="/common.css"/>
 <link rel="stylesheet" href="/mainpage.css"/>
-<link rel="stylesheet" href="/spartan.css?v=22"/>
+<link rel="stylesheet" href="/spartan.css?v=24"/>
+<link rel="stylesheet" href="/galene-spartan.css?v=96"/>
 </head>
 <body>
-<div class="home">
+<div class="home salas-page">
   <div class="spartan-brand">Spartan</div>
   <p class="spartan-tag">Outras salas</p>
   <div class="salas-tools">
@@ -21,11 +22,13 @@
       <button type="button" class="sort-btn" data-sort="time">Recentes</button>
     </div>
   </div>
-  <div id="lista-salas" class="lista-salas">Carregando…</div>
-  <div id="salas-pager" class="salas-pager" hidden>
-    <button type="button" id="sala-prev">Anterior</button>
-    <span id="sala-page"></span>
-    <button type="button" id="sala-next">Próxima</button>
+  <div class="spartan-salas-grid spartan-salas-page-grid spartan-salas-grid-public">
+    <div class="spartan-salas-col spartan-salas-col-perm">
+      <h3 class="spartan-salas-col-title">Sala principal</h3>
+      <div id="salas-main" class="spartan-salas-main-slot"></div>
+      <h3 class="spartan-salas-col-title spartan-salas-section-title">Permanentes</h3>
+      <div id="salas-perm" class="spartan-salas-scroll"></div>
+    </div>
   </div>
   <a class="spartan-btn" href="/">Voltar</a>
 </div>
@@ -34,6 +37,7 @@
   <span class="foot-mid">Interface refeita por <a href="https://github.com/wilbresley" target="_blank" rel="noopener">wilbresley</a></span>
   <span class="foot-right"><a class="btn-salas" href="/">Home</a></span>
 </footer>
-<script src="/salas.js?v=3" defer></script>
+<script src="/spartan-salas.js?v=4" defer></script>
+<script src="/salas.js?v=8" defer></script>
 </body>
 </html>

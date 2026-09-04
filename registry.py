@@ -5,7 +5,7 @@ from urllib.parse import urlparse, parse_qs, quote
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from threading import Thread
-import json, secrets, time, urllib.request, urllib.error, base64, os, hashlib, hmac
+import json, secrets, time, urllib.request, urllib.error, base64, os, hashlib, hmac, string
 
 DATA, GROUPS, GALENE, PORT = Path("/data/registry.json"), Path("/groups"), "http://127.0.0.1:8443", 8091
 SITE=Path("/data/site.json")
@@ -37,6 +37,202 @@ def save_site(d):
     SITE.write_text(json.dumps(d, indent=2, ensure_ascii=False)+chr(10), encoding="utf-8")
 def now():
     return datetime.now(TZ).isoformat(timespec="seconds")
+
+PRESENCE_STALE_S = 45
+# Reentrada do mesmo nick: mantém o timer individual.
+PRESENCE_USER_GRACE_S = 60
+# Sala vazia: após isto o timer da ocupação zera.
+PRESENCE_ROOM_EMPTY_GRACE_S = 60
+# Compat: código antigo usava este nome para graça de usuário.
+PRESENCE_GRACE_S = PRESENCE_USER_GRACE_S
+
+def parse_iso(ts):
+    if not ts:
+        return None
+    try:
+        d = datetime.fromisoformat(ts)
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=TZ)
+        return d
+    except Exception:
+        return None
+
+def live_bucket(b):
+    live = b.setdefault("live", {})
+    live.setdefault("users", {})
+    live.setdefault("room_accum_s", 0)
+    return live
+
+def user_presence_online(rec, tnow):
+    if not rec:
+        return False
+    if rec.get("offline_since"):
+        return False
+    last = parse_iso(rec.get("last"))
+    if not last:
+        return False
+    return (tnow - last).total_seconds() <= PRESENCE_STALE_S
+
+def presence_online_count(b, tnow):
+    users = (b.get("live") or {}).get("users") or {}
+    return sum(1 for rec in users.values() if user_presence_online(rec, tnow))
+
+def _room_freeze_tick(live, tnow):
+    """Congela o trecho atual de ocupação em room_accum_s (não conta tempo vazio)."""
+    tick = parse_iso(live.get("room_tick_since"))
+    if not tick:
+        return
+    accum = int(live.get("room_accum_s") or 0)
+    accum += max(0, int((tnow - tick).total_seconds()))
+    live["room_accum_s"] = accum
+    live.pop("room_tick_since", None)
+
+def _room_reset(live):
+    live["room_accum_s"] = 0
+    live.pop("room_tick_since", None)
+    live.pop("room_since", None)
+    live.pop("empty_since", None)
+
+def presence_prune_room(b, tnow):
+    """Atualiza ocupação da sala. Online = heartbeats recentes; vazio > 60s zera o timer da sala."""
+    live = live_bucket(b)
+    users = live.get("users") or {}
+    online = 0
+    for nick, rec in list(users.items()):
+        if user_presence_online(rec, tnow):
+            online += 1
+        else:
+            last = parse_iso(rec.get("last"))
+            off = parse_iso(rec.get("offline_since"))
+            if not off and last and (tnow - last).total_seconds() > PRESENCE_STALE_S:
+                rec["offline_since"] = tnow.isoformat(timespec="seconds")
+                users[nick] = rec
+            # Limpa fichas antigas (fora da graça do usuário)
+            off2 = parse_iso(rec.get("offline_since"))
+            if off2 and (tnow - off2).total_seconds() > PRESENCE_USER_GRACE_S:
+                users.pop(nick, None)
+    live["users"] = users
+    live.pop("room_since", None)
+    empty_since = parse_iso(live.get("empty_since"))
+
+    if online > 0:
+        if empty_since:
+            gap = (tnow - empty_since).total_seconds()
+            live.pop("empty_since", None)
+            if gap > PRESENCE_ROOM_EMPTY_GRACE_S:
+                _room_reset(live)
+                live["room_tick_since"] = tnow.isoformat(timespec="seconds")
+            elif not parse_iso(live.get("room_tick_since")):
+                live["room_tick_since"] = tnow.isoformat(timespec="seconds")
+        elif not parse_iso(live.get("room_tick_since")):
+            live["room_tick_since"] = tnow.isoformat(timespec="seconds")
+            live["room_accum_s"] = int(live.get("room_accum_s") or 0)
+    else:
+        if parse_iso(live.get("room_tick_since")):
+            _room_freeze_tick(live, tnow)
+        if int(live.get("room_accum_s") or 0) > 0 or empty_since:
+            if not empty_since:
+                live["empty_since"] = tnow.isoformat(timespec="seconds")
+                empty_since = tnow
+            if empty_since and (tnow - empty_since).total_seconds() > PRESENCE_ROOM_EMPTY_GRACE_S:
+                _room_reset(live)
+        else:
+            live.pop("empty_since", None)
+    return online
+
+def presence_heartbeat(b, user, tnow=None):
+    tnow = tnow or datetime.now(TZ)
+    user = norm_nick(user)
+    if not user:
+        return
+    live = live_bucket(b)
+    users = live.setdefault("users", {})
+    rec = users.get(user) or {}
+    was_on = user_presence_online(rec, tnow)
+    off_since = parse_iso(rec.get("offline_since"))
+    since = parse_iso(rec.get("since"))
+    if not was_on:
+        if off_since and since and (tnow - off_since).total_seconds() < PRESENCE_USER_GRACE_S:
+            pass  # mesma sessão individual
+        else:
+            rec["since"] = tnow.isoformat(timespec="seconds")
+    elif not since:
+        rec["since"] = tnow.isoformat(timespec="seconds")
+    rec["last"] = tnow.isoformat(timespec="seconds")
+    rec.pop("offline_since", None)
+    users[user] = rec
+    presence_prune_room(b, tnow)
+
+def presence_leave(b, user, tnow=None):
+    tnow = tnow or datetime.now(TZ)
+    user = norm_nick(user)
+    if not user:
+        return
+    live = live_bucket(b)
+    users = live.get("users") or {}
+    rec = users.get(user)
+    if rec:
+        rec["last"] = tnow.isoformat(timespec="seconds")
+        rec["offline_since"] = tnow.isoformat(timespec="seconds")
+        users[user] = rec
+    presence_prune_room(b, tnow)
+
+def room_live_seconds(b, tnow=None):
+    """Tempo da sala com gente (autoridade do servidor). Ativo só com online > 0."""
+    tnow = tnow or datetime.now(TZ)
+    presence_prune_room(b, tnow)
+    live = b.get("live") or {}
+    online = presence_online_count(b, tnow)
+    accum = int(live.get("room_accum_s") or 0)
+    tick = parse_iso(live.get("room_tick_since"))
+    if online > 0:
+        extra = int((tnow - tick).total_seconds()) if tick else 0
+        return max(0, accum + extra), True
+    return 0, False
+
+def user_live_seconds(b, user, tnow=None):
+    """Tempo individual na sala (autoridade do servidor)."""
+    tnow = tnow or datetime.now(TZ)
+    user = norm_nick(user)
+    live = b.get("live") or {}
+    rec = (live.get("users") or {}).get(user)
+    if not rec:
+        return 0, False, False
+    since = parse_iso(rec.get("since"))
+    if not since:
+        return 0, False, user_presence_online(rec, tnow)
+    online = user_presence_online(rec, tnow)
+    off_since = parse_iso(rec.get("offline_since"))
+    if online:
+        return int((tnow - since).total_seconds()), True, True
+    if off_since and (tnow - off_since).total_seconds() <= PRESENCE_USER_GRACE_S:
+        return int((tnow - since).total_seconds()), True, False
+    return 0, False, False
+
+def presence_user_state(b, user, tnow=None):
+    tnow = tnow or datetime.now(TZ)
+    ls, active, online = user_live_seconds(b, user, tnow)
+    return {"live_s": ls, "active": active, "online": online, "server_ts": tnow.isoformat(timespec="seconds")}
+
+def galene_group_counts():
+    auth = internal_auth()
+    if not auth:
+        return {}
+    code, text = galene("GET", "/galene-api/v0/.stats", auth)
+    if code != 200:
+        return {}
+    try:
+        data = json.loads(text)
+        out = {}
+        for g in data:
+            name = g.get("name")
+            if not name:
+                continue
+            clients = g.get("clients") or []
+            out[name] = len(clients)
+        return out
+    except Exception:
+        return {}
 def _looks_cf(ip):
     ip=(ip or "").strip()
     return any(ip.startswith(p) for p in _CF_PREFIXES)
@@ -218,6 +414,13 @@ def account_rename(uid, new_nick):
 def slug_ok(s):
     s=(s or "").strip().lower()
     return bool(s) and all(c.isalnum() or c=="-" for c in s) and len(s)<=32
+def random_room_slug(n=15):
+    alphabet=string.ascii_lowercase + string.digits
+    for _ in range(200):
+        s="".join(secrets.choice(alphabet) for _ in range(n))
+        if slug_ok(s) and not (GROUPS/f"{s}.json").exists():
+            return s
+    return secrets.token_urlsafe(12).lower().replace("_","").replace("-","")[:n]
 def load():
     return json.loads(DATA.read_text(encoding="utf-8")) if DATA.exists() else {}
 def save(d):
@@ -466,13 +669,17 @@ def expire_loop():
         time.sleep(20)
         try: expire_due()
         except Exception: pass
+        try: prune_stale_guests()
+        except Exception: pass
 def panel_login_ok(user, password):
-    """Só admin de verdade: sidecar.auth, config.json, ou op da sala principal. Anfitrião 24h não entra."""
+    """Só admin de verdade: sidecar.auth, config.json, cofre (op) ou op legado da main. Anfitrião 24h não entra."""
     user=norm_nick(user)
     if not user or password is None: return False
     su,spw=sidecar_plain()
     if su is not None and user==su and password==spw: return True
     if config_admin_ok(user, password): return True
+    if account_get_role(user) in ("op","admin") and account_verify_password(user, password):
+        return True
     main=main_id()
     real, rec=find_group_user(main, user)
     if not real: return False
@@ -485,6 +692,156 @@ def hash_plain(pw):
     salt=os.urandom(8)
     key=hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), salt, 4096, dklen=32)
     return {"type":"pbkdf2","hash":"sha-256","key":key.hex(),"salt":salt.hex(),"iterations":4096}
+def account_get(nick):
+    nick=norm_nick(nick)
+    if not nick: return None
+    d=load_accounts()
+    uid=d["by_nick"].get(nick)
+    if uid is None: return None
+    rec=d["by_id"].get(str(uid))
+    if not rec or not rec.get("active", True): return None
+    rn=rec.get("nick")
+    if rn and norm_nick(rn)!=nick: return None
+    return rec
+def account_has_password(nick):
+    rec=account_get(nick)
+    return bool(rec and rec.get("password"))
+def account_get_role(nick):
+    rec=account_get(nick)
+    if not rec: return "present"
+    role=rec.get("role") or rec.get("permissions") or "present"
+    if role=="ouvinte": return "ouvinte"
+    if role in ("op","admin"): return role
+    return "present"
+def role_to_galene_body(role):
+    if role in ("op","admin"): return json.dumps({"permissions":"op"})
+    if role=="ouvinte": return json.dumps({"permissions":["present"]})
+    return json.dumps({"permissions":"present"})
+def account_set_password(nick, password, role=None):
+    nick=norm_nick(nick)
+    if not nick or password is None: return False
+    account_ensure(nick)
+    d=load_accounts()
+    uid=d["by_nick"][nick]
+    rec=d["by_id"][str(uid)]
+    if isinstance(password, dict):
+        rec["password"]=password
+    else:
+        rec["password"]=hash_plain(password)
+    if role: rec["role"]=role
+    save_accounts(d)
+    return True
+def account_set_role(nick, role):
+    nick=norm_nick(nick)
+    if not nick: return
+    account_ensure(nick)
+    d=load_accounts()
+    uid=d["by_nick"].get(nick)
+    if uid is None: return
+    d["by_id"][str(uid)]["role"]=role
+    save_accounts(d)
+def account_verify_password(nick, password):
+    nick=norm_nick(nick)
+    if not nick or password is None: return False
+    rec=account_get(nick)
+    if rec:
+        pw=rec.get("password")
+        if pw and password_match(pw, password): return True
+    main=main_id()
+    real, mrec=find_group_user(main, nick)
+    if real:
+        if password_match(mrec.get("password"), password):
+            if rec and not rec.get("password"):
+                pwobj=mrec.get("password")
+                if isinstance(pwobj, dict):
+                    account_set_password(nick, pwobj)
+                else:
+                    account_set_password(nick, password)
+                if not rec.get("role"):
+                    account_set_role(nick, user_perm_name_from(mrec) or "present")
+            return True
+        if galene_user_auth_ok(main, real, password): return True
+    if rec:
+        for fp in GROUPS.glob("*.json"):
+            real2, mrec2=find_group_user(fp.stem, nick)
+            if real2 and password_match(mrec2.get("password"), password):
+                pwobj=mrec2.get("password")
+                if isinstance(pwobj, dict):
+                    account_set_password(nick, pwobj)
+                else:
+                    account_set_password(nick, password)
+                return True
+    return False
+def is_vault_account(nick):
+    return account_get(nick) is not None and account_has_password(nick)
+def is_named_user(gid, nick):
+    nick=norm_nick(nick)
+    if nick in named(gid): return True
+    return is_vault_account(nick)
+def galene_sync_account(gid, nick, password=None, auth=None):
+    nick=norm_nick(nick)
+    if not account_get(nick): return False
+    ia=auth or internal_auth()
+    if not ia: return False
+    role=account_get_role(nick)
+    qg,qu=quote(gid,safe=""), quote(nick,safe="")
+    galene("PUT", f"/galene-api/v0/.groups/{qg}/.users/{qu}", ia, role_to_galene_body(role))
+    if password:
+        galene("POST", f"/galene-api/v0/.groups/{qg}/.users/{qu}/.password", ia, password, "text/plain")
+    harden_group(gid)
+    return True
+def accounts_public_view(d):
+    out={"next_id":d.get("next_id"),"by_id":{},"by_nick":dict(d.get("by_nick") or {})}
+    for k,v in (d.get("by_id") or {}).items():
+        rec=dict(v)
+        rec.pop("password", None)
+        out["by_id"][k]=rec
+    return out
+def account_migrate_from_groups():
+    """Copia hash de senha e cargo da sala principal para o cofre (migração única)."""
+    main=main_id()
+    g=load_group(main)
+    if not g: return
+    for nick_raw, rec in (g.get("users") or {}).items():
+        nick=norm_nick(nick_raw)
+        if not nick: continue
+        account_ensure(nick, force_id=0 if nick=="admin" else None)
+        d=load_accounts()
+        uid=d["by_nick"][nick]
+        acct=d["by_id"][str(uid)]
+        changed=False
+        if not acct.get("password"):
+            pw=rec.get("password")
+            if isinstance(pw, dict) and pw.get("type"):
+                acct["password"]=pw; changed=True
+            elif isinstance(pw, str) and pw:
+                acct["password"]=hash_plain(pw); changed=True
+        if not acct.get("role"):
+            acct["role"]=user_perm_name_from(rec) or "present"; changed=True
+        if changed: save_accounts(d)
+GUEST_TTL_H=24
+def prune_stale_guests():
+    """Remove convidados sem pedido de cadastro após 24h (histórico fica em access.log)."""
+    d=load()
+    changed=False
+    cutoff=datetime.now(TZ)-timedelta(hours=GUEST_TTL_H)
+    for gid, b in list(d.items()):
+        if not isinstance(b, dict): continue
+        pending=b.get("pending") or {}
+        guests=b.get("guests") or {}
+        denied=b.get("denied") or {}
+        blocked=b.get("blocked") or {}
+        for user in list(guests.keys()):
+            if user in pending or user in denied or user in blocked: continue
+            if is_vault_account(user): continue
+            rec=guests.get(user) or {}
+            first=parse_iso(rec.get("first") or rec.get("last"))
+            if not first: continue
+            if first<=cutoff:
+                guests.pop(user, None)
+                access_log("convidado_expirado", gid, user, rec.get("ip") or "")
+                changed=True
+    if changed: save(d)
 def harden_group(gid):
     fp=GROUPS/f"{gid}.json"
     if not fp.exists(): return
@@ -637,6 +994,32 @@ class H(BaseHTTPRequestHandler):
         if im: extra["If-Match"]=im
         ctype_send="application/json" if method in ("GET","HEAD","DELETE") else ctype
         code, text=galene(method, gpath, galene_auth, raw, ctype_send, extra)
+        if method=="POST" and ".password" in rest and code < 400:
+            try:
+                segs=[x for x in rest.split("/") if x]
+                if ".users" in segs:
+                    i=segs.index(".users")
+                    if i+1 < len(segs):
+                        nick=norm_nick(segs[i+1])
+                        plain=raw.decode("utf-8") if raw else ""
+                        if nick and plain and len(plain)>=8 and not nick.startswith("."):
+                            account_set_password(nick, plain)
+            except Exception: pass
+        if method=="PUT" and ".users" in rest and code < 400 and not rest.rstrip("/").endswith(".password"):
+            try:
+                segs=[x for x in rest.split("/") if x]
+                if len(segs)>=4 and segs[2]==".users":
+                    nick=norm_nick(segs[3])
+                    if nick and raw:
+                        bodyj=json.loads(raw.decode("utf-8"))
+                        perm=bodyj.get("permissions")
+                        if perm in ("op","admin") or (isinstance(perm, list) and ("op" in perm or "admin" in perm)):
+                            account_set_role(nick, "op")
+                        elif perm=="ouvinte" or (isinstance(perm, list) and perm==["present"]):
+                            account_set_role(nick, "ouvinte")
+                        elif perm:
+                            account_set_role(nick, "present")
+            except Exception: pass
         if method=="DELETE" and ".users" in rest and code < 400:
             try:
                 segs=[x for x in rest.split("/") if x]
@@ -656,7 +1039,7 @@ class H(BaseHTTPRequestHandler):
         if path=="/accounts":
             ok,_=self.admin_ok()
             if not ok: self.send_json(401, {"error":"nao autorizado"}); return
-            self.send_json(200, load_accounts()); return
+            self.send_json(200, accounts_public_view(load_accounts())); return
         if path=="/must-change":
             user=norm_nick((q.get("user") or [""])[0])
             d=load_accounts()
@@ -683,29 +1066,70 @@ class H(BaseHTTPRequestHandler):
         if path=="/rooms":
             rooms=[]
             d=load()
+            main=main_id()
+            all_flag=(q.get("all") or ["0"])[0] in ("1","true","yes")
+            if all_flag:
+                ok,_=self.admin_ok()
+                if not ok:
+                    self.send_json(401, {"error":"nao autorizado"}); return
+            counts=galene_group_counts()
+            tnow=datetime.now(TZ)
             for fp in sorted(GROUPS.glob("*.json")):
                 try: g=json.loads(fp.read_text(encoding="utf-8"))
                 except Exception: continue
+                stem=fp.stem
                 pw=(g.get("wildcard-user") or {}).get("password")
-                info=ttl_info(fp.stem, d.get(fp.stem) or {})
-                rooms.append({"id":fp.stem,"title":g.get("displayName") or fp.stem,"public":bool(g.get("public")),
-                    "open": (not pw) or (isinstance(pw, dict) and pw.get("type")=="wildcard"),
+                info=ttl_info(stem, d.get(stem) or {})
+                if info.get("ttl") and not all_flag:
+                    continue
+                is_main=(stem==main)
+                is_open=(not pw) or (isinstance(pw, dict) and pw.get("type")=="wildcard")
+                b=bucket(d, stem)
+                live_s, live_active=room_live_seconds(b, tnow)
+                online=counts.get(stem, 0)
+                if online <= 0:
+                    online=presence_online_count(b, tnow)
+                rooms.append({"id":stem,"title":g.get("displayName") or stem,"main":is_main,
+                    "public":bool(g.get("public")),
+                    "open": bool(is_open) and not is_main,
+                    "invite": not is_open or is_main,
                     "updated": datetime.fromtimestamp(fp.stat().st_mtime, TZ).isoformat(timespec="seconds"),
                     "ttl": bool(info.get("ttl")), "expires_at": info.get("expires_at"),
-                    "remaining_s": info.get("remaining_s"), "host": info.get("host"), "kind": info.get("kind")})
+                    "remaining_s": info.get("remaining_s"), "host": info.get("host"), "kind": info.get("kind"),
+                    "online": online, "live_s": live_s, "live_active": live_active})
+            rooms.sort(key=lambda r: (0 if r.get("main") else 1, (r.get("title") or r.get("id") or "").lower()))
             self.send_json(200, rooms); return
         if path=="/temp-status":
             g=(q.get("group") or ["spartan"])[0]; user=norm_nick((q.get("user") or [""])[0])
             d=load(); b=bucket(d,g); info=ttl_info(g, b)
             out={"open":is_open(g),"purge":int(b.get("purge") or 0),"banned":ip_banned(b,self.cip()),
-                "taken": user in named(g) or user in (b.get("pending") or {}) or user in (b.get("denied") or {}) or user in (b.get("blocked") or {})}
+                "taken": is_named_user(g, user) or user in (b.get("pending") or {}) or user in (b.get("denied") or {}) or user in (b.get("blocked") or {})}
             out.update(info)
             self.send_json(200, out)
             return
         if path=="/status":
             g=(q.get("group") or ["spartan"])[0]; user=norm_nick((q.get("user") or [""])[0]); b=bucket(load(), g)
-            st="denied" if user in b["denied"] else "blocked" if user in b["blocked"] else "pending" if user in b["pending"] else "named" if user in named(g) else ("temp" if is_open(g) else "guest")
+            st="denied" if user in b["denied"] else "blocked" if user in b["blocked"] else "pending" if user in b["pending"] else "named" if is_named_user(g, user) else ("temp" if is_open(g) else "guest")
             self.send_json(200, {"status":st, "created": (b.get("created") or {}).get(user)}); return
+        if path=="/presence-user":
+            g=(q.get("group") or ["spartan"])[0]
+            user=norm_nick((q.get("user") or [""])[0])
+            if not ok_nick(user):
+                self.send_json(400, {"error":"nick invalido"}); return
+            b=bucket(load(), g)
+            self.send_json(200, presence_user_state(b, user)); return
+        if path=="/presence-room":
+            g=(q.get("group") or ["spartan"])[0]
+            user=norm_nick((q.get("user") or [""])[0])
+            d=load(); b=bucket(d, g); tnow=datetime.now(TZ)
+            room_ls, room_active=room_live_seconds(b, tnow)
+            out={"room_live_s": room_ls, "room_active": room_active,
+                 "online": presence_online_count(b, tnow)}
+            if user and ok_nick(user):
+                ul, ua, uo=user_live_seconds(b, user, tnow)
+                out.update({"user_live_s": ul, "user_active": ua, "user_online": uo,
+                            "live_s": ul, "active": ua})
+            self.send_json(200, out); return
         if path=="/registry":
             ok,_=self.admin_ok(); self.send_json(200 if ok else 401, load() if ok else {"error":"nao autorizado"}); return
         self.send_json(404, {"error":"not found"})
@@ -727,8 +1151,9 @@ class H(BaseHTTPRequestHandler):
             d=load(); b=bucket(d,g); t=now(); ip=self.cip()
             if ip_banned(b, ip): self.send_json(403, {"error":"IP suspenso nesta sala por 24h"}); return
             rec=b.setdefault("seen",{}).setdefault(user, {"first":t,"last":t,"ip":ip}); rec["last"]=t; rec["ip"]=ip
-            if user in named(g):
+            if is_named_user(g, user):
                 access_log("cadastrado", g, user, ip)
+                presence_heartbeat(b, user)
                 save(d); self.send_json(200, {"ok":True,"named":True}); return
             if is_open(g):
                 ensure_open_ouvinte(g)
@@ -737,14 +1162,30 @@ class H(BaseHTTPRequestHandler):
             else:
                 rec=b["guests"].setdefault(user, {"first":t,"last":t,"ip":ip}); rec["last"]=t; rec["ip"]=ip
                 access_log("convidado", g, user, ip)
+            presence_heartbeat(b, user)
             save(d); self.send_json(200, {"ok":True}); return
+        if path=="/presence":
+            if not ok_nick(user): self.send_json(400, {"error":"nick invalido"}); return
+            d=load(); b=bucket(d,g); tnow=datetime.now(TZ)
+            if body.get("leave"):
+                presence_leave(b, user, tnow)
+            else:
+                presence_heartbeat(b, user, tnow)
+            save(d)
+            room_ls, room_active=room_live_seconds(b, tnow)
+            state=presence_user_state(b, user, tnow)
+            state["room_live_s"]=room_ls
+            state["room_active"]=room_active
+            state["user_live_s"]=state.get("live_s", 0)
+            state["user_active"]=state.get("active", False)
+            self.send_json(200, state); return
         if path=="/register":
             pw=body.get("password") or ""
             if not ok_nick(user) or len(pw)<8: self.send_json(400, {"error":"nick ou senha (minimo 8)"}); return
             if is_open(g): self.send_json(403, {"error":"sala publica nao tem cadastro"}); return
             d=load(); b=bucket(d,g)
             if user in b["denied"] or user in b["blocked"]: self.send_json(403, {"error":"este nick foi bloqueado"}); return
-            if user in named(g): self.send_json(409, {"error":"este nick ja tem cadastro"}); return
+            if is_named_user(g, user): self.send_json(409, {"error":"este nick ja tem cadastro"}); return
             t=now(); b["pending"][user]={"at":t}
             b["guests"].setdefault(user, {"first":t,"last":t})["last"]=t; save(d)
             ia=internal_auth()
@@ -790,25 +1231,22 @@ class H(BaseHTTPRequestHandler):
                 self.send_json(400, {"error":"usuario e senha obrigatorios"}); return
             if not (GROUPS/f"{gid}.json").exists():
                 self.send_json(404, {"error":"sala nao existe"}); return
+            main=main_id()
+            mreal, mrec=find_group_user(main, user)
+            if account_get(user) or mreal:
+                if not account_verify_password(user, pw):
+                    self.send_json(401, {"error":"senha incorreta"}); return
+                if not account_has_password(user):
+                    account_set_password(user, pw, role=user_perm_name_from(mrec) or "present")
+                if not galene_sync_account(gid, user, password=pw):
+                    self.send_json(500, {"error":"nao sincronizou a conta na sala"}); return
+                self.send_json(200, {"ok":True,"role": account_get_role(user)}); return
             real, rec=find_group_user(gid, user)
             if real:
                 if password_match(rec.get("password"), pw) or galene_user_auth_ok(gid, real, pw):
                     self.send_json(200, {"ok":True,"role": user_perm_name_from(rec) or "present"}); return
                 self.send_json(401, {"error":"senha incorreta"}); return
-            main=main_id()
-            mreal, mrec=find_group_user(main, user)
-            if not mreal:
-                self.send_json(401, {"error":"conta nao encontrada. Use o nick da sua conta cadastrada."}); return
-            if not (password_match(mrec.get("password"), pw) or galene_user_auth_ok(main, mreal, pw)):
-                self.send_json(401, {"error":"senha incorreta"}); return
-            ia=internal_auth()
-            if not ia:
-                self.send_json(500, {"error":"sidecar.auth ausente"}); return
-            qg,qu=quote(gid,safe=""), quote(user,safe="")
-            galene("PUT", f"/galene-api/v0/.groups/{qg}/.users/{qu}", ia, '{"permissions":"present"}')
-            galene("POST", f"/galene-api/v0/.groups/{qg}/.users/{qu}/.password", ia, pw, "text/plain")
-            harden_group(gid)
-            self.send_json(200, {"ok":True,"role":"present"}); return
+            self.send_json(401, {"error":"conta nao encontrada. Use o nick da sua conta cadastrada."}); return
         if path=="/first-setup":
             # Primeiro login: troca senha do admin + senha de convidados da sala principal
             u=norm_nick(body.get("user") or "")
@@ -863,26 +1301,34 @@ class H(BaseHTTPRequestHandler):
             rec["setup_at"]=now()
             d["by_id"][str(uid)]=rec
             save_accounts(d)
+            account_set_password(u, new_admin, role="op")
             self.send_json(200, {"ok":True}); return
         ok,auth=self.admin_ok()
         if not ok: self.send_json(401, {"error":"nao autorizado"}); return
         if path=="/create-room":
-            slug=(body.get("id") or body.get("slug") or "").strip().lower()
-            if not slug_ok(slug):
-                self.send_json(400, {"error":"nome da sala invalido"}); return
-            if slug==main_id() or (GROUPS/f"{slug}.json").exists():
-                self.send_json(409, {"error":"essa sala ja existe"}); return
-            title=(body.get("title") or slug).strip() or slug
+            title=(body.get("title") or "").strip()
             open_room=bool(body.get("open") or body.get("public"))
             friends=body.get("friends_password") or body.get("password") or ""
+            use_ttl=bool(body.get("ttl")) or open_room
+            if open_room:
+                use_ttl=True
+            if use_ttl:
+                slug=random_room_slug(15)
+                if not title:
+                    title=(body.get("id") or body.get("slug") or slug).strip() or slug
+            else:
+                slug=(body.get("id") or body.get("slug") or "").strip().lower()
+                if not slug_ok(slug):
+                    self.send_json(400, {"error":"nome da sala invalido"}); return
+                if slug==main_id() or (GROUPS/f"{slug}.json").exists():
+                    self.send_json(409, {"error":"essa sala ja existe"}); return
+                if not title:
+                    title=slug
             if not open_room and len(friends)<8:
                 self.send_json(400, {"error":"senha de convite minimo 8"}); return
             want_host=bool(body.get("host"))
             host_nick=norm_nick(body.get("host_nick") or body.get("host_user") or "")
             host_pw=body.get("host_password") or ""
-            use_ttl=bool(body.get("ttl")) or open_room
-            if open_room:
-                use_ttl=True
             if want_host and not use_ttl:
                 self.send_json(400, {"error":"anfitriao so em sala de 24h"}); return
             if want_host:
@@ -988,6 +1434,7 @@ class H(BaseHTTPRequestHandler):
                 if code>=400: self.send_json(code, {"error":err[:200]}); return
             harden_group(g)
             account_ensure(user)
+            account_set_role(user, "present")
             b["pending"].pop(user,None); b["denied"].pop(user,None); b["blocked"].pop(user,None); b["guests"].pop(user,None)
             b.setdefault("created",{})[user]=now(); save(d)
             access_log("conta_aprovada", g, user, self.cip())
@@ -995,16 +1442,17 @@ class H(BaseHTTPRequestHandler):
         if path=="/quick":
             pw=body.get("password") or ""; perm=body.get("permissions") or "present"
             if len(pw)<8: self.send_json(400, {"error":"senha minimo 8"}); return
-            galene("PUT", f"/galene-api/v0/.groups/{qg}/.users/{qu}", auth, json.dumps({"permissions":perm}))
+            role="op" if perm in ("op","admin") else ("ouvinte" if perm=="ouvinte" else "present")
+            galene("PUT", f"/galene-api/v0/.groups/{qg}/.users/{qu}", auth, role_to_galene_body(role))
             galene("POST", f"/galene-api/v0/.groups/{qg}/.users/{qu}/.password", auth, pw, "text/plain")
             harden_group(g)
-            account_ensure(user)
+            account_set_password(user, pw, role=role)
             b["pending"].pop(user,None); b["denied"].pop(user,None); b["blocked"].pop(user,None); b["guests"].pop(user,None)
             b.setdefault("created",{})[user]=now(); save(d)
             access_log("conta_criada", g, user, self.cip())
             self.send_json(200, {"ok":True}); return
         if path in ("/deny","/block"):
-            tt=now(); kind="named" if user in named(g) else "guest"
+            tt=now(); kind="named" if is_named_user(g, user) else "guest"
             if kind=="guest" or path=="/deny": shadow(auth,g,user)
             (b["denied"] if path=="/deny" else b["blocked"])[user]={"at":tt,"kind":kind}
             b["pending"].pop(user,None); save(d); self.send_json(200, {"ok":True}); return
@@ -1024,6 +1472,8 @@ class H(BaseHTTPRequestHandler):
 
 if __name__=="__main__":
     try: account_ensure("admin", force_id=0)
+    except Exception: pass
+    try: account_migrate_from_groups()
     except Exception: pass
     try: ensure_public_ttl()
     except Exception: pass

@@ -23,21 +23,15 @@ Este projeto **não** é o Smart Castro. Pasta canónica: `galene-edicao-spartan
 - Salas extra: convite definitiva (padrão) ou 24h; pública sempre 24h; anfitrião só nas de 24h. Contador `#spartan-ttl` reconstitui no `start()` / F5, não só no submit do login.
 - Não “corrigir” identificadores, rotas, chaves JSON, logs nem testes.
 
-## Deploy (pacote de envio)
+## Deploy estático (sala já no ar)
 
-Pasta de envio: `S:\Downloads\galene-sala-static`. O usuário sobe essa pasta para `~/docker/galene/galene-sala-static`.
+1. Copiar os arquivos para `S:\Downloads\galene-sala-static\`
+2. No Debian: `cp` de `~/docker/galene/galene-sala-static/` para `~/docker/galene/static/`
+3. **Sem** `docker restart` para HTML/CSS/JS
+4. Subir o `?v=` em `galene.html` (e admin se mexer no painel)
+5. Hard refresh; pedir confirmação do `?v=`
 
-**Toda vez** que for montar o pacote: **zerar** a pasta de Downloads, **depois** copiar só o que vai nesta subida.
-
-Layout: `registry.py` na raiz do pacote; arquivos da interface em `static/`; `LEIA-ME.txt` com o comando SSH.
-
-No Debian, depois da pasta estar em `~/docker/galene/galene-sala-static`:
-
-```bash
-cd ~/docker/galene && cp -f galene-sala-static/registry.py ./registry.py && cp -a galene-sala-static/static/. ./static/ && docker restart spartan-reg
-```
-
-Sem `registry.py` nesta leva: só o `cp -a` do `static/`. HTML/CSS/JS não precisa restart do `galene`; `registry.py` precisa `docker restart spartan-reg`. Hard refresh no `?v=`.
+Python (`registry.py`): `docker restart spartan-reg`.
 
 ## Dois repositórios
 
@@ -47,4 +41,4 @@ Sem `registry.py` nesta leva: só o `cp -a` do `static/`. HTML/CSS/JS não preci
 
 ## CodeGraph
 
-Ver `.cursor/rules/codegraph-primeiro.mdc`. Índice em `.codegraph/` desta pasta; se a sessão Cursor estiver noutro workspace, passar `projectPath`. Não correr `codegraph init` / `uninstall` / `uninit`.
+Ver `.cursor/rules/codegraph-primeiro.mdc` (absoluto). Índice em `.codegraph/` desta pasta. Sempre `projectPath: s:\workspace\galene-castro`. Proibido `uninstall` / `uninit`; `init` já foi feito.

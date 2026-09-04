@@ -147,6 +147,25 @@ function reflectSettings() {
     }
     getSelectElement('sendselect').value = 'unlimited';
 
+    if(typeof settings.gameMode !== 'boolean') {
+        settings.gameMode = true;
+        store = true;
+    }
+    getInputElement('gamemodebox').checked = settings.gameMode;
+
+    if(!settings.shareQuality ||
+       ['auto', '1080p', '720p'].indexOf(settings.shareQuality) < 0) {
+        settings.shareQuality = 'auto';
+        store = true;
+    }
+    getSelectElement('sharequalityselect').value = settings.shareQuality;
+
+    if(typeof settings.qualityHud !== 'boolean') {
+        settings.qualityHud = true;
+        store = true;
+    }
+    getInputElement('qualityhudbox').checked = settings.qualityHud;
+
     let wantSimulcast = isFirefox() ? 'off' : 'auto';
     if(settings.simulcast !== wantSimulcast) {
         settings.simulcast = wantSimulcast;
@@ -385,10 +404,11 @@ function spartanApplyDownRequest(c) {
 function spartanBoostWatchedReceivers(c) {
     if(!c || c.up || !spartanWatch[c.id])
         return;
+    let motionHint = getSettings().gameMode !== false;
     try {
         if(c.stream && c.stream.getVideoTracks) {
             c.stream.getVideoTracks().forEach(function(t) {
-                try { t.contentHint = 'detail'; } catch(e) {}
+                try { t.contentHint = motionHint ? 'motion' : 'detail'; } catch(e) {}
             });
         }
         if(!c.pc)
@@ -396,7 +416,7 @@ function spartanBoostWatchedReceivers(c) {
         c.pc.getReceivers().forEach(function(r) {
             if(!r.track || r.track.kind !== 'video')
                 return;
-            try { r.track.contentHint = 'detail'; } catch(e) {}
+            try { r.track.contentHint = motionHint ? 'motion' : 'detail'; } catch(e) {}
         });
         c.pc.getTransceivers().forEach(function(tr) {
             let s = tr.sender;
@@ -409,6 +429,321 @@ function spartanBoostWatchedReceivers(c) {
             } catch(e) {}
         });
     } catch(e) {}
+}
+
+/** FPS-alvo da tela (sempre 60 — não oscilar com o conteúdo). */
+function spartanTargetShareFps() {
+    return 60;
+}
+
+/** Restrições de captura de tela (FPS / resolução). */
+function spartanShareVideoConstraints() {
+    let sq = getSettings().shareQuality || 'auto';
+    let fps = spartanTargetShareFps();
+    /** @type {any} */
+    let video = {
+        cursor: 'always',
+        // getDisplayMedia NÃO aceita min (Chrome: "min constraints are not supported").
+        frameRate: { ideal: fps, max: fps },
+    };
+    if(sq === '720p') {
+        video.width = { max: 1280, ideal: 1280 };
+        video.height = { max: 720, ideal: 720 };
+    } else if(sq === '1080p') {
+        video.width = { max: 1920, ideal: 1920 };
+        video.height = { max: 1080, ideal: 1080 };
+    }
+    return video;
+}
+
+/** Teto de bitrate para compartilhamento de tela (bps). */
+function spartanScreenBitrateCap() {
+    switch(getSettings().shareQuality || 'auto') {
+    case '720p': return 5000000;
+    case '1080p': return 10000000;
+    // auto: teto alto — o limite real deixa de ser o REMB ~200 kbps do Galene.
+    default: return 12000000;
+    }
+}
+
+/**
+ * Galene manda goog-remb ~200 kbps se ninguém pediu vídeo alto (ou no ramp-up).
+ * Na tela isso mata FPS/qualidade. Tiramos goog-remb do offer da screenshare
+ * para o encoder respeitar o maxBitrate do cliente.
+ * @param {string} sdp
+ * @returns {string}
+ */
+function spartanStripRembSdp(sdp) {
+    if(!sdp)
+        return sdp;
+    return String(sdp).replace(/a=rtcp-fb:[^\r\n]*goog-remb[^\r\n]*\r?\n/gi, '');
+}
+
+/** Instala bypass de REMB só em uplink de tela (uma vez). */
+function spartanInstallShareRembBypass() {
+    if(typeof Stream === 'undefined' || Stream.prototype._spartanShareRemb)
+        return;
+    Stream.prototype._spartanShareRemb = true;
+    let orig = Stream.prototype.negotiate;
+    Stream.prototype.negotiate = async function(restartIce) {
+        if(!this.up || this.label !== 'screenshare')
+            return await orig.call(this, restartIce);
+        let c = this;
+        /** @type {RTCOfferOptions} */
+        let options = {};
+        if(restartIce)
+            options = {iceRestart: true};
+        let offer = await c.pc.createOffer(options);
+        if(!offer)
+            throw new Error("Didn't create offer");
+        let sdp = spartanStripRembSdp(offer.sdp);
+        await c.pc.setLocalDescription({type: 'offer', sdp: sdp});
+        c.sc.send({
+            type: 'offer',
+            source: c.sc.id,
+            username: c.sc.username,
+            kind: this.localDescriptionSent ? 'renegotiate' : '',
+            id: c.id,
+            replace: this.replace,
+            label: c.label,
+            sdp: c.pc.localDescription.sdp,
+        });
+        this.localDescriptionSent = true;
+        this.replace = null;
+        c.flushLocalIceCandidates();
+        try {
+            c.pc.getSenders().forEach(function(s) {
+                spartanApplyVideoSenderPrefs(s, 'screenshare');
+            });
+        } catch(e) {}
+    };
+}
+
+try { spartanInstallShareRembBypass(); } catch(e) {}
+
+/**
+ * Força FPS/bitrate no sender de vídeo (tela ou câmera).
+ * @param {RTCRtpSender} sender
+ * @param {string} label
+ */
+async function spartanApplyVideoSenderPrefs(sender, label) {
+    if(!sender || !sender.track || sender.track.kind !== 'video')
+        return;
+    let fps = spartanTargetShareFps();
+    let bps = getMaxVideoThroughput();
+    if(label === 'screenshare') {
+        // Independente do "Enviar" da câmera — senão 700 kbps mata o FPS.
+        bps = spartanScreenBitrateCap();
+    }
+    try {
+        let p = sender.getParameters();
+        if(!p.encodings || !p.encodings.length)
+            p.encodings = [{}];
+        p.encodings.forEach(function(e) {
+            if(label === 'screenshare' || getSettings().gameMode !== false)
+                e.maxFramerate = fps;
+            if(bps)
+                e.maxBitrate = bps;
+            else
+                e.maxBitrate = unlimitedRate;
+            if(label === 'screenshare') {
+                try { e.priority = 'high'; } catch(e1) {}
+                try { e.networkPriority = 'high'; } catch(e2) {}
+            }
+        });
+        if(label === 'screenshare' || getSettings().gameMode !== false)
+            p.degradationPreference = 'maintain-framerate';
+        else
+            p.degradationPreference = 'maintain-resolution';
+        await sender.setParameters(p);
+    } catch(e) {}
+}
+
+/**
+ * Aplica frameRate 60 na track de captura (pós getDisplayMedia).
+ * @param {MediaStream} stream
+ */
+async function spartanLockShareTrackFps(stream) {
+    if(!stream || !stream.getVideoTracks)
+        return;
+    let fps = spartanTargetShareFps();
+    let tracks = stream.getVideoTracks();
+    for(let i = 0; i < tracks.length; i++) {
+        let t = tracks[i];
+        try {
+            await t.applyConstraints({ frameRate: { ideal: fps, max: fps } });
+        } catch(e1) {
+            try {
+                await t.applyConstraints({ frameRate: fps });
+            } catch(e2) {}
+        }
+        try { t.contentHint = getSettings().gameMode === false ? 'detail' : 'motion'; } catch(e3) {}
+    }
+}
+
+function spartanNotifyPanel(ok) {
+    try {
+        if(window.parent !== window)
+            window.parent.postMessage({t: 'spartan-panel', ok: !!ok}, '*');
+    } catch(e) {}
+}
+
+function spartanInShell() {
+    try {
+        return document.documentElement.classList.contains('spartan-in-shell');
+    } catch(e) {
+        return false;
+    }
+}
+
+function spartanGoHome(qs) {
+    if(spartanInShell() && window.parent !== window) {
+        try {
+            if(window.parent.SpartanApp) {
+                window.parent.SpartanApp.goHome();
+                return;
+            }
+        } catch(e) {}
+    }
+    if(window.SpartanApp) {
+        window.SpartanApp.goHome();
+        return;
+    }
+    location.href = qs ? ('/' + (qs.charAt(0) === '?' ? qs : '?' + qs)) : '/';
+}
+
+function spartanGoRoom(gid) {
+    if(!gid)
+        return;
+    if(spartanInShell() && window.parent !== window) {
+        try {
+            if(window.parent.SpartanApp) {
+                window.parent.SpartanApp.goRoom(gid);
+                return;
+            }
+        } catch(e) {}
+    }
+    location.href = '/group/' + encodeURIComponent(gid) + '/';
+}
+
+function spartanOpenAdminPanel() {
+    try {
+        if(window.parent !== window && window.parent.SpartanApp)
+            window.parent.SpartanApp.openAdmin();
+        else if(window.parent !== window)
+            window.parent.postMessage({t: 'spartan-open-admin'}, '*');
+        else if(window.SpartanApp)
+            window.SpartanApp.openAdmin();
+        else
+            window.open('/admin/?embed=1', '_blank', 'noopener');
+    } catch(e) {
+        window.open('/admin/', '_blank', 'noopener');
+    }
+}
+
+/** @type {Record<string, {bytes: number, ts: number}>} */
+let spartanRtpPrev = {};
+
+function spartanRtpStats(stats, dir, streamKey) {
+    let fps = 0, kbps = 0;
+    for(let tid in stats) {
+        let s = stats[tid];
+        let rtp = s && (dir === 'up' ? s['outbound-rtp'] : s['inbound-rtp']);
+        if(!rtp)
+            continue;
+        if(typeof rtp.framesPerSecond === 'number')
+            fps = Math.max(fps, rtp.framesPerSecond);
+        if(typeof rtp.rate === 'number' && rtp.rate > 0)
+            kbps = Math.max(kbps, Math.round(rtp.rate / 1000));
+        let bytes = typeof rtp.bytesSent === 'number' ? rtp.bytesSent
+            : (typeof rtp.bytesReceived === 'number' ? rtp.bytesReceived : null);
+        if(kbps <= 0 && bytes !== null && typeof rtp.timestamp === 'number') {
+            let key = (streamKey || '') + ':' + tid + ':' + dir;
+            let prev = spartanRtpPrev[key] || null;
+            if(prev && rtp.timestamp > prev.ts) {
+                let dt = (rtp.timestamp - prev.ts) / 1000;
+                if(dt > 0)
+                    kbps = Math.max(kbps, ((bytes - prev.bytes) * 8) / dt / 1000);
+            }
+            spartanRtpPrev[key] = {bytes: bytes, ts: rtp.timestamp};
+        }
+    }
+    return {fps: Math.round(fps), kbps: Math.round(kbps)};
+}
+
+function spartanShouldShowHud(c, dir) {
+    if(!c)
+        return false;
+    if(getSettings().qualityHud)
+        return true;
+    return dir === 'up' && c.label === 'screenshare';
+}
+
+/** @type {Record<string, number>} */
+let spartanHudFpsSmooth = {};
+
+function spartanUpdateQualityHud(c, stats, dir) {
+    if(!spartanShouldShowHud(c, dir))
+        return;
+    let peer = document.getElementById('peer-' + c.localId);
+    if(!peer)
+        return;
+    let hud = document.getElementById('qhud-' + c.localId);
+    if(!hud) {
+        hud = document.createElement('div');
+        hud.id = 'qhud-' + c.localId;
+        hud.className = 'spartan-quality-hud';
+        peer.appendChild(hud);
+    }
+    let m = spartanRtpStats(stats, dir, String(c.localId));
+    let res = '';
+    let capFps = 0;
+    try {
+        let vt = c.stream && c.stream.getVideoTracks && c.stream.getVideoTracks()[0];
+        if(vt && vt.getSettings) {
+            let s = vt.getSettings();
+            if(s.width && s.height) res = s.width + '×' + s.height + ' · ';
+            if(typeof s.frameRate === 'number' && s.frameRate > 0)
+                capFps = Math.round(s.frameRate);
+        }
+    } catch(e) {}
+    let key = String(c.localId);
+    let prev = spartanHudFpsSmooth[key];
+    if(prev == null || !isFinite(prev))
+        prev = m.fps;
+    // Suaviza o número do HUD (o outbound-rtp pula frame a frame).
+    let smooth = Math.round(prev * 0.55 + (m.fps || 0) * 0.45);
+    spartanHudFpsSmooth[key] = smooth;
+    let alvo = (dir === 'up' && c.label === 'screenshare')
+        ? spartanTargetShareFps()
+        : (capFps || smooth || '—');
+    let br = '';
+    if(dir === 'up' && c.label === 'screenshare') {
+        let capKb = Math.round(spartanScreenBitrateCap() / 1000);
+        br = (m.kbps || '—') + '/' + capKb + ' kbps';
+    } else {
+        br = (m.kbps || '—') + ' kbps';
+    }
+    hud.textContent = res + 'alvo ' + alvo + ' · ' + (smooth || '—') + ' fps · ' + br;
+}
+
+let spartanUploadWarnAt = 0;
+function spartanCheckUploadWarn(c, stats) {
+    if(!c || !c.up || c.label !== 'screenshare')
+        return;
+    let m = spartanRtpStats(stats, 'up', String(c.localId));
+    let capKb = Math.round(spartanScreenBitrateCap() / 1000);
+    if(Date.now() - spartanUploadWarnAt < 60000)
+        return;
+    // Abaixo de ~15% do teto com FPS baixo = upload engasgado / REMB ainda ativo.
+    if(m.kbps > 0 && m.kbps < Math.min(800, capKb * 0.15) && m.fps > 0 && m.fps < 40) {
+        spartanUploadWarnAt = Date.now();
+        displayMessage(
+            'Upload da tela está baixo (' + m.kbps + ' kbps). ' +
+            'Confere a rede; em Configurações use 720p se o upload for lento. ' +
+            'Quem assiste precisa clicar em Tela no nick.'
+        );
+    }
 }
 
 function spartanRefreshWatchedQuality() {
@@ -619,13 +954,11 @@ function spartanRefreshAllMedia() {
 function spartanStreamShowsLiveBtn(c) {
     if(!c)
         return false;
+    // Tela: só compartilhamento de tela.
     if(c.label === 'screenshare')
         return true;
-    if(streamHasRealVideo(c.stream))
-        return true;
-    if(c.up)
-        return false;
-    return c.label === 'camera' && !!c.source && spartanRemoteCamLive(c.source);
+    // Câmera: só com faixa de vídeo real. Mic sozinho (label camera) NÃO ganha botão.
+    return streamHasRealVideo(c.stream);
 }
 
 /**
@@ -1165,7 +1498,7 @@ let spartanPrevPeerId = null;
 let spartanDropSince = 0;
 let spartanGraceTimer = 0;
 let spartanLastWs = {code: 0, reason: ''};
-const SPARTAN_GRACE_MS = 30000;
+const SPARTAN_GRACE_MS = 60000;
 
 function spartanNetEvent(ev) {
     ev = ev || {};
@@ -1201,6 +1534,23 @@ function spartanClearGrace() {
         clearTimeout(spartanGraceTimer);
         spartanGraceTimer = 0;
     }
+}
+
+function spartanIsRecovering() {
+    return !!(spartanDropSince && !spartanDropShown);
+}
+
+function spartanSnapshotMediaState() {
+    let cam = findUpMedia('camera');
+    let hasRealCam = !!(cam && streamHasRealVideo(cam.stream));
+    let hasMicUp = !!cam;
+    return {
+        localMute: !!getSettings().localMute,
+        micArmed: spartanMicArmed,
+        hadCamera: hasRealCam,
+        hadMicOnly: hasMicUp && !hasRealCam,
+        hadScreen: !!findUpMedia('screenshare'),
+    };
 }
 
 function spartanSnapshotWatch() {
@@ -1253,12 +1603,20 @@ function spartanSnapshotUps(sc) {
 async function spartanRepublishUps(keep) {
     if(!keep || !keep.length || !serverConnection)
         return;
+    let snap = window._spartanMediaSnap || {};
     for(let i = 0; i < keep.length; i++) {
         let item = keep[i];
         if(!item.stream || !item.stream.getTracks)
             continue;
-        if(!item.stream.getTracks().some(function(t) { return t.readyState === 'live'; }))
+        let live = item.stream.getTracks().some(function(t) { return t.readyState === 'live'; });
+        if(!live) {
+            if(item.label === 'camera' && !findUpMedia('camera')) {
+                // Nunca promover mic-só a câmera: respeita o snapshot.
+                let audioOnly = !snap.hadCamera;
+                try { await addLocalMedia(undefined, audioOnly); } catch(e) {}
+            }
             continue;
+        }
         if(findUpMedia(item.label))
             continue;
         try {
@@ -1268,8 +1626,32 @@ async function spartanRepublishUps(keep) {
             await setMedia(c, item.label === 'camera' ? getSettings().mirrorView : false);
         } catch(e) {
             console.warn(e);
+            if(item.label === 'camera' && !findUpMedia('camera')) {
+                let audioOnly = !streamHasRealVideo(item.stream) && !snap.hadCamera;
+                try { await addLocalMedia(undefined, audioOnly); } catch(e2) {}
+            }
         }
     }
+}
+
+function spartanRestoreMediaAfterReconnect(snap) {
+    snap = snap || window._spartanMediaSnap || {};
+    window._spartanMediaSnap = null;
+    window._spartanRecoveringMedia = false;
+    if(snap.micArmed)
+        spartanMicArmed = true;
+    let muted = snap.localMute != null ? !!snap.localMute : !!getSettings().localMute;
+    setLocalMute(muted, false);
+    if(!muted) {
+        spartanMicArmed = true;
+        if(findUpMedia('camera'))
+            setLocalMute(false, false);
+    }
+    spartanLastMicstate = undefined;
+    spartanLastCamlive = undefined;
+    spartanPublishMicMuted();
+    setButtonsVisibility();
+    spartanRefreshAllMedia();
 }
 
 function spartanRoomBind() {
@@ -1337,7 +1719,7 @@ function spartanScheduleSilentRetry(ms) {
         spartanDropTimer = 0;
         if(!spartanDropShown && !spartanReconnecting && spartanDropSince)
             spartanSilentReconnect();
-    }, ms || 3000);
+    }, ms || 1500);
 }
 
 function spartanScheduleRetry(ms) {
@@ -1371,7 +1753,7 @@ function spartanFailReconnect() {
     spartanReconnecting = false;
     if(!spartanDropShown) {
         if(spartanDropSince)
-            spartanScheduleSilentRetry(3000);
+            spartanScheduleSilentRetry(1500);
         return;
     }
     spartanPaintDrop(false);
@@ -1382,15 +1764,23 @@ async function spartanSilentReconnect() {
     if(spartanReconnecting || spartanDropShown)
         return;
     spartanReconnecting = true;
+    window._spartanRecoveringMedia = true;
     try {
-        let s = JSON.parse(sessionStorage.getItem('spartanSession:' + group) || 'null');
+        let s = spartanLoadStoredSession(group);
         if(s && s.user)
             getInputElement('username').value = s.user;
         if(s && s.pass)
             window._spartanCred = s.pass;
+        if(s && s.account && s.user && s.pass) {
+            window._spartanNamedLogin = true;
+            window._spartanAccountLogin = true;
+            document.documentElement.classList.add('spartan-named-login');
+            await spartanEnsureNamedJoin(s.user, s.pass);
+        }
     } catch(e) {}
     try {
         await serverConnect();
+        spartanReconnecting = false;
     } catch(e) {
         spartanFailReconnect();
     }
@@ -1409,11 +1799,17 @@ async function spartanReconnect() {
     }
     spartanPaintDrop(true);
     try {
-        let s = JSON.parse(sessionStorage.getItem('spartanSession:' + group) || 'null');
+        let s = spartanLoadStoredSession(group);
         if(s && s.user)
             getInputElement('username').value = s.user;
         if(s && s.pass)
             window._spartanCred = s.pass;
+        if(s && s.account && s.user && s.pass) {
+            window._spartanNamedLogin = true;
+            window._spartanAccountLogin = true;
+            document.documentElement.classList.add('spartan-named-login');
+            await spartanEnsureNamedJoin(s.user, s.pass);
+        }
     } catch(e) {}
     setTimeout(function() {
         if(attempt !== spartanDropAttempt)
@@ -1456,6 +1852,63 @@ function spartanRejectJoin() {
     setConnected(false);
 }
 
+function spartanLoadStoredSession(forGroup) {
+    try {
+        if(sessionStorage.getItem('spartanLoggedOut'))
+            return null;
+        let s = JSON.parse(sessionStorage.getItem('spartanSession:' + forGroup) || 'null');
+        if(s && s.user && s.pass && (!s.group || s.group === forGroup))
+            return s;
+        let g = JSON.parse(sessionStorage.getItem('spartanGlobalCred') || 'null');
+        if(g && g.user && g.pass && g.account !== false)
+            return {user: g.user, pass: g.pass, group: forGroup, account: true};
+        let gc = JSON.parse(sessionStorage.getItem('spartanGuestCred:' + forGroup) || 'null');
+        if(gc && gc.user && gc.pass)
+            return {user: gc.user, pass: gc.pass, group: forGroup, account: false};
+    } catch(e) {}
+    return null;
+}
+
+function spartanIsAccountLogin() {
+    return document.documentElement.classList.contains('spartan-named-login') ||
+        !!window._spartanNamedLogin ||
+        !!window._spartanAccountLogin;
+}
+
+async function spartanEnsureNamedJoin(username, password) {
+    if(!username || !password)
+        return false;
+    try {
+        const r = await fetch('/spartan-api/join-named', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({group: group, user: String(username).trim().toLowerCase(), password: password}),
+        });
+        if(r.ok) {
+            window._spartanNamedLogin = true;
+            window._spartanAccountLogin = true;
+            document.documentElement.classList.add('spartan-named-login');
+            return true;
+        }
+    } catch(e) {}
+    return false;
+}
+
+function spartanAdminCred() {
+    try {
+        let a = JSON.parse(sessionStorage.getItem('spartanAdmin') || 'null');
+        if(a && a.user && a.pass)
+            return {user: String(a.user).trim().toLowerCase(), pass: a.pass};
+        let g = JSON.parse(sessionStorage.getItem('spartanGlobalCred') || 'null');
+        if(g && g.user && g.pass && g.account !== false)
+            return {user: String(g.user).trim().toLowerCase(), pass: g.pass};
+        let s = spartanLoadStoredSession(group);
+        if(s && s.account && s.user && s.pass)
+            return {user: String(s.user).trim().toLowerCase(), pass: s.pass};
+    } catch(e) {}
+    return null;
+}
+
 function spartanCommitSession() {
     try {
         let username = (serverConnection && serverConnection.username) ||
@@ -1463,15 +1916,21 @@ function spartanCommitSession() {
         let pw = window._spartanCred || '';
         if(!username)
             return;
-        let payload = JSON.stringify({user: username, pass: pw, group: group});
+        let isAccount = spartanIsAccountLogin();
+        let payload = JSON.stringify({user: username, pass: pw, group: group, account: isAccount});
         sessionStorage.removeItem('spartanLoggedOut');
         sessionStorage.setItem('spartanSession:' + group, payload);
         sessionStorage.removeItem('spartanSession');
         sessionStorage.removeItem('spartanPending');
-        if(pw) {
+        if(!pw)
+            return;
+        if(isAccount) {
+            sessionStorage.setItem('spartanGlobalCred', JSON.stringify({user: username, pass: pw, account: true}));
             let handoff = JSON.stringify({user: username, pass: pw});
             sessionStorage.setItem('spartanAdmin', handoff);
             localStorage.setItem('spartanAdminHandoff', handoff);
+        } else {
+            sessionStorage.setItem('spartanGuestCred:' + group, JSON.stringify({user: username, pass: pw}));
         }
     } catch(e) {}
 }
@@ -1513,6 +1972,10 @@ function setConnected(connected) {
 async function gotConnected() {
     if(spartanDidJoin || spartanDropSince)
         setConnected(true);
+    let u = getInputElement('username').value.trim().toLowerCase();
+    let pw = window._spartanCred || '';
+    if(u && pw)
+        await spartanEnsureNamedJoin(u, pw);
     await join();
 }
 
@@ -1525,17 +1988,8 @@ async function gotConnected() {
 function setAdminPanel(forceOff) {
  let s = document.getElementById('adminspan');
  if(!s) return;
- if(forceOff) { s.classList.add('invisible'); window._spartanPanelAdmin=false; return; }
- let cred=null;
- try{
-  let pend=JSON.parse(sessionStorage.getItem('spartanSession:'+group)||'null');
-  if(pend&&pend.user&&pend.pass) cred=pend;
- }catch(e){}
- if(!cred){
-  let u=(serverConnection&&serverConnection.username)||'';
-  try{ if(!u){ let el=document.getElementById('username'); u=(el&&el.value)||''; } }catch(e){}
-  if(u && window._spartanCred) cred={user:u, pass:window._spartanCred};
- }
+ if(forceOff) { s.classList.add('invisible'); window._spartanPanelAdmin=false; spartanNotifyPanel(false); return; }
+ let cred=spartanAdminCred();
  if(!cred || !cred.pass){ s.classList.add('invisible'); window._spartanPanelAdmin=false; return; }
  fetch('/spartan-api/can-panel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:cred.user,password:cred.pass})})
   .then(function(r){return r.json();})
@@ -1543,6 +1997,7 @@ function setAdminPanel(forceOff) {
     if(j&&j.ok){
       window._spartanPanelAdmin=true;
       s.classList.remove('invisible');
+      spartanNotifyPanel(true);
       try{
         let hand={user:String(cred.user).trim().toLowerCase(),pass:cred.pass};
         sessionStorage.setItem('spartanAdmin',JSON.stringify(hand));
@@ -1551,10 +2006,11 @@ function setAdminPanel(forceOff) {
     } else {
       window._spartanPanelAdmin=false;
       s.classList.add('invisible');
+      spartanNotifyPanel(false);
     }
     try{ displayUsername(); }catch(e){}
   })
-  .catch(function(){ window._spartanPanelAdmin=false; s.classList.add('invisible'); });
+  .catch(function(){ window._spartanPanelAdmin=false; s.classList.add('invisible'); spartanNotifyPanel(false); });
 }
 
 function setChangePassword(username) {
@@ -1612,6 +2068,8 @@ async function join() {
         let pw = getInputElement('password').value || window._spartanCred || '';
         window._spartanCred = pw;
         getInputElement('password').value = '';
+        if(username && pw)
+            await spartanEnsureNamedJoin(username, pw);
         if(!groupStatus.authServer) {
             pwAuth = true;
             credentials = pw;
@@ -1703,6 +2161,8 @@ function gotClose(code, reason) {
                 return;
             try { closeUpMedia(); } catch(e) {}
             try { closeSafariStream(); } catch(e) {}
+            window._spartanRecoveringMedia = false;
+            window._spartanMediaSnap = null;
             spartanResetRoomState();
             spartanShowDropOverlay();
             spartanNetEvent({
@@ -1996,6 +2456,8 @@ document.getElementById('mutebutton').onclick = async function(e) {
         try {
             await addLocalMedia(undefined, true);
             setLocalMute(false, true);
+            spartanLastCamlive = undefined;
+            spartanPublishMicMuted();
         } catch(err) {
             console.error(err);
             displayError(err);
@@ -2099,6 +2561,43 @@ getSelectElement('simulcastselect').onchange = async function(e) {
         throw new Error('Unexpected type for this');
     updateSettings({simulcast: this.value});
     await reconsiderSendParameters();
+};
+
+getSelectElement('sharequalityselect').onchange = function(e) {
+    if(!(this instanceof HTMLSelectElement))
+        throw new Error('Unexpected type for this');
+    updateSettings({shareQuality: this.value});
+    spartanToast('Qualidade de tela aplicada na próxima transmissão.');
+};
+
+getInputElement('gamemodebox').onchange = function(e) {
+    if(!(this instanceof HTMLInputElement))
+        throw new Error('Unexpected type for this');
+    updateSettings({gameMode: this.checked});
+    try {
+        for(let id in serverConnection.up) {
+            let c = serverConnection.up[id];
+            if(!c || !c.pc) continue;
+            c.pc.getSenders().forEach(function(s) {
+                spartanApplyVideoSenderPrefs(s, c.label);
+            });
+            if(c.label === 'screenshare' && c.stream)
+                spartanLockShareTrackFps(c.stream);
+        }
+    } catch(err) {}
+    spartanRefreshWatchedQuality();
+    spartanToast(this.checked
+        ? 'Modo jogo: prioriza 60 fps.'
+        : 'Modo texto: prioriza nitidez.');
+};
+
+getInputElement('qualityhudbox').onchange = function(e) {
+    if(!(this instanceof HTMLInputElement))
+        throw new Error('Unexpected type for this');
+    updateSettings({qualityHud: this.checked});
+    document.querySelectorAll('.spartan-quality-hud').forEach(function(el) {
+        el.remove();
+    });
 };
 
 /**
@@ -2217,8 +2716,21 @@ getInputElement('hideselfbox').onchange = function(e) {
  * @param {Record<string,any>} stats
  */
 function gotUpStats(stats) {
-    // Spartan: não mostra bitrate no tile; o rótulo é "Minha Live" / nome.
     setLabel(this);
+    spartanUpdateQualityHud(this, stats, 'up');
+    spartanCheckUploadWarn(this, stats);
+    // Reaplica teto: o browser às vezes “esquece” maxBitrate após REMB/renegociação.
+    if(this.label === 'screenshare' && this.pc) {
+        let now = Date.now();
+        if(!this.userdata)
+            this.userdata = {};
+        if(!this.userdata._spartanPrefsAt || now - this.userdata._spartanPrefsAt > 4000) {
+            this.userdata._spartanPrefsAt = now;
+            this.pc.getSenders().forEach(function(s) {
+                spartanApplyVideoSenderPrefs(s, 'screenshare');
+            });
+        }
+    }
 }
 
 /**
@@ -2458,13 +2970,16 @@ function gotDownStats(stats) {
     if(c.source)
         spartanApplyDownTalk(c.source);
 
-    if(!getInputElement('activitybox').checked)
+    if(!getInputElement('activitybox').checked) {
+        spartanUpdateQualityHud(c, stats, 'down');
         return;
+    }
 
     if(still)
         setActive(c, true);
     else
         setActive(c, false);
+    spartanUpdateQualityHud(c, stats, 'down');
 }
 
 /**
@@ -2653,10 +3168,20 @@ async function setSendParameters(c, bps, simulcast) {
             await replaceUpStream(c);
             return;
         }
+        if(c.label === 'screenshare') {
+            await spartanApplyVideoSenderPrefs(s, c.label);
+            continue;
+        }
         p.encodings.forEach(e => {
             if(!e.rid || e.rid === 'h')
                 e.maxBitrate = bps || unlimitedRate;
+            if(getSettings().gameMode !== false)
+                e.maxFramerate = spartanTargetShareFps();
         });
+        try {
+            if(getSettings().gameMode !== false)
+                p.degradationPreference = 'maintain-framerate';
+        } catch(e) {}
         await s.setParameters(p);
     }
 }
@@ -2768,7 +3293,7 @@ async function setUpStream(c, stream) {
                 }
             }
         } else if(c.label === 'screenshare' && t.kind === 'video') {
-            t.contentHint = 'motion';
+            t.contentHint = getSettings().gameMode === false ? 'detail' : 'motion';
         }
         t.onended = e => {
             stream.onaddtrack = null;
@@ -2780,22 +3305,32 @@ async function setUpStream(c, stream) {
         let simulcast = c.label !== 'screenshare' && doSimulcast();
         if(t.kind === 'video') {
             let bps = getMaxVideoThroughput();
+            let fps = spartanTargetShareFps();
+            if(c.label === 'screenshare') {
+                bps = spartanScreenBitrateCap();
+            }
             // Firefox doesn't like us setting the RID if we're not
             // simulcasting.
             if(simulcast) {
                 encodings.push({
                     rid: 'h',
                     maxBitrate: bps || unlimitedRate,
+                    maxFramerate: fps,
                 });
                 encodings.push({
                     rid: 'l',
                     scaleResolutionDownBy: 2,
                     maxBitrate: simulcastRate,
+                    maxFramerate: fps,
                 });
             } else {
-                encodings.push({
+                /** @type {RTCRtpEncodingParameters} */
+                let enc = {
                     maxBitrate: bps || unlimitedRate,
-                });
+                };
+                if(c.label === 'screenshare' || getSettings().gameMode !== false)
+                    enc.maxFramerate = fps;
+                encodings.push(enc);
             }
         } else {
             if(settings.hqaudio) {
@@ -2820,6 +3355,8 @@ async function setUpStream(c, stream) {
             }
         } catch(e) {
         }
+        if(t.kind === 'video')
+            spartanApplyVideoSenderPrefs(tr.sender, c.label);
     }
 
     // c.stream might be different from stream if there's a filter
@@ -2857,7 +3394,7 @@ async function setUpStream(c, stream) {
     };
 
     c.onstats = gotUpStats;
-    c.setStatsInterval(2000);
+    c.setStatsInterval(c.label === 'screenshare' ? 1000 : 2000);
 }
 
 /**
@@ -3045,7 +3582,7 @@ async function addShareMedia() {
             throw new Error('Este navegador não compartilha tela');
         /** @type {any} */
         let shareOpts = {
-            video: true,
+            video: spartanShareVideoConstraints(),
             audio: true,
             systemAudio: 'include',
         };
@@ -3054,17 +3591,35 @@ async function addShareMedia() {
         } catch(e) {
             if(e && (e.name === 'NotAllowedError' || e.name === 'AbortError'))
                 throw e;
-            stream = await navigator.mediaDevices.getDisplayMedia({
-                video: true,
-                audio: true,
-            });
+            // Fallback: constraints mais simples (sem systemAudio / sem frameRate estrito).
+            try {
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { cursor: 'always', frameRate: { ideal: spartanTargetShareFps() } },
+                    audio: true,
+                });
+            } catch(e2) {
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: true,
+                    audio: true,
+                });
+            }
+        }
+        if(stream && stream.getVideoTracks) {
+            await spartanLockShareTrackFps(stream);
         }
         if(!window._spartanShareHint) {
             window._spartanShareHint = true;
             displayMessage(
-                'No Windows, marque compartilhar áudio e escolha tela inteira ou aba (não uma janela).'
+                'Dica: escolha tela inteira ou aba do jogo, marque compartilhar áudio. ' +
+                'Quem assiste deve clicar em Tela no seu nick para ver em alta qualidade.'
             );
         }
+        let sq = getSettings().shareQuality || 'auto';
+        let sqLabel = sq === '720p' ? '720p' : (sq === '1080p' ? '1080p' : 'máxima');
+        displayMessage(
+            'Transmissão em ' + sqLabel + ' · alvo ' + spartanTargetShareFps() +
+            ' fps. O HUD mostra alvo e fps enviado.'
+        );
     } catch(e) {
         console.error(e);
         displayError(e);
@@ -3954,6 +4509,13 @@ function userMenu(elt) {
         if(serverConnection.permissions.indexOf('present') >= 0 && canFile())
             items.push({label: 'Transmitir arquivo', onClick: presentFile});
         items.push({label: 'Reiniciar mídia', onClick: renegotiateStreams});
+        items.push({
+            type: 'custom',
+            markup:
+                '<div class="contextualJs user-presence-menu">' +
+                '<span class="contextualJs user-presence-time" data-user="' + user.username + '">Na sala: —</span>' +
+                '</div>',
+        });
     } else {
         let p = spartanUserVol[id] != null ? spartanUserVol[id] : 100;
         items.push({
@@ -3966,6 +4528,13 @@ function userMenu(elt) {
                 '<input class="contextualJs user-vol-slider" type="range" min="0" max="400" step="5" value="' + p + '">' +
                 '<span class="contextualJs user-vol-lab">' + p + '%</span>' +
                 '</div>' +
+                '</div>',
+        });
+        items.push({
+            type: 'custom',
+            markup:
+                '<div class="contextualJs user-presence-menu">' +
+                '<span class="contextualJs user-presence-time" data-user="' + user.username + '">Na sala: —</span>' +
                 '</div>',
         });
         if(serverConnection.permissions.indexOf('op') >= 0) {
@@ -3993,6 +4562,7 @@ function userMenu(elt) {
     });
     let menu = ctx && ctx.menuControl;
     spartanPlaceUserMenu(menu);
+    spartanWirePresenceMenu(menu, user.username);
     spartanArmMenuCloser();
     if(id !== serverConnection.id)
         spartanBindVolumeMenu(id);
@@ -4440,12 +5010,15 @@ function spartanAbandonConnection(sc, silent) {
     sc.onfiletransfer = null;
     sc.onpeerconnection = null;
     try {
-        for(let id in sc.up) {
-            try {
-                if(silent)
-                    sc.up[id].onclose = null;
-                sc.up[id].close(!!silent);
-            } catch(e) {}
+        if(silent) {
+            for(let id in sc.up) {
+                try { sc.up[id].onclose = null; } catch(e) {}
+            }
+            sc.up = {};
+        } else {
+            for(let id in sc.up) {
+                try { sc.up[id].close(false); } catch(e) {}
+            }
         }
     } catch(e) {}
     try {
@@ -4894,7 +5467,10 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
     else
         this.request({'': ['audio', 'video']});
 
-    setLocalMute(true, true);
+    let recovering = !!(window._spartanRecoveringMedia) ||
+        spartanIsRecovering() ||
+        !!(window._spartanKeepUp && window._spartanKeepUp.length);
+    let mediaSnap = recovering ? (window._spartanMediaSnap || null) : null;
     spartanDidJoin = true;
     if(spartanDropSince) {
         spartanNetEvent({
@@ -4905,11 +5481,19 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
         });
     }
     spartanClearGrace();
+    spartanReconnecting = false;
     spartanRoomBind();
     try {
         await spartanRepublishUps(window._spartanKeepUp);
     } catch(e) {}
     window._spartanKeepUp = [];
+    if(recovering) {
+        // Se ainda falta o up de câmera/mic, reopen abaixo re-restaura o mute.
+        if(findUpMedia('camera') || !(mediaSnap && (mediaSnap.hadCamera || mediaSnap.hadMicOnly)))
+            spartanRestoreMediaAfterReconnect(mediaSnap);
+    } else {
+        setLocalMute(true, true);
+    }
     spartanArmRoomSounds();
     spartanPurgeStaleSelf();
     spartanRefreshWatchedQuality();
@@ -4921,6 +5505,11 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
         if(spartanIsOuvinte()) {
             displayMessage("Ouvinte: microfone para falar. Sem lives nem chat de texto.");
             spartanApplyOuvinteUi();
+        } else if(recovering && mediaSnap && (mediaSnap.hadCamera || mediaSnap.hadMicOnly)) {
+            try {
+                await addLocalMedia(undefined, !mediaSnap.hadCamera);
+            } catch(e) {}
+            spartanRestoreMediaAfterReconnect(mediaSnap);
         } else if(present) {
             if(present === 'mike')
                 updateSettings({video: ''});
@@ -4942,6 +5531,8 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
             );
         }
     }
+    if(recovering && window._spartanRecoveringMedia)
+        spartanRestoreMediaAfterReconnect(mediaSnap);
     spartanApplyOuvinteUi();
 }
 
@@ -6392,6 +6983,7 @@ function spartanErr(message){
   ['Could not start video source','Não deu para iniciar a câmera'],
   ['Could not start audio source','Não deu para iniciar o microfone'],
   ['Your browser does not support screen sharing','Este navegador não compartilha tela'],
+  ['min constraints are not supported','Este navegador não aceita essa restrição de captura. Atualiza a página e tenta de novo.'],
   ['Socket error','Ligação perdida'],
   ['Timeout','Ligação perdida (tempo esgotado)'],
   ['[object Event]','Ligação perdida'],
@@ -6473,18 +7065,24 @@ document.getElementById('loginform').onsubmit = async function(e) {
     getInputElement('presentoff').checked = true;
 
     const _u=getInputElement('username').value.trim();
+    const _pw=getInputElement('password').value;
     await spartanHistFlags(_u);
     try{
       const ts=await (await fetch('/spartan-api/temp-status?group='+encodeURIComponent(group)+'&user='+encodeURIComponent(_u))).json();
       if(ts.banned){ spartanLoginBusy=false; displayError('Este IP está suspenso nesta sala por 24 horas.'); return; }
       const named=document.documentElement.classList.contains('spartan-named-login');
       if(ts.open && ts.taken && !named){ spartanLoginBusy=false; displayError('Esse nick já é de uma conta ou convite. Escolhe outro.'); return; }
-      if(named){
-        const pw=getInputElement('password').value;
-        if(!pw){ spartanLoginBusy=false; displayError('Digite a senha da conta cadastrada.'); return; }
-        const rr=await fetch('/spartan-api/join-named',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({group:group,user:_u.toLowerCase(),password:pw})});
-        let jj={}; try{ jj=await rr.json(); }catch(e){}
-        if(!rr.ok){ spartanLoginBusy=false; displayError((jj&&jj.error)||'Não deu para entrar com essa conta.'); return; }
+      if(_u && _pw){
+        const okNamed=await spartanEnsureNamedJoin(_u, _pw);
+        if(named || okNamed){
+          if(!okNamed && named){
+            spartanLoginBusy=false;
+            displayError('Senha da conta incorreta.');
+            return;
+          }
+        }
+      } else if(named){
+        spartanLoginBusy=false; displayError('Digite a senha da conta cadastrada.'); return;
       }
       if(ts.open) window._spartanOpenRoom=true;
       window._spartanPurge=ts.purge;
@@ -6500,8 +7098,9 @@ document.getElementById('disconnectbutton').onclick = async function(e) {
     if(!await spartanAsk('Sair da sala agora?','confirm'))
         return;
     spartanIntentionalLeave = true;
-    try{sessionStorage.removeItem('spartanAdmin');sessionStorage.removeItem('spartanPending');sessionStorage.removeItem('spartanSession');sessionStorage.setItem('spartanLoggedOut','1');Object.keys(sessionStorage).forEach(function(k){if(k.indexOf('spartanSession:')===0)sessionStorage.removeItem(k);});window._spartanCred='';}catch(e){}
-    location.href='/';
+    spartanStopPresenceBeat(true);
+    try{sessionStorage.removeItem('spartanAdmin');sessionStorage.removeItem('spartanPending');sessionStorage.removeItem('spartanSession');sessionStorage.removeItem('spartanGlobalCred');sessionStorage.setItem('spartanLoggedOut','1');Object.keys(sessionStorage).forEach(function(k){if(k.indexOf('spartanSession:')===0)sessionStorage.removeItem(k);});window._spartanCred='';}catch(e){}
+    spartanGoHome();
 };
 
 let _dropBtn = document.getElementById('spartan-drop-btn');
@@ -6532,7 +7131,7 @@ window.addEventListener('online', function() {
     a.dataset.bound = '1';
     a.addEventListener('click', function(e) {
         e.preventDefault();
-        window.open('/admin/', '_blank', 'noopener');
+        spartanOpenAdminPanel();
     });
 })();
 
@@ -6622,8 +7221,11 @@ async function serverConnect() {
     let old = serverConnection;
     let silent = !!spartanDropSince && !spartanDropShown;
     if(old) {
-        if(silent)
+        if(silent) {
             window._spartanKeepUp = spartanSnapshotUps(old);
+            if(!window._spartanMediaSnap)
+                window._spartanMediaSnap = spartanSnapshotMediaState();
+        }
         spartanAbandonConnection(old, silent);
     }
     if(spartanDropShown)
@@ -6665,6 +7267,11 @@ async function serverConnect() {
 }
 
 async function start() {
+    try {
+        if(new URLSearchParams(window.location.search).get('shell') === '1')
+            document.documentElement.classList.add('spartan-in-shell');
+    } catch(e) {}
+    try { spartanInstallShareRembBypass(); } catch(e) {}
     try {
         let r = await fetch(".status")
         if(!r.ok)
@@ -6708,23 +7315,40 @@ async function start() {
     } else if(groupStatus.authPortal) {
         window.location.href = groupStatus.authPortal;
     } else {
-        setVisibility('login-container', true);
         await spartanPrepareOpenRoom();
-        try{
-          var _nav=(performance.getEntriesByType&&performance.getEntriesByType('navigation')[0]||{}).type;
-          var s=JSON.parse(sessionStorage.getItem('spartanSession:'+group)||'null');
-          if(s&&s.pass&&!sessionStorage.getItem('spartanLoggedOut')&&(!s.group||s.group===group)){
-            window._spartanCred=s.pass;
-            getInputElement('username').value=s.user||'';
-            getInputElement('password').value='';
-            await spartanHistFlags(s.user||'');
+        let stored = null;
+        try {
+            stored = spartanLoadStoredSession(group);
+        } catch(e) {}
+        if(stored && stored.pass) {
+            document.documentElement.classList.add('spartan-rejoin');
+            document.documentElement.classList.remove('spartan-need-login');
+            setVisibility('login-container', false);
+            window._spartanCred = stored.pass;
+            if(stored.account) {
+                window._spartanNamedLogin = true;
+                window._spartanAccountLogin = true;
+                document.documentElement.classList.add('spartan-named-login');
+            }
+            getInputElement('username').value = stored.user || '';
+            getInputElement('password').value = '';
+            await spartanHistFlags(stored.user || '');
+            if(stored.user && stored.pass && stored.account)
+                await spartanEnsureNamedJoin(stored.user, stored.pass);
             serverConnect();
+            setViewportHeight();
+            spartanSalasRoomBind();
             return;
-          }
-        }catch(e){}
-        document.getElementById('username').focus()
+        }
+        document.documentElement.classList.remove('spartan-rejoin');
+        document.documentElement.classList.add('spartan-need-login');
+        setVisibility('login-container', true);
+        try {
+            document.getElementById('username').focus();
+        } catch(e) {}
     }
     setViewportHeight();
+    spartanSalasRoomBind();
 }
 
 start();
@@ -6732,7 +7356,12 @@ start();
 function spartanOnJoin(){
  try{
   const u=serverConnection&&serverConnection.username; if(!u) return;
+  if(!window._spartanLiveTutorial){
+   window._spartanLiveTutorial=true;
+   spartanToast('Dica: clique em Tela ou Câmera ao lado do nick para ver a live em alta qualidade.');
+  }
   fetch('/spartan-api/beacon',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({group:group,user:u})}).catch(function(){});
+  spartanStartPresenceBeat();
   spartanMaybeFirstSetup(u);
   spartanLoadTtl(u);
   spartanCheck(u);
@@ -6787,11 +7416,11 @@ async function spartanCheck(u){
   var ttlOk=false;
   try{ const t=await (await fetch('/spartan-api/temp-status?group='+encodeURIComponent(group)+'&user='+encodeURIComponent(u))).json(); Object.assign(j,t); ttlOk=true; }catch(e){}
 
-  if(j.banned){ spartanToast('IP suspenso nesta sala por 24h.'); location.href='/'; return; }
+  if(j.banned){ spartanToast('IP suspenso nesta sala por 24h.'); spartanGoHome(); return; }
   if(j.ttl && (j.remaining_s===0 || (j.remaining_s!=null && j.remaining_s<=0))){
     if(typeof clearChat==='function') try{clearChat();}catch(e){}
     spartanToast('Esta sala chegou ao fim das 24 horas.');
-    location.href='/?expired=1'; return;
+    spartanGoHome('?expired=1'); return;
   }
   if(j.ttl) spartanTtlApply(j);
   else if(ttlOk) spartanTtlApply(null);
@@ -6799,15 +7428,75 @@ async function spartanCheck(u){
   if(window._spartanOpenRoom && j.purge!=null){
     if(window._spartanPurge!=null && j.purge!==window._spartanPurge){
       if(typeof clearChat==='function') try{clearChat();}catch(e){}
-      location.href='/?cleared=1'; return;
+      spartanGoHome('?cleared=1'); return;
     }
     window._spartanPurge=j.purge;
   }
-  if(j.status==='denied'||j.status==='blocked'){ spartanToast('Seu acesso foi bloqueado.'); location.href='/'; return; }
+  if(j.status==='denied'||j.status==='blocked'){ spartanToast('Seu acesso foi bloqueado.'); spartanGoHome(); return; }
   const btn=document.getElementById('spartan-reg-btn'); if(!btn) return;
   btn.hidden=!(j.status==='guest' && !window._spartanOpenRoom);
  }catch(e){}
 }
+function spartanSalasRoomBind() {
+    const overlay = document.getElementById('spartan-salas-overlay');
+    const btn = document.getElementById('spartan-salas-btn');
+    if(!overlay || !btn)
+        return;
+    if(!spartanInShell()) {
+        btn.hidden = true;
+        return;
+    }
+    btn.hidden = false;
+
+    overlay.querySelectorAll('.spartan-salas-col-temp, #spartan-salas-temp').forEach(function(el) {
+        el.remove();
+    });
+    overlay.querySelectorAll('.spartan-salas-grid').forEach(function(el) {
+        el.classList.add('spartan-salas-grid-room');
+    });
+
+    function closeSalas() {
+        overlay.hidden = true;
+        if(window._spartanSalasApi)
+            window._spartanSalasApi.stopPoll();
+    }
+
+    function openSalas() {
+        overlay.hidden = false;
+        if(window._spartanSalasApi) {
+            window._spartanSalasApi.load();
+            window._spartanSalasApi.startPoll();
+        }
+    }
+
+    if(!window._spartanSalasBound) {
+        window._spartanSalasBound = true;
+        btn.onclick = openSalas;
+        document.getElementById('spartan-salas-close').onclick = closeSalas;
+        document.getElementById('spartan-salas-back').onclick = closeSalas;
+        overlay.addEventListener('click', function(e) {
+            if(e.target === overlay)
+                closeSalas();
+        });
+        document.addEventListener('keydown', function(e) {
+            if(e.key === 'Escape' && !overlay.hidden)
+                closeSalas();
+        });
+    }
+    if(!window._spartanSalasApi && typeof SpartanSalas !== 'undefined') {
+        window._spartanSalasApi = SpartanSalas.mount({
+            mainId: 'spartan-salas-main',
+            permId: 'spartan-salas-perm',
+            qId: 'spartan-salas-q',
+            hideTemporary: true,
+            sortSelector: '#spartan-salas-overlay .sort-btn',
+            currentGroup: group,
+            onClose: closeSalas,
+            onPick: function(id) { spartanGoRoom(id); },
+        });
+    }
+}
+
 function spartanBind(){
  const btn=document.getElementById('spartan-reg-btn'), modal=document.getElementById('spartan-reg-modal');
  if(!btn||btn.dataset.bound) return; btn.dataset.bound='1';
@@ -6826,13 +7515,226 @@ function spartanBind(){
   }catch(e){ err.textContent=e.message; }
  };
 }
-if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ spartanBind(); spartanBindLoginSwitch(); });
-else { spartanBind(); spartanBindLoginSwitch(); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ spartanBind(); spartanBindLoginSwitch(); spartanSalasRoomBind(); });
+else { spartanBind(); spartanBindLoginSwitch(); spartanSalasRoomBind(); }
 
 function spartanFmtHm(sec){
  sec=Math.max(0, Math.floor(Number(sec)||0));
  var h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60);
  return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+}
+function spartanFmtHms(sec){
+ sec=Math.max(0, Math.floor(Number(sec)||0));
+ var h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
+ return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+}
+let spartanPresenceBeatTimer = 0;
+let spartanPresenceMenuTick = 0;
+
+function spartanFmtDuration(sec) {
+    sec = Math.max(0, Math.floor(Number(sec) || 0));
+    if(!sec) return '0s';
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    if(h > 0) return h + 'h ' + String(m).padStart(2, '0') + 'min';
+    if(m > 0) return m + 'min';
+    return sec + 's';
+}
+
+function spartanPresenceSend(leave) {
+    var u = serverConnection && serverConnection.username;
+    if(!u || !group) return;
+    var body = JSON.stringify({group: group, user: u, leave: !!leave});
+    if(leave && typeof navigator !== 'undefined' && navigator.sendBeacon) {
+        try {
+            navigator.sendBeacon('/spartan-api/presence', new Blob([body], {type: 'application/json'}));
+            return;
+        } catch(e) {}
+    }
+    fetch('/spartan-api/presence', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: body,
+        keepalive: !!leave,
+    }).then(function(r) {
+        if(leave || !r.ok) return null;
+        return r.json();
+    }).then(function(j) {
+        if(j) spartanApplyPresenceState(j);
+    }).catch(function() {});
+}
+
+function spartanInitLocalPresence() {
+    if(window._spartanTtlUntil) return;
+    // Espera o servidor; não inventa tempo local da sala.
+    spartanLiveHeaderTick();
+}
+
+function spartanApplyPresenceState(j) {
+    if(!j) return;
+    if(!window._spartanTtlUntil) {
+        if(j.room_active === true) {
+            // Header = tempo da SALA vindo do servidor.
+            window._spartanRoomLiveBase = {sec: j.room_live_s | 0, at: Date.now()};
+        } else {
+            window._spartanRoomLiveBase = null;
+        }
+    }
+    var u = serverConnection && serverConnection.username;
+    if(u && (j.user_active || j.active)) {
+        // Base individual (menu do nick) — também do servidor.
+        window._spartanUserLiveBase = {
+            sec: (j.user_live_s != null ? j.user_live_s : j.live_s) | 0,
+            at: Date.now(),
+        };
+    } else if(u && j && j.user_active === false) {
+        window._spartanUserLiveBase = null;
+    }
+    spartanLiveHeaderTick();
+}
+
+async function spartanSyncPresence() {
+    if(!group) return;
+    var u = serverConnection && serverConnection.username;
+    try {
+        var url = '/spartan-api/presence-room?group=' + encodeURIComponent(group);
+        if(u) url += '&user=' + encodeURIComponent(u);
+        var r = await fetch(url, {cache: 'no-store'});
+        if(!r.ok) {
+            spartanInitLocalPresence();
+            return;
+        }
+        spartanApplyPresenceState(await r.json());
+    } catch(e) {
+        spartanInitLocalPresence();
+    }
+}
+
+function spartanLiveHeaderTick() {
+    var liveEl = document.getElementById('spartan-live');
+    var clock = document.getElementById('spartan-live-clock');
+    if(!liveEl || !clock) return;
+    if(window._spartanTtlUntil) {
+        liveEl.hidden = true;
+        liveEl.classList.remove('is-on');
+        return;
+    }
+    var base = window._spartanRoomLiveBase;
+    if(!base) {
+        liveEl.hidden = true;
+        liveEl.classList.remove('is-on');
+        return;
+    }
+    var sec = (base.sec | 0) + Math.floor((Date.now() - base.at) / 1000);
+    clock.textContent = spartanFmtHms(sec);
+    liveEl.hidden = false;
+    liveEl.classList.add('is-on');
+}
+
+function spartanStartPresenceBeat() {
+    window._spartanRoomLiveBase = null;
+    window._spartanUserLiveBase = null;
+    spartanLiveHeaderTick();
+    spartanPresenceSend(false);
+    spartanSyncPresence();
+    if(!window._spartanLiveHeaderTimer)
+        window._spartanLiveHeaderTimer = setInterval(spartanLiveHeaderTick, 1000);
+    if(!window._spartanLivePoll)
+        window._spartanLivePoll = setInterval(spartanSyncPresence, 5000);
+    if(spartanPresenceBeatTimer) return;
+    spartanPresenceBeatTimer = setInterval(function() {
+        spartanPresenceSend(false);
+    }, 15000);
+    if(!window._spartanPresenceUnloadBound) {
+        window._spartanPresenceUnloadBound = true;
+        window.addEventListener('pagehide', function() {
+            if(!spartanDidJoin || spartanReconnecting || spartanDropSince)
+                return;
+            spartanPresenceSend(true);
+        });
+    }
+}
+
+function spartanStopPresenceBeat(leave) {
+    if(spartanPresenceBeatTimer) {
+        clearInterval(spartanPresenceBeatTimer);
+        spartanPresenceBeatTimer = 0;
+    }
+    if(window._spartanLivePoll) {
+        clearInterval(window._spartanLivePoll);
+        window._spartanLivePoll = 0;
+    }
+    if(window._spartanLiveHeaderTimer) {
+        clearInterval(window._spartanLiveHeaderTimer);
+        window._spartanLiveHeaderTimer = 0;
+    }
+    if(leave) {
+        spartanPresenceSend(true);
+        window._spartanRoomLiveBase = null;
+        window._spartanUserLiveBase = null;
+        spartanLiveHeaderTick();
+    }
+}
+
+function spartanUserLiveFallback(uname) {
+    var u = serverConnection && serverConnection.username;
+    if(!u || spartanNickKey(uname) !== spartanNickKey(u) || !window._spartanUserLiveBase)
+        return null;
+    var b = window._spartanUserLiveBase;
+    var sec = (b.sec | 0) + Math.floor((Date.now() - b.at) / 1000);
+    return {
+        text: 'Na sala: ' + spartanFmtDuration(sec),
+        active: true,
+        base: b.sec | 0,
+        at: b.at,
+    };
+}
+
+async function spartanFetchUserLive(uname) {
+    if(!uname || !group) return spartanUserLiveFallback(uname);
+    try {
+        var r = await fetch('/spartan-api/presence-room?group=' + encodeURIComponent(group) +
+            '&user=' + encodeURIComponent(uname), {cache: 'no-store'});
+        if(!r.ok) return spartanUserLiveFallback(uname);
+        var j = await r.json();
+        if(j && (j.user_active || j.active)) {
+            var sec = (j.user_live_s != null ? j.user_live_s : j.live_s) | 0;
+            return {
+                text: 'Na sala: ' + spartanFmtDuration(sec),
+                active: true,
+                base: sec,
+                at: Date.now(),
+            };
+        }
+        if(j && !j.user_active && !j.active)
+            return {text: 'Fora da sala', active: false};
+        return spartanUserLiveFallback(uname);
+    } catch(e) {
+        return spartanUserLiveFallback(uname);
+    }
+}
+
+function spartanWirePresenceMenu(menu, uname) {
+    if(!menu) return;
+    var lab = menu.querySelector('.user-presence-time');
+    if(!lab) return;
+    var state = null;
+    async function refresh() {
+        state = await spartanFetchUserLive(uname);
+        if(!state) {
+            lab.textContent = 'Na sala: —';
+            return;
+        }
+        lab.textContent = state.text;
+    }
+    function tick() {
+        if(!state || !state.active || state.base == null) return;
+        var sec = state.base + Math.floor((Date.now() - state.at) / 1000);
+        lab.textContent = 'Na sala: ' + spartanFmtDuration(sec);
+    }
+    refresh();
+    if(spartanPresenceMenuTick) clearInterval(spartanPresenceMenuTick);
+    spartanPresenceMenuTick = setInterval(tick, 1000);
 }
 function spartanTtlTick(){
  var el=document.getElementById('spartan-ttl');
@@ -6846,7 +7748,7 @@ function spartanTtlTick(){
      window._spartanTtlGone=true;
      try{ if(typeof clearChat==='function') clearChat(); }catch(e){}
      spartanToast('Esta sala chegou ao fim das 24 horas.');
-     location.href='/?expired=1';
+     spartanGoHome('?expired=1');
    }
    return;
  }
@@ -6892,6 +7794,7 @@ function spartanTtlApply(j){
    var el=document.getElementById('spartan-ttl');
    if(el){ el.hidden=true; el.classList.remove('is-on'); }
    spartanTtlPersist();
+   spartanSyncPresence();
    return;
  }
  window._spartanHost=j.host||window._spartanHost||null;
@@ -6899,6 +7802,9 @@ function spartanTtlApply(j){
  if(!until || isNaN(until))
    until=Date.now()+Math.max(0, Number(j.remaining_s))*1000;
  window._spartanTtlUntil=until;
+ window._spartanRoomLiveBase=null;
+ var liveEl=document.getElementById('spartan-live');
+ if(liveEl){ liveEl.hidden=true; liveEl.classList.remove('is-on'); }
  spartanTtlPersist();
  spartanTtlTick();
  if(!window._spartanTtlTimer) window._spartanTtlTimer=setInterval(spartanTtlTick, 1000);
