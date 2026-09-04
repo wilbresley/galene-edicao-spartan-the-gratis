@@ -15,5 +15,7 @@ static/_pack.tgz
 .vscode/
 docs/exports/
 
-.codegraph/
+data/net.log
+data/*.log
+groups/abiguinhos.json
 

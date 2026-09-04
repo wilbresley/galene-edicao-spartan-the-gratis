@@ -1220,30 +1220,49 @@ body.spartan-in #left-sidebar{
 }
 #sidebarnav .sidenav-header,
 #sidebarnav .sidenav-content{
- width:min(980px,96vw);
+ width:min(400px,92vw);
 }
 #sidebarnav .sidenav-header{
  border-radius:12px 12px 0 0;
 }
 #sidebarnav .sidenav-content{
  height:auto!important;
- max-height:min(82vh,820px);
- overflow:auto!important;
+ max-height:calc(min(94vh, 720px) - 52px)!important;
+ overflow-x:hidden!important;
+ overflow-y:auto!important;
  background:#1e1f22;
  border-radius:0 0 12px 12px;
  display:grid;
- grid-template-columns:1fr 1fr;
- gap:12px 24px;
- padding:16px 20px 24px!important;
+ grid-template-columns:1fr;
+ gap:6px 0;
+ padding:10px 14px 12px!important;
+}
+#sidebarnav .spartan-sound-chat{
+ border:1px solid rgba(220,38,38,.4);
+ border-radius:10px;
+ padding:8px 10px 6px;
+ margin:0;
+}
+#sidebarnav .spartan-sound-chat legend{
+ color:#fecaca;
+ font-weight:700;
 }
 #sidebarnav .profile{
- grid-column:1 / -1;
+ grid-column:1;
 }
 #sidebarnav .set-help{
- margin:0 0 10px;
- font-size:12px;
- line-height:1.35;
+ margin:0 0 5px;
+ font-size:11px;
+ line-height:1.25;
  color:#9ca3af;
+}
+#sidebarnav fieldset{
+ margin:0 0 6px!important;
+ padding:8px 10px!important;
+}
+#sidebarnav .sidenav-panel{
+ width:min(400px,92vw);
+ max-height:min(96vh,880px);
 }
 @media only screen and (max-width:900px){
  #sidebarnav .sidenav-content{
@@ -1356,8 +1375,8 @@ body.spartan-in #left-sidebar{
  display:flex!important;
 }
 #sidebarnav .sidenav-panel{
- width:min(980px,94vw);
- max-height:min(88vh,860px);
+ width:min(400px,92vw);
+ max-height:min(96vh,880px);
  display:flex;
  flex-direction:column;
  border-radius:12px;
@@ -1371,14 +1390,24 @@ body.spartan-in #left-sidebar{
 }
 #sidebarnav .sidenav-header{
  flex:0 0 auto;
- height:56px;
+ height:52px;
  position:relative;
 }
 #sidebarnav .sidenav-content{
  flex:1 1 auto;
  height:auto!important;
- max-height:none;
- overflow:auto!important;
+ max-height:calc(min(94vh, 720px) - 52px)!important;
+ overflow-x:hidden!important;
+ overflow-y:auto!important;
+ display:grid;
+ grid-template-columns:1fr;
+ gap:6px 0;
+ padding:10px 14px 12px!important;
+}
+#sidebarnav .spartan-transmit-setting{
+ grid-column:1;
+ padding:8px 10px 6px;
+ margin:0;
 }
 
 @media only screen and (max-width:1024px){
@@ -1991,6 +2020,33 @@ button.toast-close::after{
  font-variant-numeric:tabular-nums;
  letter-spacing:.03em;
 }
+#spartan-live{
+ display:none;
+ position:static!important;
+ left:auto!important;
+ top:auto!important;
+ transform:none!important;
+ z-index:3;
+ text-align:left;
+ pointer-events:none;
+ line-height:1.2;
+ margin:0;
+}
+#spartan-live.is-on{
+ display:flex!important;
+ flex-direction:row;
+ align-items:baseline;
+ flex-wrap:wrap;
+ gap:.35rem;
+}
+#spartan-live-clock{
+ color:#fff!important;
+ font-size:.82rem;
+ font-weight:700;
+ white-space:nowrap;
+ font-variant-numeric:tabular-nums;
+ letter-spacing:.03em;
+}
 html.spartan-open-room:not(.spartan-named-login) #passwordform,
 html.spartan-open-room:not(.spartan-named-login) #passwordform *{display:none!important}
 html.spartan-open-room.spartan-named-login #passwordform,
@@ -2022,3 +2078,1227 @@ body:not(.spartan-in) .login-box .connect{
 }
 html.spartan-open-room #spartan-login-switch{display:block!important}
 html.spartan-open-room.spartan-named-login #spartan-login-switch{color:#fff!important}
+
+html.spartan-in-shell footer.signature,
+html.spartan-in-shell .signature.foot-right .btn-salas {
+  display: none !important;
+}
+
+html.spartan-in-shell,
+html.spartan-in-shell body {
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 100% !important;
+  height: 100% !important;
+}
+
+html.spartan-in-shell #main.app {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+html.spartan-in-shell #sidebarnav.sidenav {
+  z-index: 9000 !important;
+}
+
+.spartan-quality-hud{
+ position:absolute;
+ left:6px;
+ bottom:6px;
+ z-index:12;
+ padding:2px 6px;
+ border-radius:4px;
+ font-size:11px;
+ font-weight:600;
+ line-height:1.3;
+ color:#fff;
+ background:rgba(0,0,0,.72);
+ pointer-events:none;
+ font-variant-numeric:tabular-nums;
+}
+
+#sidebarnav .spartan-transmit-setting{
+ grid-column:1;
+ border:1px solid rgba(220,38,38,.55);
+ border-radius:10px;
+ padding:8px 10px 6px;
+ margin:0;
+}
+#sidebarnav .spartan-transmit-setting legend{
+ color:#fecaca;
+ font-weight:700;
+}
+
+/* spartan-v81 — configurações largas, 2 colunas, sem scroll interno */
+#sidebarnav .sidenav-panel{
+ width:min(1120px,96vw)!important;
+ max-height:none!important;
+ overflow:visible!important;
+}
+#sidebarnav .sidenav-header,
+#sidebarnav .sidenav-content{
+ width:100%!important;
+}
+#sidebarnav .sidenav-content{
+ max-height:none!important;
+ overflow:visible!important;
+ overflow-y:visible!important;
+ grid-template-columns:1fr 1fr!important;
+ gap:12px 28px!important;
+ padding:16px 28px 22px!important;
+}
+#sidebarnav .profile{
+ grid-column:1/-1!important;
+ display:flex!important;
+ flex-wrap:wrap;
+ align-items:center;
+ justify-content:space-between;
+ gap:12px 20px;
+ margin-bottom:4px!important;
+ padding-bottom:10px!important;
+}
+#sidebarnav .profile-user{
+ flex:1 1 12rem;
+ min-width:0;
+}
+#sidebarnav .side-actions{
+ width:auto!important;
+ margin-top:0!important;
+ flex:0 1 auto;
+ max-width:100%;
+}
+#sidebarnav #mediaoptions{
+ grid-column:1;
+ align-self:start;
+}
+#sidebarnav .spartan-transmit-setting{
+ grid-column:2!important;
+ align-self:start;
+}
+#sidebarnav .spartan-sound-chat{
+ grid-column:1;
+ align-self:start;
+}
+#sidebarnav .spartan-sound-room{
+ grid-column:2;
+ align-self:start;
+ border:1px solid rgba(220,38,38,.4);
+ border-radius:10px;
+ padding:8px 10px 6px;
+ margin:0;
+}
+#sidebarnav .spartan-sound-room legend{
+ color:#fecaca;
+ font-weight:700;
+}
+@media only screen and (max-width:860px){
+ #sidebarnav .sidenav-content{
+  grid-template-columns:1fr!important;
+  padding:14px 16px 18px!important;
+ }
+ #sidebarnav .profile{
+  flex-direction:column;
+  align-items:flex-start;
+ }
+ #sidebarnav .side-actions{
+  width:100%!important;
+ }
+ #sidebarnav #mediaoptions,
+ #sidebarnav .spartan-transmit-setting,
+ #sidebarnav .spartan-sound-chat,
+ #sidebarnav .spartan-sound-room{
+  grid-column:1!important;
+ }
+}
+
+/* spartan-v83 — config: cabe na tela, perfil + botões alinhados */
+#sidebarnav .sidenav-panel{
+ width:min(1120px,96vw)!important;
+ max-height:min(92vh,900px)!important;
+ display:flex!important;
+ flex-direction:column!important;
+ overflow:hidden!important;
+ border-radius:12px!important;
+}
+#sidebarnav .sidenav-header,
+#sidebarnav .sidenav-content{
+ width:100%!important;
+ max-width:100%!important;
+ box-sizing:border-box!important;
+}
+#sidebarnav .sidenav-header{
+ flex:0 0 auto!important;
+ border-radius:12px 12px 0 0!important;
+}
+#sidebarnav .sidenav-content{
+ flex:1 1 auto!important;
+ min-height:0!important;
+ max-height:calc(min(92vh,900px) - 52px)!important;
+ overflow-x:hidden!important;
+ overflow-y:auto!important;
+ grid-template-columns:1fr 1fr!important;
+ gap:12px 24px!important;
+ padding:14px 24px 18px!important;
+ align-content:start!important;
+ border-radius:0 0 12px 12px!important;
+}
+#sidebarnav .profile{
+ grid-column:1/-1!important;
+ display:flex!important;
+ flex-direction:column!important;
+ align-items:stretch!important;
+ gap:12px!important;
+ padding:0 0 14px!important;
+ margin:0 0 8px!important;
+ border-bottom:1px solid #3f4147!important;
+ width:100%!important;
+ float:none!important;
+}
+#sidebarnav .profile-user{
+ display:flex!important;
+ align-items:center!important;
+ gap:12px!important;
+ min-width:0!important;
+ width:100%!important;
+}
+#sidebarnav .profile-logo{flex:0 0 50px!important}
+#sidebarnav .profile-info{
+ flex:1 1 auto!important;
+ min-width:0!important;
+ margin:0!important;
+ float:none!important;
+ width:auto!important;
+}
+#sidebarnav .side-actions{
+ display:flex!important;
+ flex-direction:row!important;
+ flex-wrap:wrap!important;
+ gap:10px!important;
+ width:100%!important;
+ min-width:0!important;
+ max-width:none!important;
+ margin:0!important;
+}
+#sidebarnav .side-actions>span{
+ flex:1 1 10rem!important;
+ min-width:0!important;
+ display:block!important;
+ margin:0!important;
+}
+#sidebarnav .side-actions a.side-btn,
+#sidebarnav .side-actions #chpwspan a,
+#sidebarnav .side-actions #adminspan a{
+ display:flex!important;
+ align-items:center!important;
+ justify-content:center!important;
+ width:100%!important;
+ min-height:2.45rem!important;
+ padding:0 12px!important;
+ margin:0!important;
+ box-sizing:border-box!important;
+ white-space:nowrap!important;
+ font-size:13px!important;
+ font-weight:700!important;
+ border-radius:8px!important;
+}
+#sidebarnav fieldset{
+ align-self:start!important;
+ margin:0!important;
+}
+#sidebarnav .set-help{
+ margin:0 0 4px!important;
+ font-size:10px!important;
+ line-height:1.2!important;
+}
+@media only screen and (max-width:860px){
+ #sidebarnav .sidenav-content{
+  grid-template-columns:1fr!important;
+  padding:12px 16px 16px!important;
+ }
+ #sidebarnav .side-actions>span{
+  flex:1 1 100%!important;
+ }
+}
+
+/* spartan-v85 — config: perfil + botões na mesma linha; colunas alinhadas; sem scroll */
+#sidebarnav .sidenav-panel{
+ width:min(1120px,96vw)!important;
+ max-height:none!important;
+ overflow:visible!important;
+ display:flex!important;
+ flex-direction:column!important;
+ border-radius:12px!important;
+}
+#sidebarnav .sidenav-header{
+ flex:0 0 auto!important;
+ border-radius:12px 12px 0 0!important;
+}
+#sidebarnav .sidenav-content{
+ flex:0 1 auto!important;
+ width:100%!important;
+ max-width:100%!important;
+ max-height:none!important;
+ overflow:visible!important;
+ overflow-y:visible!important;
+ display:grid!important;
+ grid-template-columns:1fr 1fr!important;
+ grid-template-rows:auto auto auto!important;
+ gap:10px 24px!important;
+ padding:12px 24px 16px!important;
+ align-items:start!important;
+ border-radius:0 0 12px 12px!important;
+ box-sizing:border-box!important;
+}
+#sidebarnav .profile{
+ width:100%!important;
+ max-width:none!important;
+ float:none!important;
+ display:block!important;
+ flex-direction:unset!important;
+ grid-column:1/-1!important;
+ grid-row:1!important;
+ margin:0 0 8px!important;
+ padding:0 0 10px!important;
+ border-bottom:1px solid #3f4147!important;
+ box-sizing:border-box!important;
+}
+#sidebarnav .profile-top{
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr) auto!important;
+ align-items:center!important;
+ column-gap:20px!important;
+ width:100%!important;
+ min-width:0!important;
+}
+#sidebarnav .profile-top .profile-user{
+ display:flex!important;
+ flex-direction:row!important;
+ align-items:center!important;
+ gap:10px!important;
+ grid-column:1!important;
+ min-width:0!important;
+ width:auto!important;
+ max-width:100%!important;
+ margin:0!important;
+ float:none!important;
+}
+#sidebarnav .profile-top .profile-user:after{display:none!important;content:none!important}
+#sidebarnav .profile-top .profile-logo{
+ float:none!important;
+ flex:0 0 44px!important;
+ width:44px!important;
+ height:44px!important;
+ margin:0!important;
+}
+#sidebarnav .profile-top .profile-info{
+ float:none!important;
+ flex:1 1 auto!important;
+ min-width:0!important;
+ width:auto!important;
+ margin:0!important;
+ margin-top:0!important;
+ margin-left:0!important;
+ color:#dbdee1!important;
+}
+#sidebarnav .profile-top .profile-info span{display:block!important;line-height:1.25!important}
+#sidebarnav .profile-top .profile-info #userspan{
+ font-weight:700!important;
+ font-size:15px!important;
+ color:#f2f3f5!important;
+}
+#sidebarnav .profile-top .side-actions{
+ display:flex!important;
+ flex-direction:row!important;
+ flex-wrap:nowrap!important;
+ align-items:center!important;
+ justify-content:flex-end!important;
+ grid-column:2!important;
+ flex:0 0 auto!important;
+ width:auto!important;
+ margin:0!important;
+ margin-top:0!important;
+ padding:0!important;
+ gap:8px!important;
+ box-sizing:border-box!important;
+}
+#sidebarnav .profile-top .side-actions>span{
+ flex:0 0 auto!important;
+ width:auto!important;
+ display:block!important;
+ margin:0!important;
+ min-width:0!important;
+}
+#sidebarnav .profile-top .side-actions a.side-btn,
+#sidebarnav .profile-top .side-actions #chpwspan a,
+#sidebarnav .profile-top .side-actions #adminspan a{
+ display:inline-flex!important;
+ align-items:center!important;
+ justify-content:center!important;
+ width:auto!important;
+ min-width:6.75rem!important;
+ max-width:none!important;
+ min-height:2rem!important;
+ padding:6px 12px!important;
+ margin:0!important;
+ box-sizing:border-box!important;
+ white-space:nowrap!important;
+ font-size:12px!important;
+ font-weight:700!important;
+ line-height:1.2!important;
+ border-radius:7px!important;
+ text-align:center!important;
+}
+#sidebarnav .profile-top #chpwspan a{background:#16a34a!important;color:#fff!important}
+#sidebarnav .profile-top #adminspan a{background:#dc2626!important;color:#fff!important}
+#sidebarnav #mediaoptions{
+ grid-column:1!important;
+ grid-row:2!important;
+ align-self:start!important;
+ margin:0!important;
+ padding:0!important;
+}
+#sidebarnav #mediaoptions fieldset{margin:0!important}
+#sidebarnav .spartan-transmit-setting{
+ grid-column:2!important;
+ grid-row:2!important;
+ align-self:start!important;
+}
+#sidebarnav .spartan-sound-chat{
+ grid-column:1!important;
+ grid-row:3!important;
+ align-self:start!important;
+}
+#sidebarnav .spartan-sound-room{
+ grid-column:2!important;
+ grid-row:3!important;
+ align-self:start!important;
+}
+#sidebarnav fieldset{
+ align-self:start!important;
+ margin:0!important;
+ padding:7px 10px 5px!important;
+}
+#sidebarnav .set-help{
+ margin:0 0 3px!important;
+ font-size:10px!important;
+ line-height:1.15!important;
+}
+@media only screen and (max-width:860px){
+ #sidebarnav .sidenav-content{
+  grid-template-columns:1fr!important;
+  grid-template-rows:auto!important;
+  padding:12px 16px 14px!important;
+ }
+ #sidebarnav #mediaoptions,
+ #sidebarnav .spartan-transmit-setting,
+ #sidebarnav .spartan-sound-chat,
+ #sidebarnav .spartan-sound-room{
+  grid-column:1!important;
+  grid-row:auto!important;
+ }
+ #sidebarnav .profile-top{
+  grid-template-columns:1fr!important;
+  row-gap:10px!important;
+ }
+ #sidebarnav .profile-top .side-actions{
+  grid-column:1!important;
+  justify-content:flex-end!important;
+  width:100%!important;
+ }
+}
+
+/* spartan-v86 — config: 2 colunas (dispositivos | transmissão+sons), mesma altura, texto contido */
+#sidebarnav .sidenav-content{
+ grid-template-rows:auto auto!important;
+}
+#sidebarnav .spartan-settings-cols{
+ grid-column:1/-1!important;
+ grid-row:2!important;
+ display:grid!important;
+ grid-template-columns:1fr 1fr!important;
+ gap:10px 24px!important;
+ align-items:stretch!important;
+ min-width:0!important;
+ width:100%!important;
+}
+#sidebarnav .spartan-settings-left,
+#sidebarnav .spartan-settings-right{
+ display:flex!important;
+ flex-direction:column!important;
+ min-width:0!important;
+ min-height:100%!important;
+ height:100%!important;
+ box-sizing:border-box!important;
+}
+#sidebarnav .spartan-settings-left fieldset{
+ flex:1 1 auto!important;
+ height:100%!important;
+ min-height:100%!important;
+ margin:0!important;
+}
+#sidebarnav .spartan-settings-right{
+ gap:10px!important;
+}
+#sidebarnav .spartan-settings-right .spartan-transmit-setting{
+ flex:0 0 auto!important;
+ margin:0!important;
+}
+#sidebarnav .spartan-settings-right .spartan-sounds-setting{
+ flex:1 1 auto!important;
+ margin:0!important;
+ min-height:0!important;
+ display:flex!important;
+ flex-direction:column!important;
+}
+#sidebarnav #mediaoptions,
+#sidebarnav .spartan-transmit-setting,
+#sidebarnav .spartan-sounds-setting,
+#sidebarnav .spartan-sound-chat,
+#sidebarnav .spartan-sound-room{
+ grid-column:unset!important;
+ grid-row:unset!important;
+ align-self:unset!important;
+}
+#sidebarnav fieldset,
+#sidebarnav .spartan-transmit-setting,
+#sidebarnav .spartan-sounds-setting{
+ min-width:0!important;
+ max-width:100%!important;
+ overflow:hidden!important;
+ box-sizing:border-box!important;
+ border:1px solid rgba(220,38,38,.4)!important;
+ border-radius:10px!important;
+ padding:8px 10px 6px!important;
+}
+#sidebarnav .spartan-transmit-setting legend,
+#sidebarnav .spartan-sounds-setting legend{
+ color:#fecaca!important;
+ font-weight:700!important;
+}
+#sidebarnav fieldset form,
+#sidebarnav fieldset label,
+#sidebarnav .set-help{
+ max-width:100%!important;
+ overflow-wrap:break-word!important;
+ word-wrap:break-word!important;
+ box-sizing:border-box!important;
+}
+#sidebarnav .select,
+#sidebarnav select.select-inline{
+ display:block!important;
+ width:100%!important;
+ max-width:100%!important;
+ box-sizing:border-box!important;
+}
+#sidebarnav fieldset form label{
+ display:inline!important;
+ vertical-align:middle!important;
+}
+@media only screen and (max-width:860px){
+ #sidebarnav .spartan-settings-cols{
+  grid-template-columns:1fr!important;
+ }
+ #sidebarnav .spartan-settings-left fieldset,
+ #sidebarnav .spartan-settings-right .spartan-sounds-setting{
+  height:auto!important;
+  min-height:0!important;
+ }
+}
+
+/* spartan-v87 — config: coluna única no painel; 2 colunas só dentro; legendas dentro da caixa */
+#sidebarnav .sidenav-content{
+ display:flex!important;
+ flex-direction:column!important;
+ grid-template-columns:unset!important;
+ grid-template-rows:unset!important;
+ gap:0!important;
+ align-items:stretch!important;
+}
+#sidebarnav .profile{
+ flex:0 0 auto!important;
+ order:1!important;
+}
+#sidebarnav .spartan-settings-cols{
+ flex:1 1 auto!important;
+ order:2!important;
+ display:grid!important;
+ grid-template-columns:1fr 1fr!important;
+ grid-template-rows:1fr!important;
+ gap:12px 24px!important;
+ align-items:stretch!important;
+ min-width:0!important;
+ width:100%!important;
+ margin:0!important;
+ padding:0!important;
+}
+#sidebarnav .spartan-settings-left{
+ grid-column:1!important;
+ grid-row:1!important;
+}
+#sidebarnav .spartan-settings-right{
+ grid-column:2!important;
+ grid-row:1!important;
+}
+#sidebarnav .spartan-set-box{
+ min-width:0!important;
+ max-width:100%!important;
+ margin:0!important;
+ padding:10px 0 12px!important;
+ border:1px solid rgba(220,38,38,.45)!important;
+ border-radius:10px!important;
+ background:#2b2d31!important;
+ box-sizing:border-box!important;
+ overflow:hidden!important;
+}
+#sidebarnav .spartan-set-title{
+ display:block!important;
+ width:auto!important;
+ margin:0 10px 10px!important;
+ padding:7px 14px!important;
+ box-sizing:border-box!important;
+ background:#000!important;
+ color:#fff!important;
+ border:none!important;
+ border-radius:8px!important;
+ font-size:13px!important;
+ font-weight:700!important;
+ line-height:1.2!important;
+ letter-spacing:0!important;
+ text-transform:none!important;
+}
+#sidebarnav .spartan-settings-left .spartan-set-box{
+ height:100%!important;
+ min-height:100%!important;
+ display:flex!important;
+ flex-direction:column!important;
+}
+#sidebarnav .spartan-settings-left,
+#sidebarnav .spartan-settings-right{
+ display:flex!important;
+ flex-direction:column!important;
+ min-width:0!important;
+ min-height:100%!important;
+ height:100%!important;
+ box-sizing:border-box!important;
+}
+#sidebarnav .spartan-settings-right{
+ gap:10px!important;
+}
+#sidebarnav .spartan-settings-right .spartan-transmit-setting{
+ flex:0 0 auto!important;
+}
+#sidebarnav .spartan-settings-right .spartan-sounds-setting{
+ flex:1 1 auto!important;
+ min-height:0!important;
+}
+#sidebarnav .spartan-set-box .set-help,
+#sidebarnav .spartan-set-box label,
+#sidebarnav .spartan-set-box form{
+ padding-left:12px!important;
+ padding-right:12px!important;
+ max-width:100%!important;
+ overflow-wrap:break-word!important;
+ box-sizing:border-box!important;
+}
+#sidebarnav .spartan-set-box .select,
+#sidebarnav .spartan-set-box select.select-inline{
+ display:block!important;
+ width:calc(100% - 24px)!important;
+ max-width:calc(100% - 24px)!important;
+ margin-left:12px!important;
+ margin-right:12px!important;
+ box-sizing:border-box!important;
+}
+#sidebarnav .spartan-set-box .sidenav-label,
+#sidebarnav .spartan-set-box .sidenav-label-first{
+ padding-left:12px!important;
+ padding-right:12px!important;
+}
+#sidebarnav .spartan-sound-chat,
+#sidebarnav .spartan-sound-room{
+ display:none!important;
+}
+@media only screen and (max-width:860px){
+ #sidebarnav .spartan-settings-cols{
+  grid-template-columns:1fr!important;
+  grid-template-rows:auto auto!important;
+ }
+ #sidebarnav .spartan-settings-left,
+ #sidebarnav .spartan-settings-right{
+  grid-column:1!important;
+  grid-row:auto!important;
+  height:auto!important;
+  min-height:0!important;
+ }
+ #sidebarnav .spartan-settings-left .spartan-set-box{
+  height:auto!important;
+  min-height:0!important;
+ }
+}
+
+/* spartan-v78 — botão Outras salas na sidebar; overlay interno */
+body.spartan-in #left-sidebar {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+body.spartan-in #users {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+#spartan-salas-btn {
+  display: none;
+  flex: 0 0 auto;
+  margin: 8px;
+  padding: 0.55rem 0.75rem;
+  background: #111;
+  color: #fecaca;
+  border: 2px solid #dc2626;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  width: calc(100% - 16px);
+  box-sizing: border-box;
+  text-align: center;
+}
+
+html.spartan-in-shell #spartan-salas-btn {
+  display: block;
+}
+
+#spartan-salas-btn:hover {
+  border-color: #f87171;
+  color: #fff;
+}
+
+#spartan-salas-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+#spartan-salas-overlay[hidden] {
+  display: none !important;
+}
+
+.spartan-salas-panel {
+  width: min(1120px, 96vw);
+  height: min(86vh, 820px);
+  max-height: calc(100dvh - 28px);
+  display: flex;
+  flex-direction: column;
+  background: #33363d;
+  border: 2px solid #dc2626;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+
+.spartan-salas-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: #000;
+  border-bottom: 2px solid #dc2626;
+  color: #fff;
+}
+
+.spartan-salas-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #fecaca;
+}
+
+#spartan-salas-close {
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.spartan-salas-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px;
+}
+
+#spartan-salas-q {
+  width: 100%;
+  box-sizing: border-box;
+  background: #1e1f22;
+  color: #f2f3f5;
+  border: 1px solid #3f4147;
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  margin-bottom: 8px;
+}
+
+.spartan-salas-tools {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.spartan-salas-tools .sort-btn {
+  background: #1e1f22;
+  color: #e5e7eb;
+  border: 1px solid #3f4147;
+  border-radius: 8px;
+  padding: 0.35rem 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.spartan-salas-tools .sort-btn.on {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+}
+
+.spartan-salas-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.spartan-salas-list .sala-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem 0.75rem;
+  background: #000;
+  border: 2px solid #dc2626;
+  border-radius: 8px;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.spartan-salas-list .sala-item:hover {
+  border-color: #f87171;
+}
+
+.spartan-salas-list .sala-tag {
+  font-size: 0.75rem;
+  color: #86efac;
+  font-weight: 700;
+}
+
+.spartan-salas-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.spartan-salas-pager button {
+  background: #1e1f22;
+  color: #e5e7eb;
+  border: 1px solid #3f4147;
+  border-radius: 8px;
+  padding: 0.35rem 0.65rem;
+  cursor: pointer;
+}
+
+.spartan-salas-pager button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.spartan-salas-back {
+  flex: 0 0 auto;
+  margin: 0 14px 14px;
+  padding: 0.55rem;
+  background: #111;
+  color: #fecaca;
+  border: 2px solid #dc2626;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.spartan-salas-back:hover {
+  border-color: #f87171;
+  color: #fff;
+}
+
+#spartan-salas-overlay .spartan-salas-grid{
+ grid-template-columns:1fr!important;
+}
+#spartan-salas-overlay .spartan-salas-col-temp,
+#spartan-salas-overlay #spartan-salas-temp{
+ display:none!important;
+}
+#spartan-salas-overlay .spartan-salas-grid-room{
+ grid-template-columns:1fr!important;
+}
+#spartan-salas-overlay .spartan-salas-panel{
+ width:min(720px,96vw)!important;
+}
+/* spartan-v89 — salas full 2 colunas; scroll só quando necessário */
+.spartan-salas-grid{
+ flex:1 1 auto!important;
+ min-height:0!important;
+ display:grid!important;
+ grid-template-columns:1fr 1fr!important;
+ gap:14px 20px!important;
+ align-items:stretch!important;
+ overflow:hidden!important;
+}
+.spartan-salas-col{
+ display:flex!important;
+ flex-direction:column!important;
+ min-height:0!important;
+ min-width:0!important;
+ overflow:hidden!important;
+ background:#2b2d31;
+ border:1px solid #3f4147;
+ border-radius:10px;
+ padding:10px 10px 8px;
+ box-sizing:border-box;
+}
+.spartan-salas-col-title{
+ margin:0 0 8px!important;
+ padding:7px 12px!important;
+ background:#000!important;
+ color:#fff!important;
+ border-radius:8px!important;
+ font-size:13px!important;
+ font-weight:700!important;
+ line-height:1.2!important;
+}
+.spartan-salas-section-title{
+ margin-top:4px!important;
+}
+.spartan-salas-main-slot{
+ flex:0 0 auto!important;
+ margin-bottom:4px!important;
+}
+.spartan-salas-scroll{
+ flex:1 1 auto!important;
+ min-height:0!important;
+ overflow-y:auto!important;
+ overflow-x:hidden!important;
+ display:flex!important;
+ flex-direction:column!important;
+ gap:8px!important;
+ scrollbar-width:thin;
+}
+.spartan-salas-scroll:has(.salas-empty:only-child){
+ overflow-y:hidden!important;
+}
+.spartan-salas-col-temp .spartan-salas-scroll:has(.salas-empty:only-child){
+ flex:0 0 auto!important;
+}
+.spartan-salas-scroll .salas-empty,
+.spartan-salas-main-slot .salas-empty{
+ margin:0;
+ padding:8px 4px;
+ color:#9ca3af;
+ font-size:12px;
+}
+.spartan-salas-list,
+.spartan-salas-scroll .sala-item,
+.spartan-salas-main-slot .sala-item{
+ display:flex!important;
+ align-items:center!important;
+ justify-content:space-between!important;
+ gap:8px!important;
+ width:100%!important;
+ box-sizing:border-box!important;
+ padding:0.6rem 0.75rem!important;
+ background:#111!important;
+ border:1px solid #dc2626!important;
+ border-radius:8px!important;
+ color:#fff!important;
+ text-decoration:none!important;
+ font:inherit!important;
+ font-weight:600!important;
+ cursor:pointer!important;
+ text-align:left!important;
+}
+.spartan-salas-scroll .sala-item:hover,
+.spartan-salas-main-slot .sala-item:hover{
+ border-color:#f87171!important;
+}
+.sala-item-main{
+ border-width:2px!important;
+}
+.sala-tag{
+ font-size:11px!important;
+ font-weight:700!important;
+ color:#fecaca!important;
+ white-space:nowrap!important;
+}
+.sala-rem{
+ font-size:11px!important;
+ color:#9ca3af!important;
+ white-space:nowrap!important;
+}
+.sala-item-name{
+ flex:1 1 auto!important;
+ min-width:0!important;
+ overflow:hidden!important;
+ text-overflow:ellipsis!important;
+ white-space:nowrap!important;
+}
+.sala-item-right{
+ flex:0 0 auto!important;
+ display:inline-flex!important;
+ align-items:center!important;
+ gap:.45rem!important;
+ margin-left:auto!important;
+}
+.sala-online{
+ font-size:11px!important;
+ font-weight:800!important;
+ color:#86efac!important;
+ background:#052e16!important;
+ border:1px solid #16a34a!important;
+ border-radius:999px!important;
+ padding:.12rem .45rem!important;
+ line-height:1.2!important;
+ min-width:1.2rem!important;
+ text-align:center!important;
+}
+.sala-live{
+ font-size:11px!important;
+ font-weight:700!important;
+ color:#fde68a!important;
+ white-space:nowrap!important;
+}
+.user-presence-menu{
+ padding:.35rem .15rem .15rem!important;
+ border-top:1px solid #3f4147!important;
+ margin-top:.25rem!important;
+}
+.user-presence-time{
+ display:block!important;
+ font-size:12px!important;
+ font-weight:700!important;
+ color:#e5e7eb!important;
+ text-align:center!important;
+ white-space:nowrap!important;
+}
+.spartan-salas-page-grid{
+ flex:1 1 auto!important;
+ min-height:0!important;
+ margin:0 0 1rem!important;
+}
+.home.salas-page{
+ width:min(640px,94vw)!important;
+ max-width:640px!important;
+ margin-left:auto!important;
+ margin-right:auto!important;
+ max-height:calc(100dvh - 7rem)!important;
+ display:flex!important;
+ flex-direction:column!important;
+ overflow:hidden!important;
+ box-sizing:border-box!important;
+}
+.home.salas-page .spartan-salas-page-grid{
+ flex:1 1 auto!important;
+ min-height:280px!important;
+}
+@media only screen and (max-width:760px){
+ .spartan-salas-grid{
+  grid-template-columns:1fr!important;
+ }
+ .spartan-salas-panel{
+  height:auto!important;
+  max-height:calc(100dvh - 20px)!important;
+ }
+}
+
+/* spartan-v93 — config: colunas lado a lado, sem vão no meio */
+#sidebarnav .sidenav-panel{
+ width:min(900px,94vw)!important;
+}
+#sidebarnav .sidenav-content{
+ display:flex!important;
+ flex-direction:column!important;
+ grid-template-columns:unset!important;
+ grid-template-rows:unset!important;
+ padding:12px 16px 16px!important;
+ gap:0!important;
+}
+#sidebarnav .spartan-settings-cols{
+ display:flex!important;
+ flex-direction:row!important;
+ align-items:stretch!important;
+ gap:12px!important;
+ width:100%!important;
+ min-width:0!important;
+ margin:0!important;
+ padding:0!important;
+}
+#sidebarnav .spartan-settings-left,
+#sidebarnav .spartan-settings-right{
+ flex:1 1 0!important;
+ min-width:0!important;
+ width:auto!important;
+ max-width:none!important;
+ grid-column:unset!important;
+ grid-row:unset!important;
+}
+#sidebarnav #mediaoptions,
+#sidebarnav .spartan-transmit-setting,
+#sidebarnav .spartan-sounds-setting{
+ grid-column:unset!important;
+ grid-row:unset!important;
+ width:100%!important;
+ max-width:100%!important;
+ margin:0!important;
+}
+@media only screen and (max-width:860px){
+ #sidebarnav .spartan-settings-cols{
+  flex-direction:column!important;
+  gap:10px!important;
+ }
+}
+
+/* spartan-v94 — shell home/salas: wallpaper, rodapé alinhado, sem salas 24h */
+html.spartan-shell{
+ background-color:#000!important;
+ background-image:url("/papel-de-parede.jpg?v=12")!important;
+ background-position:center center!important;
+ background-size:cover!important;
+ background-repeat:no-repeat!important;
+ background-attachment:fixed!important;
+}
+html.spartan-shell body{
+ background:transparent!important;
+ background-image:none!important;
+ position:static!important;
+ inset:auto!important;
+ width:100%!important;
+ height:auto!important;
+ max-height:none!important;
+ overflow-x:hidden!important;
+ overflow-y:auto!important;
+}
+html.spartan-shell body:not(.spartan-in){
+ position:static!important;
+ inset:auto!important;
+ overflow:visible!important;
+ height:auto!important;
+ max-height:none!important;
+}
+html.spartan-shell footer.signature{
+ display:flex!important;
+ flex-direction:row!important;
+ flex-wrap:nowrap!important;
+ align-items:center!important;
+ justify-content:space-between!important;
+ gap:.45rem 1rem!important;
+ padding:.55rem 1rem!important;
+ z-index:40!important;
+}
+html.spartan-shell .foot-left{
+ position:static!important;
+ flex:1 1 0!important;
+ min-width:0!important;
+ text-align:left!important;
+ transform:none!important;
+ margin:0!important;
+}
+html.spartan-shell .foot-mid{
+ position:static!important;
+ flex:1 1 auto!important;
+ text-align:center!important;
+ transform:none!important;
+ white-space:nowrap!important;
+ margin:0!important;
+}
+html.spartan-shell .foot-right{
+ position:static!important;
+ flex:0 0 auto!important;
+ margin-left:0!important;
+ text-align:right!important;
+ transform:none!important;
+}
+html.spartan-shell .btn-salas{
+ display:inline-flex!important;
+ align-items:center!important;
+ justify-content:center!important;
+ white-space:nowrap!important;
+ line-height:1.2!important;
+}
+.spartan-salas-grid-public,
+#spartan-salas-overlay .spartan-salas-grid-room,
+#spartan-salas-overlay .spartan-salas-grid-public{
+ grid-template-columns:1fr!important;
+}
+.spartan-salas-grid-public .spartan-salas-col-temp,
+#spartan-salas-overlay .spartan-salas-col-temp,
+#salas-temp,
+#spartan-salas-temp{
+ display:none!important;
+}
+/* spartan-v95 — shell/standalone: cartões home e salas centralizados */
+body:not(.spartan-in):has(> .home.salas-page){
+ display:flex!important;
+ flex-direction:column!important;
+ align-items:center!important;
+ justify-content:center!important;
+}
+html.spartan-shell #spartan-view-home.on,
+html.spartan-shell #spartan-view-salas.on{
+ align-items:center!important;
+ justify-content:center!important;
+}
+html.spartan-shell #spartan-view-home .home,
+html.spartan-shell #spartan-view-salas .home{
+ align-self:center!important;
+ margin-left:auto!important;
+ margin-right:auto!important;
+ width:min(92vw,504px)!important;
+ max-width:504px!important;
+}
+html.spartan-shell #spartan-view-salas .home.salas-page{
+ width:min(640px,94vw)!important;
+ max-width:640px!important;
+}
+.home.salas-page .spartan-salas-page-grid{
+ min-height:200px!important;
+}
+@media (max-width:800px){
+ html.spartan-shell footer.signature{
+  flex-wrap:wrap!important;
+  justify-content:center!important;
+  text-align:center!important;
+ }
+ html.spartan-shell .foot-left,
+ html.spartan-shell .foot-mid,
+ html.spartan-shell .foot-right{
+  flex:1 1 100%!important;
+  text-align:center!important;
+  white-space:normal!important;
+ }
+}

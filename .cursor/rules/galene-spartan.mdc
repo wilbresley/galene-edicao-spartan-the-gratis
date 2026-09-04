@@ -41,4 +41,4 @@ Python (`registry.py`): `docker restart spartan-reg`.
 
 ## CodeGraph
 
-Ver `.cursor/rules/codegraph-primeiro.mdc`. Índice em `.codegraph/` desta pasta; se a sessão Cursor estiver noutro workspace, passar `projectPath`. Não correr `codegraph init` / `uninstall` / `uninit`.
+Ver `.cursor/rules/codegraph-primeiro.mdc` (absoluto). Índice em `.codegraph/` desta pasta. Sempre `projectPath: s:\workspace\galene-castro`. Proibido `uninstall` / `uninit`; `init` já foi feito.

@@ -67,7 +67,7 @@ Logs: `docker compose logs -f`
 |---|---|
 | **Galene** | SFU + TURN: áudio/vídeo/tela entre várias pessoas |
 | **static/** | Interface Spartan (home, salas, admin, sala ao vivo, `sounds/*.mp3`) |
-| **registry.py** | Sidecar (`spartan-reg`): convites, temporários, logs, IDs, beacon |
+| **registry.py** | Sidecar (`spartan-reg`): convites, temporários, logs, IDs, beacon, **presença/timers** |
 | **groups/spartan.json** | Sala principal (modo **convite** na fábrica) |
 | **data/** | Config, contas, registry, sidecar.auth |
 
@@ -81,6 +81,8 @@ Várias pessoas no mesmo canal, com microfone, câmera e compartilhamento de tel
 - **Lives** — 1 em foco; 2 **lado a lado**; 3–4 em grid 2×2. Clique foca; outro clique tira o foco.
 - **Chat** — abre sozinho em mensagem nova (dá para desligar); textos somem depois de 24 h.
 - **Lista** — bolinha cinza/amarelo/verde/vermelho; mudo e volume só no teu fone; admin pode silenciar o mic do outro ou expulsar.
+- **Timers (servidor)** — header = tempo da sala (`HH:MM:SS`); menu do nick = tempo individual. Sala vazia > 1 min zera o da sala.
+- **Reconexão** — oscilação até 60 s tenta religar em silêncio (mic/live preservados).
 - **Painel** (`/admin/`) — cadastrados, convites, salas, logs. Só admin da sala principal. Anfitrião de sala 24 h não entra.
 
 ### Cargos (3)

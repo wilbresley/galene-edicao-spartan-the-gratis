@@ -4,7 +4,7 @@ function uiDlg(msg,kind){return new Promise(function(resolve){var d=document.get
 function uiConfirm(m){return uiDlg(m,'confirm');}
 function uiPrompt(m){return uiDlg(m,'prompt');}
 
-const API_BASES=['/galene-api/v0','/spartan-api/gapi'];
+const API_BASES=['/spartan-api/gapi','/galene-api/v0'];
 let API=API_BASES[0];
 const REG='/spartan-api';
 let GROUP='spartan', user='', pass='', registry={}, SITE={main:'spartan',home:'spartan'};
@@ -14,43 +14,29 @@ function roomGid(){
  try{ var last=localStorage.getItem('spartanLastRoom'); if(last) gid=last; }catch(e){}
  return gid;
 }
+function adminIsEmbed(){ try{ return new URLSearchParams(location.search).get('embed')==='1'; }catch(e){ return false; } }
+function adminInShell(){ return adminIsEmbed() && window.parent !== window; }
+function adminCloseShell(){ try{ if(window.parent!==window) window.parent.postMessage({t:'spartan-admin-close'},'*'); }catch(e){} }
 function bindBackToRoom(){
  var a=document.querySelector('.btn-back');
  if(!a) return;
  var gid=roomGid();
- a.href='/group/'+encodeURIComponent(gid)+'/';
+ if(adminIsEmbed()){
+  a.textContent='Voltar à sala';
+  a.href='#';
+  if(a.dataset.bound) return;
+  a.dataset.bound='1';
+  a.addEventListener('click', function(e){ e.preventDefault(); adminCloseShell(); });
+  return;
+ }
+ a.href='/#/group/'+encodeURIComponent(gid);
  if(a.dataset.bound) return;
  a.dataset.bound='1';
  a.addEventListener('click', async function(e){
   e.preventDefault();
   var dest=roomGid();
-  var found=false;
-  if(typeof BroadcastChannel!=='undefined'){
-   try{
-    var ch=new BroadcastChannel('spartan-room');
-    found=await new Promise(function(resolve){
-     var t=setTimeout(function(){ try{ch.close();}catch(e){} resolve(false); },500);
-     ch.onmessage=function(ev){
-      var d=ev.data||{};
-      if(d.t==='pong' && d.group===dest){ clearTimeout(t); try{ch.close();}catch(e){} resolve(true); }
-     };
-     ch.postMessage({t:'ping', group:dest});
-    });
-    if(found){
-     var ch2=new BroadcastChannel('spartan-room');
-     ch2.postMessage({t:'focus', group:dest});
-     try{ ch2.close(); }catch(e){}
-     try{ window.close(); }catch(e){}
-     uiMsg('A sala já está aberta noutra aba.');
-     return;
-    }
-   }catch(err){}
-  }
-  try{
-   sessionStorage.setItem('spartanSession:'+dest, JSON.stringify({user:user,pass:pass,group:dest}));
-   sessionStorage.removeItem('spartanLoggedOut');
-  }catch(err){}
-  location.href='/group/'+encodeURIComponent(dest)+'/';
+  if(window.SpartanApp){ window.SpartanApp.goRoom(dest); return; }
+  location.href='/#/group/'+encodeURIComponent(dest);
  });
 }
 function authHeader(){return 'Basic '+btoa(unescape(encodeURIComponent(user+':'+pass)));}
@@ -60,7 +46,7 @@ async function api(path,opt){
  const order=API===API_BASES[1] ? [API_BASES[1], API_BASES[0]] : API_BASES.slice();
  let lastErr=null;
  for(let i=0;i<order.length;i++){
-  const r=await fetch(order[i]+path,{method:opt.method||'GET',headers:hdr,body:opt.body});
+  const r=await fetch(order[i]+path,{method:opt.method||'GET',headers:hdr,body:opt.body,credentials:'omit'});
   const text=await r.text();
   if(r.ok){
    API=order[i];
@@ -76,7 +62,7 @@ async function api(path,opt){
  throw lastErr;
 }
 async function reg(path,body){
- const r=await fetch(REG+path,{method:body?'POST':'GET',headers:{'Authorization':authHeader(),'X-Spartan-Auth':authHeader(),'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+ const r=await fetch(REG+path,{method:body?'POST':'GET',headers:{'Authorization':authHeader(),'X-Spartan-Auth':authHeader(),'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,credentials:'omit'});
  const text=await r.text();
  let data=null; try{data=JSON.parse(text);}catch(e){data=text;}
  if(!r.ok) throw new Error((data&&data.error)||text||r.statusText);
@@ -252,86 +238,217 @@ async function loadUsers(){
 }
 
 async function loadRooms(){
- const box=$('rooms');
+ const boxMain=$('rooms-main'), boxPerm=$('rooms-perm'), boxTemp=$('rooms-temp');
+ if(!boxMain) return;
  const names=await api('/.groups/')||[];
  await loadSite();
  let meta={};
- try{ (await (await fetch('/spartan-api/rooms')).json()).forEach(r=>meta[r.id]=r); }catch(e){}
+ try{ (await reg('/rooms?all=1')).forEach(r=>meta[r.id]=r); }catch(e){}
  const main=SITE.main||'spartan', home=SITE.home||main;
- const key='r:'+main+':'+home+':'+names.join('|')+JSON.stringify(meta);
+ const rest=names.filter(n=>n!==main);
+ const permanent=rest.filter(n=>!(meta[n]&&meta[n].ttl)).sort((x,y)=>x.localeCompare(y,'pt',{sensitivity:'base'}));
+ const temporary=rest.filter(n=>meta[n]&&meta[n].ttl).sort((a,b)=>{
+  const ra=(meta[a]&&meta[a].remaining_s)|0, rb=(meta[b]&&meta[b].remaining_s)|0;
+  if(ra!==rb) return ra-rb;
+  return a.localeCompare(b,'pt',{sensitivity:'base'});
+ });
+ const key='r2:'+main+':'+home+':'+names.join('|')+JSON.stringify(meta);
  if(key===loadRooms._k) return; loadRooms._k=key;
- box.innerHTML='';
- const rest=names.filter(n=>n!==main).sort((x,y)=>x.localeCompare(y,'pt',{sensitivity:'base'}));
- function paint(n, isMain){
-  const info=meta[n]||{};
-  const wrap=document.createElement('div');
-  if(isMain) wrap.className='room-main';
-  const row=document.createElement('div'); row.className='room-row room-row-wide';
-  row.innerHTML='<b></b><span class="sala-tag"></span><a class="btn-open" target="_blank" rel="noopener">Abrir</a>'+(isMain?'':'<button type="button" class="del">Apagar</button>');
-  row.querySelector('b').textContent=n+(n===home?' · home':'');
-  let tag=isMain?('principal · '+(info.open?'Pública':'Convite')):(info.ttl?(info.open?'Pública · 24h':'Convite · 24h'):(info.open?'Pública':'Convite'));
-  if(info.ttl && info.remaining_s!=null){
-   const s=Math.max(0, info.remaining_s|0), h=Math.floor(s/3600), m=Math.floor((s%3600)/60);
-   tag+=' · '+h+'h '+String(m).padStart(2,'0')+'min';
-  }
-  row.querySelector('.sala-tag').textContent=tag;
-  row.querySelector('a').href='/group/'+encodeURIComponent(n)+'/';
-  if(!isMain){
-   row.querySelector('.del').onclick=async()=>{
-    if(!await uiConfirm('Apagar a sala '+n+' por completo?')) return;
-    try{await api('/.groups/'+encodeURIComponent(n),{method:'DELETE'}); loadRooms._k=null; await loadRooms();}catch(e){uiMsg(e.message);}
-   };
-  }
-  wrap.appendChild(row);
-  if(isMain){
-   const ed=document.createElement('div'); ed.className='room-edit';
-   ed.innerHTML='<label>Título na home</label><input class="mtitle" type="text"/><label>Endereço (URL)</label><input class="mslug" type="text"/><button type="button" class="okbtn msave">Salvar nome e endereço</button>'+(info.open?'':'<label>Nova senha de amigos</label><input class="mpw" type="password" autocomplete="new-password"/><button type="button" class="rst mpws">Redefinir senha de amigos</button>');
-   ed.querySelector('.mtitle').value=info.title||n;
-   ed.querySelector('.mslug').value=n;
-   ed.querySelector('.msave').onclick=async()=>{
-    const title=ed.querySelector('.mtitle').value.trim();
-    const id=ed.querySelector('.mslug').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
-    if(!id){uiMsg('URL inválida');return;}
-    try{ SITE=await reg('/rename-main',{id:id,title:title||id}); loadRooms._k=null; uiMsg('Sala principal atualizada: /group/'+id+'/'); await loadSite(); await loadRooms(); }
-    catch(e){uiMsg(e.message);}
-   };
-   const pwbtn=ed.querySelector('.mpws');
-   if(pwbtn) pwbtn.onclick=async()=>{
-    const v=ed.querySelector('.mpw').value; if(!v){uiMsg('Digite a nova senha de amigos');return;}
-    try{
-     try{await api('/.groups/'+encodeURIComponent(n)+'/.wildcard-user',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:'present'})});}catch(e){}
-     await api('/.groups/'+encodeURIComponent(n)+'/.wildcard-user/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});
-     ed.querySelector('.mpw').value=''; uiMsg('Senha de amigos (Verificado) atualizada');
-    }catch(e){uiMsg(e.message);}
-   };
-   wrap.appendChild(ed);
-   const bar=document.createElement('div'); bar.className='room-pw';
-   bar.innerHTML=n===home?'<span class="home-on">Esta é a sala da home</span>':'<button type="button" class="okbtn sethome">Voltar esta para a home</button>';
-   const hb=bar.querySelector('.sethome');
-   if(hb) hb.onclick=async()=>{ try{ SITE=await reg('/site-home',{group:n}); loadRooms._k=null; uiMsg('Home voltou para a sala principal'); await loadRooms(); }catch(e){uiMsg(e.message);} };
-   wrap.appendChild(bar);
-  } else {
-   const bar=document.createElement('div'); bar.className='room-pw';
-   let extra=n===home?'<span class="home-on">Esta é a sala da home</span>':(info.ttl?'':'<button type="button" class="okbtn sethome">Usar na home</button>');
-   if(!info.open) extra='<input type="password" placeholder="Nova senha de amigos" autocomplete="new-password"/><button type="button" class="rst">Redefinir senha da sala</button> '+extra;
-   bar.innerHTML=extra;
-   const rst=bar.querySelector('.rst');
-   if(rst) rst.onclick=async()=>{
-    const v=bar.querySelector('input').value; if(!v){uiMsg('Digite a nova senha de amigos');return;}
-    try{
-     try{await api('/.groups/'+encodeURIComponent(n)+'/.wildcard-user',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:'present'})});}catch(e){}
-     await api('/.groups/'+encodeURIComponent(n)+'/.wildcard-user/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});
-     bar.querySelector('input').value=''; uiMsg('Senha de amigos da sala '+n+' atualizada');
-    }catch(e){uiMsg(e.message);}
-   };
-   const sh=bar.querySelector('.sethome');
-   if(sh) sh.onclick=async()=>{ try{ SITE=await reg('/site-home',{group:n}); loadRooms._k=null; uiMsg('Home agora abre a sala '+n); await loadRooms(); }catch(e){uiMsg(e.message);} };
-   wrap.appendChild(bar);
-  }
-  box.appendChild(wrap);
+ boxMain.innerHTML=''; boxPerm.innerHTML=''; boxTemp.innerHTML='';
+ const cntP=$('rooms-perm-count'), cntT=$('rooms-temp-count');
+ if(cntP) cntP.textContent='('+permanent.length+')';
+ if(cntT) cntT.textContent='('+temporary.length+')';
+ if(names.indexOf(main)>=0) paintRoomMain(main, meta[main]||{}, home);
+ if(!permanent.length) boxPerm.innerHTML='<p class="rooms-empty">Nenhuma sala permanente extra.</p>';
+ else permanent.forEach(n=>paintRoomPermanent(n, meta[n]||{}, home));
+ if(!temporary.length) boxTemp.innerHTML='<p class="rooms-empty">Nenhuma sala temporária ativa.</p>';
+ else temporary.forEach(n=>paintRoomTemporary(n, meta[n]||{}));
+}
+
+function fmtRoomRemaining(info){
+ if(!info||info.remaining_s==null) return '';
+ const s=Math.max(0, info.remaining_s|0), h=Math.floor(s/3600), m=Math.floor((s%3600)/60);
+ return h+'h '+String(m).padStart(2,'0')+'min';
+}
+function roomTagText(info, isMain){
+ let tag=isMain?'principal · ':'';
+ tag+=info.open?'Pública':'Convite';
+ if(info.ttl) tag+=' · 24h';
+ const rem=fmtRoomRemaining(info);
+ if(rem) tag+=' · '+rem;
+ return tag;
+}
+function shellRoomLink(id){ return location.origin+'/#/group/'+encodeURIComponent(id); }
+function copyTextToClipboard(text){
+ if(navigator.clipboard&&navigator.clipboard.writeText){
+  return navigator.clipboard.writeText(text).then(function(){ uiMsg('Link copiado'); }).catch(function(){ fallbackCopy(text); });
  }
- if(names.indexOf(main)>=0) paint(main, true);
- rest.forEach(n=>paint(n, false));
+ fallbackCopy(text);
+}
+function fallbackCopy(text){
+ const ta=document.createElement('textarea');
+ ta.value=text; ta.style.position='fixed'; ta.style.left='-9999px';
+ document.body.appendChild(ta); ta.select();
+ try{ document.execCommand('copy'); uiMsg('Link copiado'); }catch(e){ uiMsg('Copie manualmente: '+text); }
+ document.body.removeChild(ta);
+}
+async function resetRoomFriendsPassword(groupId, inputEl){
+ const v=inputEl.value;
+ if(!v){ uiMsg('Digite a nova senha de amigos'); return; }
+ try{
+  try{ await api('/.groups/'+encodeURIComponent(groupId)+'/.wildcard-user',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:'present'})}); }catch(e){}
+  await api('/.groups/'+encodeURIComponent(groupId)+'/.wildcard-user/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});
+  inputEl.value=''; uiMsg('Senha de amigos atualizada');
+ }catch(e){ uiMsg(e.message); }
+}
+async function setRoomEntrance(groupId){
+ try{
+  SITE=await reg('/site-home',{group:groupId});
+  loadRooms._k=null; uiMsg('Entrada do site agora é a sala '+groupId);
+  await loadRooms();
+ }catch(e){ uiMsg(e.message); }
+}
+async function deleteRoom(groupId){
+ if(!await uiConfirm('Apagar a sala '+groupId+' por completo?')) return;
+ try{
+  await api('/.groups/'+encodeURIComponent(groupId),{method:'DELETE'});
+  loadRooms._k=null; uiMsg('Sala '+groupId+' apagada');
+  await loadRooms();
+ }catch(e){ uiMsg(e.message); }
+}
+
+function paintRoomMain(n, info, home){
+ const box=$('rooms-main'); if(!box) return;
+ const wrap=document.createElement('div'); wrap.className='room-card room-card-main';
+ const head=document.createElement('div'); head.className='room-card-head';
+ head.innerHTML='<div class="room-card-title"><b></b><span class="room-card-sub"></span></div><span class="sala-tag"></span>';
+ head.querySelector('b').textContent=info.title||n;
+ head.querySelector('.room-card-sub').textContent=n+' · '+roomTagText(info, true);
+ head.querySelector('.sala-tag').textContent=info.open?'Pública':'Convite';
+ const acts=document.createElement('div'); acts.className='room-card-actions';
+ const open=document.createElement('a'); open.className='btn-open'; open.textContent='Abrir sala'; open.href='/group/'+encodeURIComponent(n)+'/'; open.target='_blank'; open.rel='noopener';
+ acts.appendChild(open);
+ head.appendChild(acts);
+ wrap.appendChild(head);
+ const ed=document.createElement('div'); ed.className='room-edit';
+ ed.innerHTML='<label>Título na interface</label><input class="mtitle" type="text"/><label>Endereço (URL)</label><input class="mslug" type="text"/><button type="button" class="okbtn msave">Salvar nome e endereço</button>';
+ ed.querySelector('.mtitle').value=info.title||n;
+ ed.querySelector('.mslug').value=n;
+ ed.querySelector('.msave').onclick=async()=>{
+  const title=ed.querySelector('.mtitle').value.trim();
+  const id=ed.querySelector('.mslug').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
+  if(!id){ uiMsg('URL inválida'); return; }
+  try{
+   SITE=await reg('/rename-main',{id:id,title:title||id});
+   loadRooms._k=null; uiMsg('Sala principal atualizada: /group/'+id+'/');
+   await loadSite(); await loadRooms();
+  }catch(e){ uiMsg(e.message); }
+ };
+ wrap.appendChild(ed);
+ if(!info.open){
+  const pw=document.createElement('div'); pw.className='room-card-pw';
+  pw.innerHTML='<input type="password" placeholder="Nova senha de amigos" autocomplete="new-password"/><button type="button" class="rst">Redefinir</button>';
+  pw.querySelector('.rst').onclick=function(){ resetRoomFriendsPassword(n, pw.querySelector('input')); };
+  wrap.appendChild(pw);
+ }
+ const foot=document.createElement('div'); foot.className='room-card-foot';
+ if(n===home){
+  foot.innerHTML='<span class="entrance-on">Entrada do site</span>';
+ }else{
+  const btn=document.createElement('button'); btn.type='button'; btn.className='okbtn sethome'; btn.textContent='Definir como entrada';
+  btn.onclick=function(){ setRoomEntrance(n); };
+  foot.appendChild(btn);
+ }
+ wrap.appendChild(foot);
+ box.appendChild(wrap);
+}
+
+function paintRoomPermanent(n, info, home){
+ const box=$('rooms-perm'); if(!box) return;
+ const wrap=document.createElement('div'); wrap.className='room-card room-card-perm';
+ const head=document.createElement('div'); head.className='room-card-head';
+ head.innerHTML='<div class="room-card-title"><b></b><span class="room-card-sub"></span></div><span class="sala-tag"></span>';
+ head.querySelector('b').textContent=info.title||n;
+ head.querySelector('.room-card-sub').textContent=n;
+ head.querySelector('.sala-tag').textContent=info.open?'Pública':'Convite';
+ if(n===home){
+  const badge=document.createElement('span'); badge.className='entrance-on'; badge.textContent='Entrada do site';
+  head.appendChild(badge);
+ }
+ wrap.appendChild(head);
+ const acts=document.createElement('div'); acts.className='room-card-actions';
+ const open=document.createElement('a'); open.className='btn-open'; open.textContent='Abrir'; open.href='/group/'+encodeURIComponent(n)+'/'; open.target='_blank'; open.rel='noopener';
+ acts.appendChild(open);
+ if(n!==home){
+  const sh=document.createElement('button'); sh.type='button'; sh.className='okbtn sethome'; sh.textContent='Definir como entrada';
+  sh.onclick=function(){ setRoomEntrance(n); };
+  acts.appendChild(sh);
+ }
+ const del=document.createElement('button'); del.type='button'; del.className='del'; del.textContent='Apagar';
+ del.onclick=function(){ deleteRoom(n); };
+ acts.appendChild(del);
+ wrap.appendChild(acts);
+ if(!info.open){
+  const pw=document.createElement('div'); pw.className='room-card-pw';
+  pw.innerHTML='<input type="password" placeholder="Nova senha de amigos" autocomplete="new-password"/><button type="button" class="rst">Redefinir</button>';
+  pw.querySelector('.rst').onclick=function(){ resetRoomFriendsPassword(n, pw.querySelector('input')); };
+  wrap.appendChild(pw);
+ }
+ box.appendChild(wrap);
+}
+
+function paintRoomTemporary(n, info){
+ const box=$('rooms-temp'); if(!box) return;
+ const wrap=document.createElement('div'); wrap.className='room-card room-card-temp';
+ const head=document.createElement('div'); head.className='room-card-head';
+ head.innerHTML='<div class="room-card-title"><b></b><span class="sala-tag"></span><span class="room-ttl"></span></div>';
+ head.querySelector('b').textContent=n;
+ head.querySelector('.sala-tag').textContent=roomTagText(info, false);
+ const rem=fmtRoomRemaining(info);
+ head.querySelector('.room-ttl').textContent=rem?('⏱ '+rem):'';
+ wrap.appendChild(head);
+ const acts=document.createElement('div'); acts.className='room-card-actions';
+ const copy=document.createElement('button'); copy.type='button'; copy.className='okbtn copy-link'; copy.textContent='Copiar link';
+ const link=shellRoomLink(n);
+ copy.onclick=function(){ copyTextToClipboard(link); };
+ acts.appendChild(copy);
+ const open=document.createElement('a'); open.className='btn-open'; open.textContent='Abrir'; open.href='/group/'+encodeURIComponent(n)+'/'; open.target='_blank'; open.rel='noopener';
+ acts.appendChild(open);
+ const del=document.createElement('button'); del.type='button'; del.className='del'; del.textContent='Apagar';
+ del.onclick=function(){ deleteRoom(n); };
+ acts.appendChild(del);
+ wrap.appendChild(acts);
+ box.appendChild(wrap);
+}
+
+function roomFormType(){ const t=document.querySelector('input[name="rtype"]:checked'); return t?t.value:'def'; }
+function resetRoomCreateForm(){
+ if($('rd')) $('rd').value='';
+ if($('rn')){ $('rn').value=''; delete $('rn').dataset.slugReady; }
+ if($('rp')) $('rp').value='';
+ if($('rhost')) $('rhost').checked=false;
+ if($('rhost-wrap')) $('rhost-wrap').hidden=true;
+ if($('rhost-nick')) $('rhost-nick').value='';
+ if($('rhost-pw')) $('rhost-pw').value='';
+ if($('rtype-def')) $('rtype-def').checked=true;
+ if($('room-msg')) $('room-msg').textContent='';
+ syncRoomForm();
+}
+function openRoomCreateDlg(){
+ if($('room-create-done')) $('room-create-done').hidden=true;
+ if($('room-create-form')) $('room-create-form').hidden=false;
+ resetRoomCreateForm();
+ if($('room-create-dlg')) $('room-create-dlg').hidden=false;
+}
+function closeRoomCreateDlg(){
+ if($('room-create-dlg')) $('room-create-dlg').hidden=true;
+}
+function showRoomCreated(createdId, title, typeMsg){
+ const link=shellRoomLink(createdId);
+ if($('room-create-form')) $('room-create-form').hidden=true;
+ if($('room-done-msg')) $('room-done-msg').textContent='Sala "'+(title||createdId)+'" criada'+typeMsg;
+ if($('room-done-link')){ $('room-done-link').textContent=link; $('room-done-link').dataset.href=link; }
+ if($('room-create-done')) $('room-create-done').hidden=false;
 }
 
 async function loadGuests(){
@@ -500,7 +617,10 @@ $('btn-login').onclick=async()=>{
  }catch(e){$('login-err').textContent=e.message;}
 };
 $('p').addEventListener('keydown',e=>{if(e.key==='Enter')$('btn-login').click();});
-$('btn-out').onclick=()=>{try{sessionStorage.removeItem('spartanAdmin');}catch(e){} location.href='/';};
+$('btn-out').onclick=()=>{try{sessionStorage.removeItem('spartanAdmin');}catch(e){} if(adminInShell()){ adminCloseShell(); return; } location.href='/#/';};
+if(adminIsEmbed()){ document.documentElement.classList.add('admin-embed'); document.querySelector('footer.signature')&&document.querySelector('footer.signature').classList.add('invisible'); }
+if(adminInShell()) document.documentElement.classList.add('admin-in-shell');
+document.addEventListener('keydown', function(e){ if(e.key==='Escape' && adminInShell()) adminCloseShell(); });
 $('btn-create').onclick=async()=>{
  const n=($('nu').value||'').trim().toLowerCase(), p=$('np').value, perm=$('nperm').value; $('nu').value=n; $('create-msg').textContent='';
  if(!n||!p){$('create-msg').textContent='Nome e senha obrigatórios';return;}
@@ -511,59 +631,109 @@ $('btn-create').onclick=async()=>{
  }catch(e){$('create-msg').textContent=e.message;}
 };
 function syncRoomForm(){
- const invite=$('rkind-invite')&&$('rkind-invite').checked;
- if($('rp')){ $('rp').disabled=!invite; if(!invite) $('rp').value=''; }
- const ttlBox=$('rttl');
- if(ttlBox){
-  if(!invite){ ttlBox.checked=true; ttlBox.disabled=true; }
-  else ttlBox.disabled=false;
+ const type=roomFormType();
+ const invite=type!=='pub24';
+ const ttl=type==='inv24'||type==='pub24';
+ if($('rp-wrap')) $('rp-wrap').hidden=!invite;
+ if($('rp')){ if(!invite) $('rp').value=''; }
+ const rn=$('rn'), regen=$('rn-regen'), lbl=$('rn-label'), hint=$('rn-hint');
+ if(rn){
+  if(ttl){
+   rn.readOnly=true;
+   rn.classList.add('slug-auto');
+   if(lbl) lbl.textContent='Código do link (24h)';
+   if(regen) regen.hidden=false;
+   if(hint) hint.hidden=false;
+   if(!rn.value || !rn.dataset.slugReady) spartanAssignRoomSlug(false);
+  }else{
+   rn.readOnly=false;
+   rn.classList.remove('slug-auto');
+   if(lbl) lbl.textContent='Endereço na URL (minúsculo, sem espaço)';
+   if(regen) regen.hidden=true;
+   if(hint) hint.hidden=true;
+   if(rn.dataset.slugReady){ rn.value=''; delete rn.dataset.slugReady; }
+  }
  }
- const ttl=ttlBox?!!ttlBox.checked:false;
  if($('rhost-block')) $('rhost-block').hidden=!ttl;
  if(!ttl){
   if($('rhost')) $('rhost').checked=false;
   if($('rhost-wrap')) $('rhost-wrap').hidden=true;
  }
 }
-$('rkind-open')&&($('rkind-open').onchange=$('rkind-invite').onchange=syncRoomForm);
-$('rttl')&&($('rttl').onchange=syncRoomForm);
+var spartanSlugPool=new Set();
+async function spartanLoadSlugPool(){
+ spartanSlugPool.clear();
+ try{ (await reg('/rooms?all=1')||[]).forEach(function(r){ if(r&&r.id) spartanSlugPool.add(r.id); }); }catch(e){}
+ try{ (await api('/.groups/')||[]).forEach(function(id){ spartanSlugPool.add(id); }); }catch(e){}
+}
+function spartanMakeRoomSlug(){
+ var chars='abcdefghijklmnopqrstuvwxyz0123456789', i, s, buf;
+ for(i=0;i<300;i++){
+  s='';
+  buf=new Uint8Array(15);
+  crypto.getRandomValues(buf);
+  for(var j=0;j<15;j++) s+=chars[buf[j]%chars.length];
+  if(!spartanSlugPool.has(s)){ spartanSlugPool.add(s); return s; }
+ }
+ throw new Error('Não deu para gerar código único. Tente de novo.');
+}
+async function spartanAssignRoomSlug(forceNew){
+ var rn=$('rn');
+ if(!rn) return;
+ await spartanLoadSlugPool();
+ if(forceNew && rn.value) spartanSlugPool.delete(rn.value);
+ rn.value=spartanMakeRoomSlug();
+ rn.dataset.slugReady='1';
+}
+document.querySelectorAll('input[name="rtype"]').forEach(function(el){ el.onchange=function(){ syncRoomForm(); }; });
+$('rn-regen')&&($('rn-regen').onclick=async function(){ try{ await spartanAssignRoomSlug(true); }catch(e){ uiMsg(e.message); } });
 $('rhost')&&($('rhost').onchange=function(){
  if($('rhost-wrap')) $('rhost-wrap').hidden=!$('rhost').checked;
 });
+$('btn-room-open')&&($('btn-room-open').onclick=openRoomCreateDlg);
+$('room-create-close')&&($('room-create-close').onclick=closeRoomCreateDlg);
+$('room-create-cancel')&&($('room-create-cancel').onclick=closeRoomCreateDlg);
+$('room-done-close')&&($('room-done-close').onclick=closeRoomCreateDlg);
+$('room-done-copy')&&($('room-done-copy').onclick=function(){
+ const el=$('room-done-link');
+ copyTextToClipboard((el&&el.dataset.href)||(el&&el.textContent)||'');
+});
+if($('room-create-dlg')){
+ $('room-create-dlg').addEventListener('click',function(e){ if(e.target===$('room-create-dlg')) closeRoomCreateDlg(); });
+}
 syncRoomForm();
 $('btn-room').onclick=async()=>{
+ const type=roomFormType();
+ const open=type==='pub24';
+ const ttl=type==='inv24'||type==='pub24';
+ if(ttl){
+  try{ if(!$('rn').value || !$('rn').dataset.slugReady) await spartanAssignRoomSlug(false); }catch(e){ if($('room-msg')) $('room-msg').textContent=e.message; return; }
+ }
  let slug=$('rn').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
  const title=$('rd').value.trim()||slug;
- const open=!($('rkind-invite')&&$('rkind-invite').checked);
- const ttl=open || (($('rttl')&&$('rttl').checked));
  const wp=$('rp')?$('rp').value:'';
  const wantHost=ttl && $('rhost')&&$('rhost').checked;
  const hostNick=(($('rhost-nick')&&$('rhost-nick').value)||'').trim().toLowerCase();
  const hostPw=$('rhost-pw')?$('rhost-pw').value:'';
- $('room-msg').textContent='';
- if(!slug){$('room-msg').textContent='Digite o nome da sala';return;}
- if(!open && (!wp || wp.length<8)){$('room-msg').textContent='Senha de convite com no mínimo 8 caracteres';return;}
- if(wantHost && (!hostNick || hostPw.length<8)){$('room-msg').textContent='Anfitrião precisa de nick e senha (mínimo 8)';return;}
+ if($('room-msg')) $('room-msg').textContent='';
+ if(!slug){ if($('room-msg')) $('room-msg').textContent=ttl?'Gere o código do link':'Digite o endereço da sala'; return; }
+ if(!open && (!wp || wp.length<8)){ if($('room-msg')) $('room-msg').textContent='Senha de convite com no mínimo 8 caracteres'; return; }
+ if(wantHost && (!hostNick || hostPw.length<8)){ if($('room-msg')) $('room-msg').textContent='Anfitrião precisa de nick e senha (mínimo 8)'; return; }
  try{
   const body={id:slug,title:title,open:open,ttl:!!ttl,host:!!wantHost};
   if(!open) body.friends_password=wp;
   if(wantHost){ body.host_nick=hostNick; body.host_password=hostPw; }
-  await reg('/create-room', body);
-  $('rn').value=''; $('rd').value=''; if($('rp')) $('rp').value='';
-  if($('rttl')) $('rttl').checked=false;
-  if($('rhost')) $('rhost').checked=false; if($('rhost-wrap')) $('rhost-wrap').hidden=true;
-  if($('rhost-nick')) $('rhost-nick').value=''; if($('rhost-pw')) $('rhost-pw').value='';
-  if($('rkind-invite')) $('rkind-invite').checked=true;
-  syncRoomForm();
-  let msg='Sala '+slug+' criada';
-  if(open) msg+=' (pública, 24h';
-  else if(ttl) msg+=' (convite, 24h';
-  else msg+=' (convite definitiva';
-  if(wantHost) msg+=', anfitrião '+hostNick;
-  msg+=')';
-  $('room-msg').textContent=msg;
+  const res=await reg('/create-room', body);
+  const createdId=(res&&res.id)||slug;
+  let typeMsg='';
+  if(open) typeMsg=' (pública, 24h';
+  else if(ttl) typeMsg=' (convite, 24h';
+  else typeMsg=' (convite definitiva';
+  if(wantHost) typeMsg+=', anfitrião '+hostNick;
+  typeMsg+=')';
   loadRooms._k=null; await loadRooms();
- }catch(e){$('room-msg').textContent=e.message;}
+  showRoomCreated(createdId, title||createdId, typeMsg);
+ }catch(e){ if($('room-msg')) $('room-msg').textContent=e.message; }
 };
 document.querySelectorAll('.tab').forEach(b=>{
  b.onclick=()=>{
@@ -575,6 +745,7 @@ document.querySelectorAll('.tab').forEach(b=>{
   if($('tab-logs')) $('tab-logs').hidden=b.dataset.tab!=='logs';
   if($('tab-net')) $('tab-net').hidden=b.dataset.tab!=='net';
   $('tab-rooms').hidden=b.dataset.tab!=='rooms';
+  if(b.dataset.tab==='rooms'){ loadRooms._k=null; loadRooms(); }
   if(b.dataset.tab==='logs'){ loadLogs._k=null; loadLogs(); }
   if(b.dataset.tab==='net'){ loadNetLogs._k=null; loadNetLogs(); }
  };
@@ -601,7 +772,7 @@ try{
 }catch(e){}
 
 document.querySelectorAll('.list-tools').forEach(function(bar){bar.addEventListener('click',function(e){var btn=e.target.closest('[data-sort]'); if(!btn) return; var tab=bar.getAttribute('data-tab'); SORT[tab]=btn.getAttribute('data-sort'); bar.querySelectorAll('[data-sort]').forEach(function(x){x.classList.toggle('on',x===btn);}); loadUsers._k=loadGuests._k=loadBlocked._k=loadTemps._k=null; if(tab==='users') loadUsers(); else if(tab==='guests') loadGuests(); else if(tab==='blocked') loadBlocked(); else if(tab==='temps') loadTemps();});});
-setInterval(function(){ try{ if($('panel') && !$('panel').hidden){ loadUsers().catch(function(){}); loadGuests().catch(function(){}); loadBlocked().catch(function(){}); loadTemps().catch(function(){}); if($('tab-logs') && !$('tab-logs').hidden) loadLogs().catch(function(){}); if($('tab-net') && !$('tab-net').hidden) loadNetLogs().catch(function(){}); } }catch(e){} }, 8000);
+setInterval(function(){ try{ if($('panel') && !$('panel').hidden){ loadUsers().catch(function(){}); loadGuests().catch(function(){}); loadBlocked().catch(function(){}); loadTemps().catch(function(){}); if($('tab-logs') && !$('tab-logs').hidden) loadLogs().catch(function(){}); if($('tab-net') && !$('tab-net').hidden) loadNetLogs().catch(function(){}); if($('tab-rooms') && !$('tab-rooms').hidden) loadRooms().catch(function(){}); } }catch(e){} }, 8000);
 ['log-tipo','log-nick','log-ip'].forEach(function(id){
  var el=$(id); if(!el) return;
  el.addEventListener(id==='log-tipo'?'change':'input', function(){ loadLogs._k=null; paintLogs(); });

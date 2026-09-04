@@ -1,6 +1,6 @@
 <!DOCTYPE html>
-<!-- Landing Spartan (marca + Cade a Live?). NUNCA substituir este ficheiro pelo painel. O login do painel é /admin (arquivo, não pasta). -->
-<html lang="pt-BR" class="spartan-home">
+<!-- Shell SPA Spartan: home, salas e sala na mesma aba. Painel admin em overlay. -->
+<html lang="pt-BR" class="spartan-home spartan-shell">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -8,29 +8,79 @@
 <link rel="icon" type="image/jpeg" href="/icone-separtan.jpg"/>
 <link rel="stylesheet" href="/common.css"/>
 <link rel="stylesheet" href="/mainpage.css"/>
-<link rel="stylesheet" href="/spartan.css?v=22"/>
-<script src="/mainpage.js" defer></script>
-<script src="/custom-home.js?v=3" defer></script>
+<link rel="stylesheet" href="/spartan.css?v=24"/>
+<link rel="stylesheet" href="/galene-spartan.css?v=98"/>
+<link rel="stylesheet" href="/spartan-shell.css?v=8"/>
+<link rel="prefetch" href="/galene.js?v=110"/>
+<link rel="prefetch" href="/protocol.js?v=2"/>
+<script src="/custom-home.js?v=4" defer></script>
+<script src="/spartan-shell.js?v=4" defer></script>
 </head>
 <body>
-<div class="home">
-  <div class="spartan-brand">Spartan</div>
-  <p class="spartan-tag">Cade a Live?</p>
-  <a id="spartan-btn" class="spartan-btn" href="/group/spartan/">Entrar na sala Spartan</a>
-  <div id="candangos" class="candangos">Candangos online 0</div>
-  <form id="groupform" hidden>
-    <input id="group"/>
-    <input id="submitbutton" type="submit"/>
-  </form>
-  <p id="errormessage" hidden></p>
-  <div id="public-groups" hidden>
-    <table id="public-groups-table"></table>
+<div id="spartan-shell-root">
+  <div id="spartan-view-home" class="spartan-view on">
+    <div class="home">
+      <div class="spartan-brand">Spartan</div>
+      <p class="spartan-tag">Cade a Live?</p>
+      <a id="spartan-btn" class="spartan-btn" href="#/group/spartan" data-spartan-route="group:spartan">Entrar na sala Spartan</a>
+      <div id="candangos" class="candangos">Candangos online 0</div>
+      <form id="groupform" hidden>
+        <input id="group"/>
+        <input id="submitbutton" type="submit"/>
+      </form>
+      <p id="errormessage" hidden></p>
+      <div id="public-groups" hidden>
+        <table id="public-groups-table"></table>
+      </div>
+    </div>
+    <footer class="signature">
+      <span class="foot-left"><a href="https://galene.org">Galene</a> by <a href="https://www.irif.fr/~jch/">Juliusz Chroboczek</a></span>
+      <span class="foot-mid">Interface refeita por <a href="https://github.com/wilbresley" target="_blank" rel="noopener">wilbresley</a></span>
+      <span class="foot-right"><a class="btn-salas" href="#/salas" data-spartan-route="salas">Outras salas</a></span>
+    </footer>
+  </div>
+
+  <div id="spartan-view-salas" class="spartan-view">
+    <div class="home salas-page">
+      <div class="spartan-brand">Spartan</div>
+      <p class="spartan-tag">Outras salas</p>
+      <div class="salas-tools">
+        <input id="sala-q" type="search" placeholder="Buscar sala…" autocomplete="off" spellcheck="false"/>
+        <div class="list-tools">
+          <button type="button" class="sort-btn on" data-sort="az">A–Z</button>
+          <button type="button" class="sort-btn" data-sort="time">Recentes</button>
+        </div>
+      </div>
+      <div class="spartan-salas-grid spartan-salas-page-grid spartan-salas-grid-public">
+        <div class="spartan-salas-col spartan-salas-col-perm">
+          <h3 class="spartan-salas-col-title">Sala principal</h3>
+          <div id="salas-main" class="spartan-salas-main-slot"></div>
+          <h3 class="spartan-salas-col-title spartan-salas-section-title">Permanentes</h3>
+          <div id="salas-perm" class="spartan-salas-scroll"></div>
+        </div>
+      </div>
+      <a class="spartan-btn" href="#/" data-spartan-route="home">Voltar</a>
+    </div>
+    <footer class="signature">
+      <span class="foot-left"><a href="https://galene.org">Galene</a> by <a href="https://www.irif.fr/~jch/">Juliusz Chroboczek</a></span>
+      <span class="foot-mid">Interface refeita por <a href="https://github.com/wilbresley" target="_blank" rel="noopener">wilbresley</a></span>
+      <span class="foot-right"><a class="btn-salas" href="#/" data-spartan-route="home">Home</a></span>
+    </footer>
+    <script src="/spartan-salas.js?v=4" defer></script>
+    <script src="/salas.js?v=8" defer></script>
+  </div>
+
+  <div id="spartan-view-room" class="spartan-view">
+    <iframe id="spartan-room-frame" title="Sala Spartan" src="about:blank" allow="camera; microphone; display-capture; autoplay; fullscreen"></iframe>
   </div>
 </div>
-<footer class="signature">
-  <span class="foot-left"><a href="https://galene.org">Galene</a> by <a href="https://www.irif.fr/~jch/">Juliusz Chroboczek</a></span>
-  <span class="foot-mid">Interface refeita por <a href="https://github.com/wilbresley" target="_blank" rel="noopener">wilbresley</a></span>
-  <span class="foot-right"><a class="btn-salas" href="/salas/">Outras salas</a></span>
-</footer>
+
+<div id="spartan-admin-overlay" hidden>
+  <div id="spartan-admin-overlay-bar">
+    <strong>Painel Admin</strong>
+    <button type="button" id="spartan-admin-close">Fechar (Esc)</button>
+  </div>
+  <iframe id="spartan-admin-frame" title="Painel Admin Spartan" src="about:blank"></iframe>
+</div>
 </body>
 </html>

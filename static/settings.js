@@ -40,6 +40,9 @@
  * @property {boolean} [soundEntrar]
  * @property {boolean} [soundSair]
  * @property {boolean} [soundMensagem]
+ * @property {boolean} [qualityHud]
+ * @property {boolean} [gameMode]
+ * @property {string} [shareQuality]
  * @property {boolean} [forceRelay]
  */
 

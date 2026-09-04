@@ -1,7 +1,7 @@
 # Spartan Chat (Galene) — documentação completa da implantação
 
 **Data da implantação:** 20 de agosto de 2026  
-**Última revisão deste documento:** 25 de agosto de 2026  
+**Última revisão deste documento:** 4 de setembro de 2026  
 **Objetivo deste arquivo:** registrar *como o stack ficou no teu servidor*, para operação, backup e GitHub.  
 **Segredos:** nenhuma senha de produção, hash real do servidor, `sidecar.auth` vivo ou credencial operacional aparece aqui. Contas e senhas **da instalação** ficam só no servidor (`groups/*.json`, `data/config.json`, `data/sidecar.auth`).  
 **Exceção documentada:** o pacote `factory-reset/` traz a senha de fábrica `Mudar@123` (admin + convidados) de propósito — só para zerar o Docker; no primeiro login o admin **obrigatoriamente** troca as duas.
@@ -87,6 +87,7 @@ Imagem do Galene: **`galene:local`**, a mesma salva no Debian (`docker save`, 20
   data/                    → /data
       config.json
       registry.json        (convidados, temps, seen, pending…)
+      accounts.json        (cofre único: ID, nick, hash de senha, cargo)
       site.json            (sala main + sala da home)
       sidecar.auth         (Basic da API; 0600; NÃO vai para Git)
       var/
@@ -179,6 +180,8 @@ Nunca documente nem commite senhas **de produção**.
 | **Ouvinte** | `["present"]` (present **sem** message) | **temporário** (sala pública) | só voz (falar/ouvir); **sem** lives, **sem** chat texto, **sem** transmitir vídeo/tela |
 
 - Tipo de entrada (cadastrado / convidado / temporário) ≠ cargo. Nos logs, “Admin (painel)” é só o evento de login no `/admin`, não um 4º cargo.
+- **Cofre único (`data/accounts.json`):** nick, hash de senha e cargo (`op` / `present` / `ouvinte`) vivem aqui. Cadastrados entram em **qualquer** sala com a senha da conta; o sidecar sincroniza o user no Galene da sala destino no `/join-named` (adaptador interno). Senha de convite de amigos **não** entra no cofre — só vale naquela sala.
+- Convidados que **não** pediram cadastro somem da lista do painel após **24 h** (`prune_stale_guests`, a cada ~20 s); o histórico fica em `access.log` (`convidado_expirado`).
 - Sala pública: o sidecar (`ensure_open_ouvinte` no beacon) alinha o wildcard para Ouvinte.
 - Sala convite: wildcard permanece Verificado (`present`).
 - Painel: menu de cargo moderno; Renomear verde; Redefinir senha em modal; aba Logs com filtros (tipo, nick, IP).
@@ -201,10 +204,10 @@ Arquivo: `registry.py`. Endpoints úteis (prefixo `/spartan-api` opcional):
 | GET | `/registry` | admin Basic | dump do registry |
 | POST | `/beacon` | sala | IP + visto; em sala pública chama `ensure_open_ouvinte` |
 | POST | `/register` `/approve` `/quick` `/deny` `/block` `/unblock` `/forget` `/stamp` | fluxos de convite | cadastro / moderação |
-| POST | `/panel-login` | painel | só admin da **sala principal** / `config.json` / `sidecar.auth` |
+| POST | `/panel-login` | painel | admin: `sidecar.auth`, `config.json` ou conta **op** no cofre |
 | POST | `/can-panel` | sala | igual ao panel-login, **sem** gravar log (mostra o botão Painel Admin **só** se a conta for admin cadastrado; anfitrião 24h = não) |
 | POST | `/net-event` | sala (beacon) | cliente reporta queda/recuperação WS (código, duração, se recuperou) |
-| POST | `/join-named` | sala extra | valida conta da main e copia o user (Verificado, nunca op) para a sala extra |
+| POST | `/join-named` | sala | valida senha no **cofre** e sincroniza user+cargo na sala destino (anfitrião 24h continua só na sala dele) |
 | POST | `/create-room` | admin | cria sala extra: `open` (pública = 24h) ou convite; `ttl` opcional no convite; anfitrião só se `ttl` |
 | POST | `/first-setup` | admin | troca senha admin + amigos no 1º login |
 | POST | `/rename-user` | admin | renomeia por ID imutável |
@@ -240,7 +243,7 @@ Comportamentos de sessão:
 - Contador 24h (`#spartan-ttl`) reconstitui no `start()` (não só no submit do login): `spartanTtlRestore` + `GET /temp-status`. Anfitrião/op também faz poll.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: handoff `localStorage` para abrir o painel já logado.
-- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=94`, `galene-spartan.css?v=74`, `protocol.js?v=2`, `toastify.js?v=3`, `spartan-boot.js?v=7`). Home: `custom-home.js?v=3`. Painel: `admin.js?v=33`, `admin.css?v=22`. Painel em **`/admin/`** (`static/admin/index.html`). Nunca copiar o painel por cima de `index.html` da raiz.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=98`, `galene-spartan.css?v=81`, `protocol.js?v=3`, `toastify.js?v=3`, `spartan-boot.js?v=8`). Home shell: `spartan-shell.js?v=4`, `spartan-shell.css?v=4`, `custom-home.js?v=4`, `salas.js?v=5`. Painel: `admin.js?v=38`, `admin.css?v=25`. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar.
 
 Painel admin:
 
@@ -249,12 +252,13 @@ Painel admin:
 - Temporários = só salas `open` (sem senha).
 - Cadastrados: ID + nome à esquerda; à direita Detalhes, cargo e pares **Renomear / Redefinir senha** e **Excluir / Bloquear** (largura do texto + padding). **Detalhes** expande sala, IP e último visto.
 - Senha dos amigos **só na aba Salas** (por sala). A aba Usuários não duplica isso.
+- **Aba Salas:** barra fixa com **+ Criar sala** (modal); listas roláveis em três blocos — **principal**, **permanentes** (lista pública), **temporárias 24h** (só admin, contador + copiar link). Botão **Definir como entrada** = sala que abre na raiz do site; selo **Entrada do site** quando já é essa.
 - Listas: A–Z (padrão) ou Recentes.
-- Main no topo, sem Apagar; outras podem ir para a home.
+- Main no topo, sem Apagar; permanentes podem ser entrada do site.
 - Cargos: Admin / Verificado / Ouvinte (sem “só chat”).
 - Logs: filtros por tipo, nick e IP; horário Brasília.
 - **Oscilações:** aba própria; `data/net.log` 30 dias; filtros nick/sala/IP; cada queda conta.
-- **Criar sala:** convite definitiva (padrão); checkbox **Sala temporária (24h)**; pública sempre 24h; bloco anfitrião só aparece com ttl.
+- **Criar sala (modal):** três tipos — convite definitiva, convite 24h, pública 24h; código aleatório automático nas 24h; bloco anfitrião só em convite 24h; após criar, **Copiar link** no modal.
 
 ---
 
@@ -277,7 +281,8 @@ Painel admin:
 - Menu do outro usuário: **Mudo** (só o teu fone), **Volume (seu fone)** 0–400% em passos de 5%, e se fores admin: apresentar / **Silenciar microfone** (muta o mic **dele** para toda a sala) / Expulsar. Sem Identificar (não manda IP) e sem enviar arquivo.
 - Bolinha: **cinza** off; **amarelo** mic ligado parado; **verde** falando; **vermelho** mutado. Publish segue a **faixa** (`enabled`+`live` → `on`; senão `localMute` → `muted`) e reenvia o estado a cada ~2,5 s. Nos outros, `micstate === 'muted'` é absoluto (analisador/stats não pintam amarelo). Desmutar / falar com faixa viva publica `on` mesmo que o `localMute` da sessão tenha ficado preso.
 - Sons da sala (`static/sounds/`): `entrar.mp3`, `sair.mp3`, `mensagem.mp3`. Toca para os **outros** (não para ti, não no histórico, não no lote dos 1,5 s ao entrares). Configurações: três interruptores (entrada / saída / mensagem), ligados por defeito, gravados neste computador por nick. O browser só liberta o áudio depois do primeiro clique/tecla.
-- Queda da ligação, depois de já teres entrado: **graça de 30 s**. Blip curto não mostra overlay, não limpa a tela e tenta o WebSocket em silêncio (~3 s). Só depois de 30 s seguidos: overlay **Ligação perdida**, limpa tiles e trata como queda. Aí tenta sozinho aos 2 s / ~2,5 s e no evento `online`. O Galene larga o peer no servidor quando o WS cai — os outros podem ver um piscar; o que se evita é o teu overlay a cada 2 s. **Sair**, `/leave` e kick não entram nesta graça. Cada blip/recuperação/queda vai para `POST /net-event`.
+- Queda da ligação, depois de já teres entrado: **graça de 60 s**. Blip curto não mostra overlay, não limpa a tela e tenta o WebSocket em silêncio (~1,5 s). Só depois de 60 s seguidos: overlay **Ligação perdida**, limpa tiles e trata como queda. Aí tenta sozinho aos 2 s / ~2,5 s e no evento `online`. Mic/câmera/tela são preservados e republicados na reconexão silenciosa. O Galene larga o peer no servidor quando o WS cai — os outros podem ver um piscar; o que se evita é o teu overlay a cada 2 s. **Sair**, `/leave` e kick não entram nesta graça. Cada blip/recuperação/queda vai para `POST /net-event`.
+- Header da sala permanente: timer branco `HH:MM:SS` = **tempo da sala** (servidor). Conta só com gente online; sala vazia > **60 s** zera. Menu do nick: **tempo individual** na sala (também do servidor). `pagehide` avisa saída para o registry.
 - Avisos Toastify (erro/aviso/info) e `#spartan-toast`: caixa **preta** com borda vermelha 2px. O X de fechar (toasts, Configurações, chat e lives) é um `×` branco em Arial (o `✖` do Toastify no Windows vira emoji roxo). Botão **Chat do Canal** com texto centrado; sininho à direita só com mensagens por ler.
 - Header da sala: fundo preto, linha vermelha embaixo; **ícones** vermelhos (verde quando mic/câmera/tela estão ligados); **textos** dos itens (Microfone, Câmera, etc.) e o **nome da sala** em branco. Em salas de 24h, à **direita do nome**: `Tempo até exclusão desta sala: HH:MM` (permanece no F5 / rejoin). Lista de nicks à esquerda: caixinhas pretas com borda vermelha; fundo do grid e da lista `#33363d`. Sidebar com `border-right` vermelho 4px. Janelas (configurações, chat, convite, menus) borda vermelha 2px e cantos 12px.
 - Volume acima de 100% usa Web Audio (`GainNode`); até 100% usa `media.volume`. Não altera o que os outros ouvem.
@@ -354,6 +359,9 @@ A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export 
 23. 25/08/2026: quem transmite câmera avisa os outros com `camlive` no `setdata` — o botão Câmera aparece no PC mesmo antes de pedir o vídeo alto. Mic continua sem botão. Cache: `galene.js?v=92`.
 24. 25/08/2026: senha errada não entra na sala nem fica em loop de toast. O WebSocket conecta, mas a UI da canal só abre no `joined`; falha de auth volta ao login (um aviso) e não dispara a graça de 30 s. Cache: `galene.js?v=93`.
 25. 25/08/2026: duas lives abrem **lado a lado** já na primeira vez. Fechar a câmera no celular **não** mata o microfone nem deixa o ícone verde; vira de novo só áudio. Cache: `galene.js?v=94`.
+26. 01/09/2026: **shell SPA** na home (`/#/`, `/#/salas`, `/#/group/<id>`); painel admin em overlay; modo jogo, tela 720p/1080p, 60 fps na captura, HUD FPS/bitrate, VP8 primeiro. Cache: `galene.js?v=95`, `galene-spartan.css?v=75`, `spartan-shell.js?v=1`, `admin.js?v=34`.
+27. 01/09/2026: lista de salas sem 24h; slug aleatório 15 chars nas temporárias; login persiste entre salas; config compacta; FPS/bitrate via stats Galene. Cache: `galene.js?v=98`, `protocol.js?v=3`, `salas.js?v=5`, `admin.js?v=36`. Reiniciar `spartan-reg` após `registry.py`.
+28. 04/09/2026: **presença no servidor** — header = tempo da sala (`HH:MM:SS`, branco); menu do nick = tempo individual; sala vazia > 60 s zera o timer da sala; `POST /presence`, `GET /presence-room` / `presence-user`; lista de salas com online + live. **Reconexão** graça 60 s (preserva mic/live). Shell SPA centralizado; sem flash de login ao trocar sala. Cache: `galene.js?v=110`, `galene-spartan.css?v=98`, `spartan-boot.js?v=9`, `spartan-salas.js?v=4`, `spartan-shell.css?v=8`. Reiniciar `spartan-reg`.
 
 ---
 

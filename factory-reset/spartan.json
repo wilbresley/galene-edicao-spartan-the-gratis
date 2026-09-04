@@ -2,7 +2,7 @@
   "public": true,
   "displayName": "Spartan",
   "description": "",
-  "codecs": ["vp9", "vp8", "opus"],
+  "codecs": ["vp8", "vp9", "opus"],
   "unrestricted-tokens": true,
   "users": {
     "admin": {

@@ -2,7 +2,7 @@
 <html lang="pt-BR">
   <head>
     <meta http-equiv="Cache-Control" content="no-store"/>
-    <script src="/spartan-boot.js?v=7"></script>
+    <script src="/spartan-boot.js?v=9"></script>
     <title>Spartan</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,7 +16,7 @@
     <link rel="stylesheet" type="text/css" href="/third-party/fontawesome/css/regular.min.css"/>
     <link rel="stylesheet" type="text/css" href="/third-party/toastify/toastify.css"/>
     <link rel="stylesheet" type="text/css" href="/third-party/contextual/contextual.css"/>
-    <link rel="stylesheet" type="text/css" href="/galene-spartan.css?v=74"/>
+    <link rel="stylesheet" type="text/css" href="/galene-spartan.css?v=98"/>
   </head>
 
   <body>
@@ -52,6 +52,7 @@
             <span class="chat-unread" hidden aria-hidden="true"><i class="fas fa-bell" aria-hidden="true"></i></span>
           </button>
           <div id="users"></div>
+          <button type="button" id="spartan-salas-btn" class="spartan-salas-btn" hidden>Outras salas</button>
         </nav>
         <div class="container">
           <header>
@@ -61,6 +62,9 @@
                   <i class="fas fa-align-left" aria-hidden="true"></i>
                 </div>
                 <h1 id="title" class="header-title">Spartan</h1>
+                <div id="spartan-live" hidden>
+                  <span id="spartan-live-clock">00:00:00</span>
+                </div>
                 <div id="spartan-ttl" hidden>
                   <span class="spartan-ttl-msg">Tempo até exclusão desta sala:</span>
                   <span id="spartan-ttl-clock">24:00</span>
@@ -212,23 +216,26 @@
       </div>
       <div class="sidenav-content" id="optionsdiv">
         <div id="profile" class="profile invisible">
-          <div class="profile-user">
-            <div class="profile-logo">
-              <span><i class="fas fa-user" aria-hidden="true"></i></span>
+          <div class="profile-top">
+            <div class="profile-user">
+              <div class="profile-logo">
+                <span><i class="fas fa-user" aria-hidden="true"></i></span>
+              </div>
+              <div class="profile-info">
+                <span id="userspan"></span>
+                <span id="permspan"></span>
+              </div>
             </div>
-            <div class="profile-info">
-              <span id="userspan"></span>
-              <span id="permspan"></span>
+            <div class="side-actions">
+              <span id="chpwspan" class="invisible"><a id="change-password" class="side-btn">Trocar senha</a></span>
+              <span id="adminspan" class="invisible"><a id="admin-link" class="side-btn" href="#">Painel Admin</a></span>
             </div>
-          </div>
-          <div class="side-actions">
-            <span id="chpwspan" class="invisible"><a id="change-password" class="side-btn">Trocar senha</a></span>
-            <span id="adminspan" class="invisible"><a id="admin-link" class="side-btn" href="/admin/" target="_blank" rel="noopener">Painel Admin</a></span>
           </div>
         </div>
-        <div id="mediaoptions" class="invisible">
-          <fieldset>
-            <legend>Dispositivos</legend>
+        <div class="spartan-settings-cols">
+        <div id="mediaoptions" class="spartan-settings-left invisible">
+          <fieldset class="spartan-set-box">
+            <div class="spartan-set-title">Dispositivos</div>
             <label for="videoselect" class="sidenav-label-first">Câmera:</label>
             <select id="videoselect" class="select select-inline">
               <option value="">desligado</option>
@@ -260,6 +267,51 @@
             <p class="set-help">Voz mais nítida; gasta mais banda. Desligue em redes fracas.</p>
 
           </fieldset>
+        </div>
+
+        <div class="spartan-settings-right">
+        <fieldset class="spartan-transmit-setting spartan-set-box">
+          <div class="spartan-set-title">Transmissão</div>
+
+          <form id="sharequalityform">
+            <label for="sharequalityselect" class="sidenav-label-first">Tela compartilhada:</label>
+            <select id="sharequalityselect" class="select select-inline">
+              <option value="auto" selected>máxima (rede boa)</option>
+              <option value="1080p">1080p</option>
+              <option value="720p">720p (upload lento)</option>
+            </select>
+            <p class="set-help">720p ajuda upload lento. Vale na próxima vez que compartilhar.</p>
+          </form>
+
+          <form>
+            <input id="gamemodebox" type="checkbox" checked/>
+            <label for="gamemodebox">Modo jogo (movimento suave)</label>
+          </form>
+          <p class="set-help">Fluidez para jogos. Desligue para texto pequeno.</p>
+
+          <form>
+            <input id="qualityhudbox" type="checkbox" checked/>
+            <label for="qualityhudbox">Mostrar FPS e bitrate nas lives</label>
+          </form>
+        </fieldset>
+
+        <fieldset class="spartan-sounds-setting spartan-set-box">
+          <div class="spartan-set-title">Sons</div>
+          <form>
+            <input id="soundmensagembox" type="checkbox" checked/>
+            <label for="soundmensagembox">Mensagem de texto no chat</label>
+          </form>
+          <form>
+            <input id="soundentrarbox" type="checkbox" checked/>
+            <label for="soundentrarbox">Quando alguém entra na sala</label>
+          </form>
+          <form>
+            <input id="soundsairbox" type="checkbox" checked/>
+            <label for="soundsairbox">Quando alguém sai da sala</label>
+          </form>
+          <p class="set-help">Preferências de som gravadas neste computador para o seu nick.</p>
+        </fieldset>
+        </div>
         </div>
 
         <fieldset class="spartan-hide-setting">
@@ -320,23 +372,6 @@
             <label for="blackboardbox">Modo quadro</label>
           </form>
         </fieldset>
-
-        <fieldset>
-          <legend>Sons da sala</legend>
-          <form>
-            <input id="soundentrarbox" type="checkbox" checked/>
-            <label for="soundentrarbox">Quando alguém entra</label>
-          </form>
-          <form>
-            <input id="soundsairbox" type="checkbox" checked/>
-            <label for="soundsairbox">Quando alguém sai</label>
-          </form>
-          <form>
-            <input id="soundmensagembox" type="checkbox" checked/>
-            <label for="soundmensagembox">Quando chega mensagem</label>
-          </form>
-          <p class="set-help">Cada som liga ou desliga à parte. Fica gravado neste computador para o teu nick, mesmo depois de fechar o browser.</p>
-        </fieldset>
       </div>
       </div>
     </div>
@@ -387,12 +422,13 @@
       </form>
     </dialog>
 
-    <script src="/protocol.js?v=2" defer></script>
+    <script src="/protocol.js?v=3" defer></script>
     <script src="/third-party/toastify/toastify.js?v=3" defer></script>
     <script src="/third-party/contextual/contextual.js" defer></script>
     <script src="/settings.js" defer></script>
     <script src="/filter.js" defer></script>
-    <script src="/galene.js?v=94" defer></script>
+    <script src="/spartan-salas.js?v=4" defer></script>
+    <script src="/galene.js?v=110" defer></script>
   <div id="spartan-toast" hidden></div>
 <div id="spartan-drop" hidden>
   <div class="spartan-reg-card">
@@ -409,10 +445,34 @@
 <button type="button" id="spartan-dlg-ok">OK</button>
 <button type="button" id="spartan-dlg-cancel" hidden>Cancelar</button>
 </div></div></div>
+<div id="spartan-salas-overlay" hidden>
+  <div class="spartan-salas-panel">
+    <div class="spartan-salas-header">
+      <h2>Outras salas</h2>
+      <button type="button" id="spartan-salas-close" title="Fechar"><i class="fas fa-times" aria-hidden="true"></i></button>
+    </div>
+    <div class="spartan-salas-body">
+      <input id="spartan-salas-q" type="search" placeholder="Buscar sala…" autocomplete="off" spellcheck="false"/>
+      <div class="spartan-salas-tools">
+        <button type="button" class="sort-btn on" data-sort="az">A–Z</button>
+        <button type="button" class="sort-btn" data-sort="time">Recentes</button>
+      </div>
+      <div class="spartan-salas-grid spartan-salas-grid-room">
+        <div class="spartan-salas-col spartan-salas-col-perm">
+          <h3 class="spartan-salas-col-title">Sala principal</h3>
+          <div id="spartan-salas-main" class="spartan-salas-main-slot"></div>
+          <h3 class="spartan-salas-col-title spartan-salas-section-title">Permanentes</h3>
+          <div id="spartan-salas-perm" class="spartan-salas-scroll"></div>
+        </div>
+      </div>
+    </div>
+    <button type="button" id="spartan-salas-back" class="spartan-salas-back">Voltar à sala</button>
+  </div>
+</div>
 <footer class="signature">
   <span class="foot-left"><a href="https://galene.org">Galene</a> by <a href="https://www.irif.fr/~jch/">Juliusz Chroboczek</a></span>
   <span class="foot-mid">Interface refeita por <a href="https://github.com/wilbresley" target="_blank" rel="noopener">wilbresley</a></span>
-  <span class="foot-right"><a class="btn-salas" href="/salas/">Outras salas</a></span>
+  <span class="foot-right"><a class="btn-salas" href="/#/salas" target="_parent">Outras salas</a></span>
 </footer>
 </body>
 </html>
