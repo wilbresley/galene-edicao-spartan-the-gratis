@@ -78,11 +78,11 @@ Várias pessoas no mesmo canal, com microfone, câmera e compartilhamento de tel
 - **Home** (`/`) — marca e “Cadê a Live?”. Não é o login do painel.
 - **Sala** (`/group/<id>/`) — nick + senha (convite) ou nick (pública). A call **só** abre depois do servidor aceitar o login; senha errada fica no login, um aviso, sem loop.
 - **Microfone, câmera e tela** no header. Mic sozinho = bolinha na lista, sem botão Câmera. Fechar a câmera **não** desliga o mic.
-- **Lives** — 1 em foco; 2 **lado a lado**; 3–4 em grid 2×2. Clique foca; outro clique tira o foco.
+- **Lives** — 1 em foco; 2 **lado a lado**; 3–4 em grid 2×2. Clique foca; outro clique tira o foco. Botão **Câmera**/**Tela** sob o nick só com vídeo/tela reais; mic = só a bolinha.
 - **Chat** — abre sozinho em mensagem nova (dá para desligar); textos somem depois de 24 h.
 - **Lista** — bolinha cinza/amarelo/verde/vermelho; mudo e volume só no teu fone; admin pode silenciar o mic do outro ou expulsar.
 - **Timers (servidor)** — header = tempo da sala (`HH:MM:SS`); menu do nick = tempo individual. Sala vazia > 1 min zera o da sala.
-- **Reconexão** — oscilação até 60 s tenta religar em silêncio (mic/live preservados).
+- **Reconexão** — corte em **60 s**: abaixo disso, religa em silêncio e mantém mic/tela/câmera; acima, overlay e mídia desligada (precisa religar).
 - **Painel** (`/admin/`) — cadastrados, convites, salas, logs. Só admin da sala principal. Anfitrião de sala 24 h não entra.
 
 ### Cargos (3)

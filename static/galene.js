@@ -804,13 +804,11 @@ function spartanRefreshAllMedia() {
 function spartanStreamShowsLiveBtn(c) {
     if(!c)
         return false;
+    // Tela: só compartilhamento de tela.
     if(c.label === 'screenshare')
         return true;
-    if(streamHasRealVideo(c.stream))
-        return true;
-    if(c.up)
-        return false;
-    return c.label === 'camera' && !!c.source && spartanRemoteCamLive(c.source);
+    // Câmera: só com faixa de vídeo real. Mic sozinho (label camera) NÃO ganha botão.
+    return streamHasRealVideo(c.stream);
 }
 
 /**
@@ -1393,10 +1391,14 @@ function spartanIsRecovering() {
 }
 
 function spartanSnapshotMediaState() {
+    let cam = findUpMedia('camera');
+    let hasRealCam = !!(cam && streamHasRealVideo(cam.stream));
+    let hasMicUp = !!cam;
     return {
         localMute: !!getSettings().localMute,
         micArmed: spartanMicArmed,
-        hadCamera: !!findUpMedia('camera'),
+        hadCamera: hasRealCam,
+        hadMicOnly: hasMicUp && !hasRealCam,
         hadScreen: !!findUpMedia('screenshare'),
     };
 }
@@ -1451,6 +1453,7 @@ function spartanSnapshotUps(sc) {
 async function spartanRepublishUps(keep) {
     if(!keep || !keep.length || !serverConnection)
         return;
+    let snap = window._spartanMediaSnap || {};
     for(let i = 0; i < keep.length; i++) {
         let item = keep[i];
         if(!item.stream || !item.stream.getTracks)
@@ -1458,7 +1461,9 @@ async function spartanRepublishUps(keep) {
         let live = item.stream.getTracks().some(function(t) { return t.readyState === 'live'; });
         if(!live) {
             if(item.label === 'camera' && !findUpMedia('camera')) {
-                try { await addLocalMedia(undefined, false); } catch(e) {}
+                // Nunca promover mic-só a câmera: respeita o snapshot.
+                let audioOnly = !snap.hadCamera;
+                try { await addLocalMedia(undefined, audioOnly); } catch(e) {}
             }
             continue;
         }
@@ -1472,7 +1477,8 @@ async function spartanRepublishUps(keep) {
         } catch(e) {
             console.warn(e);
             if(item.label === 'camera' && !findUpMedia('camera')) {
-                try { await addLocalMedia(undefined, false); } catch(e2) {}
+                let audioOnly = !streamHasRealVideo(item.stream) && !snap.hadCamera;
+                try { await addLocalMedia(undefined, audioOnly); } catch(e2) {}
             }
         }
     }
@@ -1481,14 +1487,19 @@ async function spartanRepublishUps(keep) {
 function spartanRestoreMediaAfterReconnect(snap) {
     snap = snap || window._spartanMediaSnap || {};
     window._spartanMediaSnap = null;
+    window._spartanRecoveringMedia = false;
     if(snap.micArmed)
         spartanMicArmed = true;
     let muted = snap.localMute != null ? !!snap.localMute : !!getSettings().localMute;
     setLocalMute(muted, false);
-    if(!muted && findUpMedia('camera')) {
-        setLocalMute(false, false);
+    if(!muted) {
         spartanMicArmed = true;
+        if(findUpMedia('camera'))
+            setLocalMute(false, false);
     }
+    spartanLastMicstate = undefined;
+    spartanLastCamlive = undefined;
+    spartanPublishMicMuted();
     setButtonsVisibility();
     spartanRefreshAllMedia();
 }
@@ -1603,6 +1614,7 @@ async function spartanSilentReconnect() {
     if(spartanReconnecting || spartanDropShown)
         return;
     spartanReconnecting = true;
+    window._spartanRecoveringMedia = true;
     try {
         let s = spartanLoadStoredSession(group);
         if(s && s.user)
@@ -1999,6 +2011,8 @@ function gotClose(code, reason) {
                 return;
             try { closeUpMedia(); } catch(e) {}
             try { closeSafariStream(); } catch(e) {}
+            window._spartanRecoveringMedia = false;
+            window._spartanMediaSnap = null;
             spartanResetRoomState();
             spartanShowDropOverlay();
             spartanNetEvent({
@@ -2292,6 +2306,8 @@ document.getElementById('mutebutton').onclick = async function(e) {
         try {
             await addLocalMedia(undefined, true);
             setLocalMute(false, true);
+            spartanLastCamlive = undefined;
+            spartanPublishMicMuted();
         } catch(err) {
             console.error(err);
             displayError(err);
@@ -5257,7 +5273,8 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
     else
         this.request({'': ['audio', 'video']});
 
-    let recovering = spartanIsRecovering() ||
+    let recovering = !!(window._spartanRecoveringMedia) ||
+        spartanIsRecovering() ||
         !!(window._spartanKeepUp && window._spartanKeepUp.length);
     let mediaSnap = recovering ? (window._spartanMediaSnap || null) : null;
     spartanDidJoin = true;
@@ -5276,10 +5293,13 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
         await spartanRepublishUps(window._spartanKeepUp);
     } catch(e) {}
     window._spartanKeepUp = [];
-    if(recovering)
-        spartanRestoreMediaAfterReconnect(mediaSnap);
-    else
+    if(recovering) {
+        // Se ainda falta o up de câmera/mic, reopen abaixo re-restaura o mute.
+        if(findUpMedia('camera') || !(mediaSnap && (mediaSnap.hadCamera || mediaSnap.hadMicOnly)))
+            spartanRestoreMediaAfterReconnect(mediaSnap);
+    } else {
         setLocalMute(true, true);
+    }
     spartanArmRoomSounds();
     spartanPurgeStaleSelf();
     spartanRefreshWatchedQuality();
@@ -5291,8 +5311,10 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
         if(spartanIsOuvinte()) {
             displayMessage("Ouvinte: microfone para falar. Sem lives nem chat de texto.");
             spartanApplyOuvinteUi();
-        } else if(recovering && mediaSnap && mediaSnap.hadCamera) {
-            try { await addLocalMedia(undefined, false); } catch(e) {}
+        } else if(recovering && mediaSnap && (mediaSnap.hadCamera || mediaSnap.hadMicOnly)) {
+            try {
+                await addLocalMedia(undefined, !mediaSnap.hadCamera);
+            } catch(e) {}
             spartanRestoreMediaAfterReconnect(mediaSnap);
         } else if(present) {
             if(present === 'mike')
@@ -5315,6 +5337,8 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
             );
         }
     }
+    if(recovering && window._spartanRecoveringMedia)
+        spartanRestoreMediaAfterReconnect(mediaSnap);
     spartanApplyOuvinteUi();
 }
 
