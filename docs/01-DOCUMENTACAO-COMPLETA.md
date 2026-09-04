@@ -243,7 +243,7 @@ Comportamentos de sessão:
 - Contador 24h (`#spartan-ttl`) reconstitui no `start()` (não só no submit do login): `spartanTtlRestore` + `GET /temp-status`. Anfitrião/op também faz poll.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: handoff `localStorage` para abrir o painel já logado.
-- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=112`, `galene-spartan.css?v=98`, `protocol.js?v=3`, `toastify.js?v=3`, `spartan-boot.js?v=9`). Home shell: `spartan-shell.js?v=4`, `spartan-shell.css?v=8`, `custom-home.js?v=4`, `salas.js?v=5`. Painel: `admin.js?v=38`, `admin.css?v=25`. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=115`, `galene-spartan.css?v=98`, `protocol.js?v=3`, `toastify.js?v=3`, `spartan-boot.js?v=9`). Home shell: `spartan-shell.js?v=4`, `spartan-shell.css?v=8`, `custom-home.js?v=4`, `salas.js?v=5`. Painel: `admin.js?v=38`, `admin.css?v=25`. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar.
 
 Painel admin:
 
@@ -270,7 +270,7 @@ Painel admin:
 - “Solicitar registro” só para convite, não para pública.
 - Sem kick HTTP nativo: o cliente sai sozinho no purge / bloqueio.
 - Multi-live: botão **Tela** só no compartilhamento de tela; **Câmera** só com faixa de vídeo (mic sozinho = só a bolinha, sem texto Câmera). Cabeçalho preto acima do vídeo.
-- **Fluência:** live **assistida** (clicada) pede sempre `['audio','video']` — nunca `video-low`, mesmo se tu estiveres a transmitir ou com o jogo aberto. Nos receivers dessas lives: `contentHint=detail` e `degradationPreference=maintain-resolution`. As outras pedem áudio só (sem imagem), salvo tela sem áudio (`video-low` só para não sumir o botão Tela). `contentHint` de tela que **envias** = `motion`.
+- **Fluência:** live **assistida** (clicada) pede sempre `['audio','video']` — nunca `video-low`. Tela que **envias**: FPS-alvo **60** (`frameRate` ideal/max sem `min` — Chrome rejeita `min` no getDisplayMedia), `maxFramerate` + `maintain-framerate`, `contentHint=motion` (modo jogo). Bitrate da tela **independente** do “Enviar” da câmera: auto **12 Mbps**, 1080p **10 Mbps**, 720p **5 Mbps**. Offer da screenshare **sem `goog-remb`** (senão o Galene prende ~200 kbps). HUD: `alvo 60 · N fps · kbps/teto`. Oscilar em torno do teto (com pico curto acima) é normal. Receivers assistidos: `degradationPreference=maintain-resolution`. As outras pedem áudio só (sem imagem), salvo tela sem áudio (`video-low` só para não sumir o botão Tela).
 - **Painel Admin** (botão na sala): depende **só** de `POST /can-panel` (conta cadastrada da main / sidecar). Não exige `op` da sala atual. Anfitrião 24h não vê o botão. Abre sempre em nova aba (`window.open` + handoff `spartanAdminHandoff`).
 - **Uma** live na sala: já entra em foco; clique extra nela não faz nada. Duas lives: **lado a lado** já na primeira abertura (o foco automático da primeira não deixa o grid numa coluna só). Três ou quatro: grid 2×2. Clique escolhe o foco.
 - **Minhas lives:** ícones de olho; verde = mostrando, vermelho = ocultando. O X nas lives dos outros esconde; o X na **própria** live **para** aquele share. Fechar a **câmera** (header ou X) com o mic ligado **mantém o microfone**; o ícone verde do mic acompanha o estado real.
@@ -367,6 +367,7 @@ A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export 
 27. 01/09/2026: lista de salas sem 24h; slug aleatório 15 chars nas temporárias; login persiste entre salas; config compacta; FPS/bitrate via stats Galene. Cache: `galene.js?v=98`, `protocol.js?v=3`, `salas.js?v=5`, `admin.js?v=36`. Reiniciar `spartan-reg` após `registry.py`.
 28. 04/09/2026: **presença no servidor** — header = tempo da sala (`HH:MM:SS`, branco); menu do nick = tempo individual; sala vazia > 60 s zera o timer da sala; `POST /presence`, `GET /presence-room` / `presence-user`; lista de salas com online + live. **Reconexão** graça 60 s (preserva mic/live). Shell SPA centralizado; sem flash de login ao trocar sala. Cache: `galene.js?v=110`, `galene-spartan.css?v=98`, `spartan-boot.js?v=9`, `spartan-salas.js?v=4`, `spartan-shell.css?v=8`. Reiniciar `spartan-reg`.
 29. 04/09/2026: botão **Câmera**/**Tela** sob o nick só com vídeo/tela reais (mic = bolinha; sem atalho `camlive`). Reconexão: **&lt; 60 s** preserva mic/tela/câmera sem mute forçado (`_spartanRecoveringMedia`, `hadMicOnly`); **≥ 60 s** fecha mídia e overlay. Cache: `galene.js?v=112`.
+30. 04/09/2026: **tela Full HD jogável** — FPS-alvo 60; tetos 12/10/5 Mbps (auto/1080p/720p); bypass REMB (~200 kbps) no offer da screenshare; sem `min` no getDisplayMedia; HUD `alvo · fps · kbps/teto`. 12 Mbps basta para 1080p60 em jogos frenéticos; use 720p em upload lento ou distância. Cache: `galene.js?v=115`.
 
 ---
 

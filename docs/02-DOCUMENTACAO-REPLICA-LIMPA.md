@@ -32,7 +32,7 @@ O Galene oficial sobe uma videoconferência SFU + TURN. Por cima foi feita uma i
 
 Isto **não** é o MiroTalk. MiroTalk P2P trava em NAT/4G sem TURN. Galene relê a mídia.
 
-Cache da sala (hoje): `galene.js?v=112`, `galene-spartan.css?v=98`, `protocol.js?v=3`, `spartan-boot.js?v=9`. Shell: `spartan-shell.js?v=4`, `spartan-shell.css?v=8`. Painel: `admin.js?v=38`, `admin.css?v=25`. Botão **Câmera**/**Tela** sob o nick só com vídeo/tela reais (mic = bolinha). **Reconexão:** se a rede volta **antes de 60 s**, religa em silêncio e mantém mic/tela/câmera; se passa de **60 s**, fecha a mídia, mostra overlay e ao voltar precisa religar. Salas 24h: só link direto (slug aleatório); não aparecem na lista pública nem na home; admin vê na seção **temporárias** até expirar. Reiniciar `docker restart spartan-reg` após mudar `registry.py`.
+Cache da sala (hoje): `galene.js?v=115`, `galene-spartan.css?v=98`, `protocol.js?v=3`, `spartan-boot.js?v=9`. Shell: `spartan-shell.js?v=4`, `spartan-shell.css?v=8`. Painel: `admin.js?v=38`, `admin.css?v=25`. Botão **Câmera**/**Tela** sob o nick só com vídeo/tela reais (mic = bolinha). **Reconexão:** &lt; 60 s preserva mic/tela; ≥ 60 s fecha mídia + overlay. **Tela:** FPS-alvo 60; bitrate auto **12 Mbps** / 1080p **10** / 720p **5** (bom para 1080p60 de jogo); bypass do REMB ~200 kbps no offer; HUD `alvo · fps · kbps/teto`. Quem assiste clica em **Tela** no nick. Salas 24h: só link direto; admin vê em **temporárias**. Reiniciar `docker restart spartan-reg` após mudar `registry.py`.
 
 ---
 

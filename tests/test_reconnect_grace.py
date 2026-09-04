@@ -48,7 +48,7 @@ class ReconnectGraceTests(unittest.TestCase):
         self.assertGreater(force_mute, restore)
 
     def test_galene_js_cache_bust_v106(self):
-        self.assertIn("galene.js?v=112", self.html)
+        self.assertIn("galene.js?v=115", self.html)
 
 
 if __name__ == "__main__":

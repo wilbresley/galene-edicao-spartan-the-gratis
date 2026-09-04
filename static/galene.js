@@ -431,12 +431,21 @@ function spartanBoostWatchedReceivers(c) {
     } catch(e) {}
 }
 
+/** FPS-alvo da tela (sempre 60 — não oscilar com o conteúdo). */
+function spartanTargetShareFps() {
+    return 60;
+}
+
 /** Restrições de captura de tela (FPS / resolução). */
 function spartanShareVideoConstraints() {
     let sq = getSettings().shareQuality || 'auto';
-    let gm = getSettings().gameMode !== false;
+    let fps = spartanTargetShareFps();
     /** @type {any} */
-    let video = { cursor: 'always' };
+    let video = {
+        cursor: 'always',
+        // getDisplayMedia NÃO aceita min (Chrome: "min constraints are not supported").
+        frameRate: { ideal: fps, max: fps },
+    };
     if(sq === '720p') {
         video.width = { max: 1280, ideal: 1280 };
         video.height = { max: 720, ideal: 720 };
@@ -444,17 +453,131 @@ function spartanShareVideoConstraints() {
         video.width = { max: 1920, ideal: 1920 };
         video.height = { max: 1080, ideal: 1080 };
     }
-    if(gm || sq === '720p' || sq === '1080p')
-        video.frameRate = { ideal: 60, max: 60 };
     return video;
 }
 
-/** Teto de bitrate para compartilhamento de tela (upload lento). */
+/** Teto de bitrate para compartilhamento de tela (bps). */
 function spartanScreenBitrateCap() {
     switch(getSettings().shareQuality || 'auto') {
-    case '720p': return 3500000;
-    case '1080p': return 8000000;
-    default: return null;
+    case '720p': return 5000000;
+    case '1080p': return 10000000;
+    // auto: teto alto — o limite real deixa de ser o REMB ~200 kbps do Galene.
+    default: return 12000000;
+    }
+}
+
+/**
+ * Galene manda goog-remb ~200 kbps se ninguém pediu vídeo alto (ou no ramp-up).
+ * Na tela isso mata FPS/qualidade. Tiramos goog-remb do offer da screenshare
+ * para o encoder respeitar o maxBitrate do cliente.
+ * @param {string} sdp
+ * @returns {string}
+ */
+function spartanStripRembSdp(sdp) {
+    if(!sdp)
+        return sdp;
+    return String(sdp).replace(/a=rtcp-fb:[^\r\n]*goog-remb[^\r\n]*\r?\n/gi, '');
+}
+
+/** Instala bypass de REMB só em uplink de tela (uma vez). */
+function spartanInstallShareRembBypass() {
+    if(typeof Stream === 'undefined' || Stream.prototype._spartanShareRemb)
+        return;
+    Stream.prototype._spartanShareRemb = true;
+    let orig = Stream.prototype.negotiate;
+    Stream.prototype.negotiate = async function(restartIce) {
+        if(!this.up || this.label !== 'screenshare')
+            return await orig.call(this, restartIce);
+        let c = this;
+        /** @type {RTCOfferOptions} */
+        let options = {};
+        if(restartIce)
+            options = {iceRestart: true};
+        let offer = await c.pc.createOffer(options);
+        if(!offer)
+            throw new Error("Didn't create offer");
+        let sdp = spartanStripRembSdp(offer.sdp);
+        await c.pc.setLocalDescription({type: 'offer', sdp: sdp});
+        c.sc.send({
+            type: 'offer',
+            source: c.sc.id,
+            username: c.sc.username,
+            kind: this.localDescriptionSent ? 'renegotiate' : '',
+            id: c.id,
+            replace: this.replace,
+            label: c.label,
+            sdp: c.pc.localDescription.sdp,
+        });
+        this.localDescriptionSent = true;
+        this.replace = null;
+        c.flushLocalIceCandidates();
+        try {
+            c.pc.getSenders().forEach(function(s) {
+                spartanApplyVideoSenderPrefs(s, 'screenshare');
+            });
+        } catch(e) {}
+    };
+}
+
+try { spartanInstallShareRembBypass(); } catch(e) {}
+
+/**
+ * Força FPS/bitrate no sender de vídeo (tela ou câmera).
+ * @param {RTCRtpSender} sender
+ * @param {string} label
+ */
+async function spartanApplyVideoSenderPrefs(sender, label) {
+    if(!sender || !sender.track || sender.track.kind !== 'video')
+        return;
+    let fps = spartanTargetShareFps();
+    let bps = getMaxVideoThroughput();
+    if(label === 'screenshare') {
+        // Independente do "Enviar" da câmera — senão 700 kbps mata o FPS.
+        bps = spartanScreenBitrateCap();
+    }
+    try {
+        let p = sender.getParameters();
+        if(!p.encodings || !p.encodings.length)
+            p.encodings = [{}];
+        p.encodings.forEach(function(e) {
+            if(label === 'screenshare' || getSettings().gameMode !== false)
+                e.maxFramerate = fps;
+            if(bps)
+                e.maxBitrate = bps;
+            else
+                e.maxBitrate = unlimitedRate;
+            if(label === 'screenshare') {
+                try { e.priority = 'high'; } catch(e1) {}
+                try { e.networkPriority = 'high'; } catch(e2) {}
+            }
+        });
+        if(label === 'screenshare' || getSettings().gameMode !== false)
+            p.degradationPreference = 'maintain-framerate';
+        else
+            p.degradationPreference = 'maintain-resolution';
+        await sender.setParameters(p);
+    } catch(e) {}
+}
+
+/**
+ * Aplica frameRate 60 na track de captura (pós getDisplayMedia).
+ * @param {MediaStream} stream
+ */
+async function spartanLockShareTrackFps(stream) {
+    if(!stream || !stream.getVideoTracks)
+        return;
+    let fps = spartanTargetShareFps();
+    let tracks = stream.getVideoTracks();
+    for(let i = 0; i < tracks.length; i++) {
+        let t = tracks[i];
+        try {
+            await t.applyConstraints({ frameRate: { ideal: fps, max: fps } });
+        } catch(e1) {
+            try {
+                await t.applyConstraints({ frameRate: fps });
+            } catch(e2) {}
+        }
+        try { t.contentHint = getSettings().gameMode === false ? 'detail' : 'motion'; } catch(e3) {}
     }
 }
 
@@ -556,6 +679,9 @@ function spartanShouldShowHud(c, dir) {
     return dir === 'up' && c.label === 'screenshare';
 }
 
+/** @type {Record<string, number>} */
+let spartanHudFpsSmooth = {};
+
 function spartanUpdateQualityHud(c, stats, dir) {
     if(!spartanShouldShowHud(c, dir))
         return;
@@ -571,28 +697,52 @@ function spartanUpdateQualityHud(c, stats, dir) {
     }
     let m = spartanRtpStats(stats, dir, String(c.localId));
     let res = '';
+    let capFps = 0;
     try {
         let vt = c.stream && c.stream.getVideoTracks && c.stream.getVideoTracks()[0];
         if(vt && vt.getSettings) {
             let s = vt.getSettings();
             if(s.width && s.height) res = s.width + '×' + s.height + ' · ';
+            if(typeof s.frameRate === 'number' && s.frameRate > 0)
+                capFps = Math.round(s.frameRate);
         }
     } catch(e) {}
-    hud.textContent = res + (m.fps || '—') + ' fps · ' + (m.kbps || '—') + ' kbps';
+    let key = String(c.localId);
+    let prev = spartanHudFpsSmooth[key];
+    if(prev == null || !isFinite(prev))
+        prev = m.fps;
+    // Suaviza o número do HUD (o outbound-rtp pula frame a frame).
+    let smooth = Math.round(prev * 0.55 + (m.fps || 0) * 0.45);
+    spartanHudFpsSmooth[key] = smooth;
+    let alvo = (dir === 'up' && c.label === 'screenshare')
+        ? spartanTargetShareFps()
+        : (capFps || smooth || '—');
+    let br = '';
+    if(dir === 'up' && c.label === 'screenshare') {
+        let capKb = Math.round(spartanScreenBitrateCap() / 1000);
+        br = (m.kbps || '—') + '/' + capKb + ' kbps';
+    } else {
+        br = (m.kbps || '—') + ' kbps';
+    }
+    hud.textContent = res + 'alvo ' + alvo + ' · ' + (smooth || '—') + ' fps · ' + br;
 }
 
 let spartanUploadWarnAt = 0;
 function spartanCheckUploadWarn(c, stats) {
     if(!c || !c.up || c.label !== 'screenshare')
         return;
-    if((getSettings().shareQuality || 'auto') !== '720p')
-        return;
     let m = spartanRtpStats(stats, 'up', String(c.localId));
-    if(m.kbps > 400 || Date.now() - spartanUploadWarnAt < 60000)
+    let capKb = Math.round(spartanScreenBitrateCap() / 1000);
+    if(Date.now() - spartanUploadWarnAt < 60000)
         return;
-    if(m.kbps > 0 && m.kbps < 800 && m.fps > 0 && m.fps < 24) {
+    // Abaixo de ~15% do teto com FPS baixo = upload engasgado / REMB ainda ativo.
+    if(m.kbps > 0 && m.kbps < Math.min(800, capKb * 0.15) && m.fps > 0 && m.fps < 40) {
         spartanUploadWarnAt = Date.now();
-        displayMessage('Upload parece fraco. Use 720p nas Configurações ou feche outros uploads.');
+        displayMessage(
+            'Upload da tela está baixo (' + m.kbps + ' kbps). ' +
+            'Confere a rede; em Configurações use 720p se o upload for lento. ' +
+            'Quem assiste precisa clicar em Tela no nick.'
+        );
     }
 }
 
@@ -2424,7 +2574,21 @@ getInputElement('gamemodebox').onchange = function(e) {
     if(!(this instanceof HTMLInputElement))
         throw new Error('Unexpected type for this');
     updateSettings({gameMode: this.checked});
+    try {
+        for(let id in serverConnection.up) {
+            let c = serverConnection.up[id];
+            if(!c || !c.pc) continue;
+            c.pc.getSenders().forEach(function(s) {
+                spartanApplyVideoSenderPrefs(s, c.label);
+            });
+            if(c.label === 'screenshare' && c.stream)
+                spartanLockShareTrackFps(c.stream);
+        }
+    } catch(err) {}
     spartanRefreshWatchedQuality();
+    spartanToast(this.checked
+        ? 'Modo jogo: prioriza 60 fps.'
+        : 'Modo texto: prioriza nitidez.');
 };
 
 getInputElement('qualityhudbox').onchange = function(e) {
@@ -2555,6 +2719,18 @@ function gotUpStats(stats) {
     setLabel(this);
     spartanUpdateQualityHud(this, stats, 'up');
     spartanCheckUploadWarn(this, stats);
+    // Reaplica teto: o browser às vezes “esquece” maxBitrate após REMB/renegociação.
+    if(this.label === 'screenshare' && this.pc) {
+        let now = Date.now();
+        if(!this.userdata)
+            this.userdata = {};
+        if(!this.userdata._spartanPrefsAt || now - this.userdata._spartanPrefsAt > 4000) {
+            this.userdata._spartanPrefsAt = now;
+            this.pc.getSenders().forEach(function(s) {
+                spartanApplyVideoSenderPrefs(s, 'screenshare');
+            });
+        }
+    }
 }
 
 /**
@@ -2992,10 +3168,20 @@ async function setSendParameters(c, bps, simulcast) {
             await replaceUpStream(c);
             return;
         }
+        if(c.label === 'screenshare') {
+            await spartanApplyVideoSenderPrefs(s, c.label);
+            continue;
+        }
         p.encodings.forEach(e => {
             if(!e.rid || e.rid === 'h')
                 e.maxBitrate = bps || unlimitedRate;
+            if(getSettings().gameMode !== false)
+                e.maxFramerate = spartanTargetShareFps();
         });
+        try {
+            if(getSettings().gameMode !== false)
+                p.degradationPreference = 'maintain-framerate';
+        } catch(e) {}
         await s.setParameters(p);
     }
 }
@@ -3107,7 +3293,7 @@ async function setUpStream(c, stream) {
                 }
             }
         } else if(c.label === 'screenshare' && t.kind === 'video') {
-            t.contentHint = 'motion';
+            t.contentHint = getSettings().gameMode === false ? 'detail' : 'motion';
         }
         t.onended = e => {
             stream.onaddtrack = null;
@@ -3119,10 +3305,9 @@ async function setUpStream(c, stream) {
         let simulcast = c.label !== 'screenshare' && doSimulcast();
         if(t.kind === 'video') {
             let bps = getMaxVideoThroughput();
+            let fps = spartanTargetShareFps();
             if(c.label === 'screenshare') {
-                let cap = spartanScreenBitrateCap();
-                if(cap && (!bps || bps > cap))
-                    bps = cap;
+                bps = spartanScreenBitrateCap();
             }
             // Firefox doesn't like us setting the RID if we're not
             // simulcasting.
@@ -3130,16 +3315,22 @@ async function setUpStream(c, stream) {
                 encodings.push({
                     rid: 'h',
                     maxBitrate: bps || unlimitedRate,
+                    maxFramerate: fps,
                 });
                 encodings.push({
                     rid: 'l',
                     scaleResolutionDownBy: 2,
                     maxBitrate: simulcastRate,
+                    maxFramerate: fps,
                 });
             } else {
-                encodings.push({
+                /** @type {RTCRtpEncodingParameters} */
+                let enc = {
                     maxBitrate: bps || unlimitedRate,
-                });
+                };
+                if(c.label === 'screenshare' || getSettings().gameMode !== false)
+                    enc.maxFramerate = fps;
+                encodings.push(enc);
             }
         } else {
             if(settings.hqaudio) {
@@ -3164,6 +3355,8 @@ async function setUpStream(c, stream) {
             }
         } catch(e) {
         }
+        if(t.kind === 'video')
+            spartanApplyVideoSenderPrefs(tr.sender, c.label);
     }
 
     // c.stream might be different from stream if there's a filter
@@ -3201,7 +3394,7 @@ async function setUpStream(c, stream) {
     };
 
     c.onstats = gotUpStats;
-    c.setStatsInterval(2000);
+    c.setStatsInterval(c.label === 'screenshare' ? 1000 : 2000);
 }
 
 /**
@@ -3398,21 +3591,21 @@ async function addShareMedia() {
         } catch(e) {
             if(e && (e.name === 'NotAllowedError' || e.name === 'AbortError'))
                 throw e;
-            stream = await navigator.mediaDevices.getDisplayMedia({
-                video: spartanShareVideoConstraints(),
-                audio: true,
-            });
+            // Fallback: constraints mais simples (sem systemAudio / sem frameRate estrito).
+            try {
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { cursor: 'always', frameRate: { ideal: spartanTargetShareFps() } },
+                    audio: true,
+                });
+            } catch(e2) {
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: true,
+                    audio: true,
+                });
+            }
         }
         if(stream && stream.getVideoTracks) {
-            stream.getVideoTracks().forEach(function(t) {
-                try {
-                    let cap = spartanScreenBitrateCap();
-                    if(cap) {
-                        let p = t.getConstraints && t.getConstraints();
-                        if(p) t.applyConstraints(p).catch(function() {});
-                    }
-                } catch(err) {}
-            });
+            await spartanLockShareTrackFps(stream);
         }
         if(!window._spartanShareHint) {
             window._spartanShareHint = true;
@@ -3424,7 +3617,8 @@ async function addShareMedia() {
         let sq = getSettings().shareQuality || 'auto';
         let sqLabel = sq === '720p' ? '720p' : (sq === '1080p' ? '1080p' : 'máxima');
         displayMessage(
-            'Transmissão em ' + sqLabel + '. FPS e bitrate aparecem no canto da sua live.'
+            'Transmissão em ' + sqLabel + ' · alvo ' + spartanTargetShareFps() +
+            ' fps. O HUD mostra alvo e fps enviado.'
         );
     } catch(e) {
         console.error(e);
@@ -6789,6 +6983,7 @@ function spartanErr(message){
   ['Could not start video source','Não deu para iniciar a câmera'],
   ['Could not start audio source','Não deu para iniciar o microfone'],
   ['Your browser does not support screen sharing','Este navegador não compartilha tela'],
+  ['min constraints are not supported','Este navegador não aceita essa restrição de captura. Atualiza a página e tenta de novo.'],
   ['Socket error','Ligação perdida'],
   ['Timeout','Ligação perdida (tempo esgotado)'],
   ['[object Event]','Ligação perdida'],
@@ -7076,6 +7271,7 @@ async function start() {
         if(new URLSearchParams(window.location.search).get('shell') === '1')
             document.documentElement.classList.add('spartan-in-shell');
     } catch(e) {}
+    try { spartanInstallShareRembBypass(); } catch(e) {}
     try {
         let r = await fetch(".status")
         if(!r.ok)

@@ -83,6 +83,7 @@ Várias pessoas no mesmo canal, com microfone, câmera e compartilhamento de tel
 - **Lista** — bolinha cinza/amarelo/verde/vermelho; mudo e volume só no teu fone; admin pode silenciar o mic do outro ou expulsar.
 - **Timers (servidor)** — header = tempo da sala (`HH:MM:SS`); menu do nick = tempo individual. Sala vazia > 1 min zera o da sala.
 - **Reconexão** — corte em **60 s**: abaixo disso, religa em silêncio e mantém mic/tela/câmera; acima, overlay e mídia desligada (precisa religar).
+- **Tela** — FPS-alvo **60**; bitrate auto **12 Mbps** (1080p60 de jogo ok); 720p se upload/distância fracos. HUD: `alvo · fps · kbps/teto`. Quem assiste clica em **Tela** no nick.
 - **Painel** (`/admin/`) — cadastrados, convites, salas, logs. Só admin da sala principal. Anfitrião de sala 24 h não entra.
 
 ### Cargos (3)
