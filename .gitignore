@@ -18,5 +18,11 @@ static/_pack.tgz
 
 data/net.log
 data/*.log
+data/accounts.json
+data/config.json
+data/registry.json
+data/sidecar.auth
+data/site.json
 groups/abiguinhos.json
+groups/spartan.json
 

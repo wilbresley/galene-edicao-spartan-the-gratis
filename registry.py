@@ -4,7 +4,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, quote
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from threading import Thread
+from threading import Thread, Lock
 import json, secrets, time, urllib.request, urllib.error, base64, os, hashlib, hmac, string
 
 DATA, GROUPS, GALENE, PORT = Path("/data/registry.json"), Path("/groups"), "http://127.0.0.1:8443", 8091
@@ -41,10 +41,11 @@ def now():
 PRESENCE_STALE_S = 45
 # Reentrada do mesmo nick: mantém o timer individual.
 PRESENCE_USER_GRACE_S = 60
-# Sala vazia: após isto o timer da ocupação zera.
-PRESENCE_ROOM_EMPTY_GRACE_S = 60
+# Sala vazia: continua contando; depois disto para e zera.
+PRESENCE_ROOM_EMPTY_GRACE_S = 300
 # Compat: código antigo usava este nome para graça de usuário.
 PRESENCE_GRACE_S = PRESENCE_USER_GRACE_S
+_GALENE_COUNTS = {"t": 0.0, "data": None}
 
 def parse_iso(ts):
     if not ts:
@@ -60,7 +61,6 @@ def parse_iso(ts):
 def live_bucket(b):
     live = b.setdefault("live", {})
     live.setdefault("users", {})
-    live.setdefault("room_accum_s", 0)
     return live
 
 def user_presence_online(rec, tnow):
@@ -77,24 +77,14 @@ def presence_online_count(b, tnow):
     users = (b.get("live") or {}).get("users") or {}
     return sum(1 for rec in users.values() if user_presence_online(rec, tnow))
 
-def _room_freeze_tick(live, tnow):
-    """Congela o trecho atual de ocupação em room_accum_s (não conta tempo vazio)."""
-    tick = parse_iso(live.get("room_tick_since"))
-    if not tick:
-        return
-    accum = int(live.get("room_accum_s") or 0)
-    accum += max(0, int((tnow - tick).total_seconds()))
-    live["room_accum_s"] = accum
-    live.pop("room_tick_since", None)
-
 def _room_reset(live):
-    live["room_accum_s"] = 0
+    live.pop("room_accum_s", None)
     live.pop("room_tick_since", None)
     live.pop("room_since", None)
     live.pop("empty_since", None)
 
-def presence_prune_room(b, tnow):
-    """Atualiza ocupação da sala. Online = heartbeats recentes; vazio > 60s zera o timer da sala."""
+def presence_prune_room(b, tnow, gid=None):
+    """Ocupação da sala: gente na call inicia o relógio; 5 min vazia para e zera."""
     live = live_bucket(b)
     users = live.get("users") or {}
     online = 0
@@ -107,40 +97,44 @@ def presence_prune_room(b, tnow):
             if not off and last and (tnow - last).total_seconds() > PRESENCE_STALE_S:
                 rec["offline_since"] = tnow.isoformat(timespec="seconds")
                 users[nick] = rec
-            # Limpa fichas antigas (fora da graça do usuário)
             off2 = parse_iso(rec.get("offline_since"))
             if off2 and (tnow - off2).total_seconds() > PRESENCE_USER_GRACE_S:
                 users.pop(nick, None)
     live["users"] = users
-    live.pop("room_since", None)
+    # tick/accum antigo inflava o relógio (ex.: 15 h com a sala recém-aberta)
+    live.pop("room_tick_since", None)
+    live.pop("room_accum_s", None)
+
+    occupied = online > 0
+    if gid:
+        counts = galene_group_counts_cached()
+        if counts is not None:
+            occupied = occupied or (counts.get(gid, 0) > 0)
+
+    room_since = parse_iso(live.get("room_since"))
     empty_since = parse_iso(live.get("empty_since"))
 
-    if online > 0:
+    if occupied:
         if empty_since:
             gap = (tnow - empty_since).total_seconds()
             live.pop("empty_since", None)
             if gap > PRESENCE_ROOM_EMPTY_GRACE_S:
-                _room_reset(live)
-                live["room_tick_since"] = tnow.isoformat(timespec="seconds")
-            elif not parse_iso(live.get("room_tick_since")):
-                live["room_tick_since"] = tnow.isoformat(timespec="seconds")
-        elif not parse_iso(live.get("room_tick_since")):
-            live["room_tick_since"] = tnow.isoformat(timespec="seconds")
-            live["room_accum_s"] = int(live.get("room_accum_s") or 0)
+                room_since = tnow
+        if not room_since:
+            room_since = tnow
+        live["room_since"] = room_since.isoformat(timespec="seconds")
     else:
-        if parse_iso(live.get("room_tick_since")):
-            _room_freeze_tick(live, tnow)
-        if int(live.get("room_accum_s") or 0) > 0 or empty_since:
+        if room_since:
             if not empty_since:
-                live["empty_since"] = tnow.isoformat(timespec="seconds")
                 empty_since = tnow
-            if empty_since and (tnow - empty_since).total_seconds() > PRESENCE_ROOM_EMPTY_GRACE_S:
+                live["empty_since"] = tnow.isoformat(timespec="seconds")
+            if (tnow - empty_since).total_seconds() > PRESENCE_ROOM_EMPTY_GRACE_S:
                 _room_reset(live)
         else:
             live.pop("empty_since", None)
     return online
 
-def presence_heartbeat(b, user, tnow=None):
+def presence_heartbeat(b, user, tnow=None, gid=None):
     tnow = tnow or datetime.now(TZ)
     user = norm_nick(user)
     if not user:
@@ -161,9 +155,9 @@ def presence_heartbeat(b, user, tnow=None):
     rec["last"] = tnow.isoformat(timespec="seconds")
     rec.pop("offline_since", None)
     users[user] = rec
-    presence_prune_room(b, tnow)
+    presence_prune_room(b, tnow, gid=gid)
 
-def presence_leave(b, user, tnow=None):
+def presence_leave(b, user, tnow=None, gid=None):
     tnow = tnow or datetime.now(TZ)
     user = norm_nick(user)
     if not user:
@@ -175,20 +169,17 @@ def presence_leave(b, user, tnow=None):
         rec["last"] = tnow.isoformat(timespec="seconds")
         rec["offline_since"] = tnow.isoformat(timespec="seconds")
         users[user] = rec
-    presence_prune_room(b, tnow)
+    presence_prune_room(b, tnow, gid=gid)
 
-def room_live_seconds(b, tnow=None):
-    """Tempo da sala com gente (autoridade do servidor). Ativo só com online > 0."""
+def room_live_seconds(b, tnow=None, gid=None):
+    """Tempo da sessão da sala. Ativo com gente na call ou nos 5 min após esvaziar."""
     tnow = tnow or datetime.now(TZ)
-    presence_prune_room(b, tnow)
+    presence_prune_room(b, tnow, gid=gid)
     live = b.get("live") or {}
-    online = presence_online_count(b, tnow)
-    accum = int(live.get("room_accum_s") or 0)
-    tick = parse_iso(live.get("room_tick_since"))
-    if online > 0:
-        extra = int((tnow - tick).total_seconds()) if tick else 0
-        return max(0, accum + extra), True
-    return 0, False
+    since = parse_iso(live.get("room_since"))
+    if not since:
+        return 0, False
+    return max(0, int((tnow - since).total_seconds())), True
 
 def user_live_seconds(b, user, tnow=None):
     """Tempo individual na sala (autoridade do servidor)."""
@@ -217,10 +208,10 @@ def presence_user_state(b, user, tnow=None):
 def galene_group_counts():
     auth = internal_auth()
     if not auth:
-        return {}
+        return None
     code, text = galene("GET", "/galene-api/v0/.stats", auth)
     if code != 200:
-        return {}
+        return None
     try:
         data = json.loads(text)
         out = {}
@@ -232,7 +223,17 @@ def galene_group_counts():
             out[name] = len(clients)
         return out
     except Exception:
-        return {}
+        return None
+
+def galene_group_counts_cached(ttl=4):
+    nowm = time.time()
+    prev = _GALENE_COUNTS.get("data")
+    if prev is not None and (nowm - (_GALENE_COUNTS.get("t") or 0)) < ttl:
+        return prev
+    data = galene_group_counts()
+    _GALENE_COUNTS["t"] = nowm
+    _GALENE_COUNTS["data"] = data
+    return data
 def _looks_cf(ip):
     ip=(ip or "").strip()
     return any(ip.startswith(p) for p in _CF_PREFIXES)
@@ -421,11 +422,14 @@ def random_room_slug(n=15):
         if slug_ok(s) and not (GROUPS/f"{s}.json").exists():
             return s
     return secrets.token_urlsafe(12).lower().replace("_","").replace("-","")[:n]
+_SAVE_LOCK = Lock()
 def load():
     return json.loads(DATA.read_text(encoding="utf-8")) if DATA.exists() else {}
 def save(d):
     DATA.parent.mkdir(parents=True, exist_ok=True)
-    t=DATA.with_suffix(".tmp"); t.write_text(json.dumps(d, indent=2, ensure_ascii=False), encoding="utf-8"); t.replace(DATA)
+    payload=json.dumps(d, indent=2, ensure_ascii=False)
+    with _SAVE_LOCK:
+        t=DATA.with_suffix(".tmp"); t.write_text(payload, encoding="utf-8"); t.replace(DATA)
 def bucket(d,g):
     d.setdefault(g, {})
     for k in ("guests","pending","denied","blocked","created","temps","ipban","seen"): d[g].setdefault(k, {})
@@ -671,6 +675,23 @@ def expire_loop():
         except Exception: pass
         try: prune_stale_guests()
         except Exception: pass
+        try: presence_tick_all()
+        except Exception: pass
+
+def presence_tick_all():
+    d = load()
+    tnow = datetime.now(TZ)
+    dirty = False
+    for gid, b in list(d.items()):
+        if not isinstance(b, dict):
+            continue
+        before = json.dumps(b.get("live") or {}, sort_keys=True, default=str)
+        presence_prune_room(b, tnow, gid=gid)
+        after = json.dumps(b.get("live") or {}, sort_keys=True, default=str)
+        if before != after:
+            dirty = True
+    if dirty:
+        save(d)
 def panel_login_ok(user, password):
     """Só admin de verdade: sidecar.auth, config.json, cofre (op) ou op legado da main. Anfitrião 24h não entra."""
     user=norm_nick(user)
@@ -1072,7 +1093,7 @@ class H(BaseHTTPRequestHandler):
                 ok,_=self.admin_ok()
                 if not ok:
                     self.send_json(401, {"error":"nao autorizado"}); return
-            counts=galene_group_counts()
+            counts=galene_group_counts_cached()
             tnow=datetime.now(TZ)
             for fp in sorted(GROUPS.glob("*.json")):
                 try: g=json.loads(fp.read_text(encoding="utf-8"))
@@ -1085,10 +1106,11 @@ class H(BaseHTTPRequestHandler):
                 is_main=(stem==main)
                 is_open=(not pw) or (isinstance(pw, dict) and pw.get("type")=="wildcard")
                 b=bucket(d, stem)
-                live_s, live_active=room_live_seconds(b, tnow)
-                online=counts.get(stem, 0)
-                if online <= 0:
+                live_s, live_active=room_live_seconds(b, tnow, gid=stem)
+                if counts is None:
                     online=presence_online_count(b, tnow)
+                else:
+                    online=counts.get(stem, 0)
                 rooms.append({"id":stem,"title":g.get("displayName") or stem,"main":is_main,
                     "public":bool(g.get("public")),
                     "open": bool(is_open) and not is_main,
@@ -1122,7 +1144,7 @@ class H(BaseHTTPRequestHandler):
             g=(q.get("group") or ["spartan"])[0]
             user=norm_nick((q.get("user") or [""])[0])
             d=load(); b=bucket(d, g); tnow=datetime.now(TZ)
-            room_ls, room_active=room_live_seconds(b, tnow)
+            room_ls, room_active=room_live_seconds(b, tnow, gid=g)
             out={"room_live_s": room_ls, "room_active": room_active,
                  "online": presence_online_count(b, tnow)}
             if user and ok_nick(user):
@@ -1153,7 +1175,7 @@ class H(BaseHTTPRequestHandler):
             rec=b.setdefault("seen",{}).setdefault(user, {"first":t,"last":t,"ip":ip}); rec["last"]=t; rec["ip"]=ip
             if is_named_user(g, user):
                 access_log("cadastrado", g, user, ip)
-                presence_heartbeat(b, user)
+                presence_heartbeat(b, user, gid=g)
                 save(d); self.send_json(200, {"ok":True,"named":True}); return
             if is_open(g):
                 ensure_open_ouvinte(g)
@@ -1162,17 +1184,17 @@ class H(BaseHTTPRequestHandler):
             else:
                 rec=b["guests"].setdefault(user, {"first":t,"last":t,"ip":ip}); rec["last"]=t; rec["ip"]=ip
                 access_log("convidado", g, user, ip)
-            presence_heartbeat(b, user)
+            presence_heartbeat(b, user, gid=g)
             save(d); self.send_json(200, {"ok":True}); return
         if path=="/presence":
             if not ok_nick(user): self.send_json(400, {"error":"nick invalido"}); return
             d=load(); b=bucket(d,g); tnow=datetime.now(TZ)
             if body.get("leave"):
-                presence_leave(b, user, tnow)
+                presence_leave(b, user, tnow, gid=g)
             else:
-                presence_heartbeat(b, user, tnow)
+                presence_heartbeat(b, user, tnow, gid=g)
             save(d)
-            room_ls, room_active=room_live_seconds(b, tnow)
+            room_ls, room_active=room_live_seconds(b, tnow, gid=g)
             state=presence_user_state(b, user, tnow)
             state["room_live_s"]=room_ls
             state["room_active"]=room_active

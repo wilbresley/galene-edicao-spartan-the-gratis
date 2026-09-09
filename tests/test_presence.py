@@ -40,16 +40,16 @@ class PresenceLogicTests(unittest.TestCase):
         self.assertTrue(active)
         self.assertGreaterEqual(ls, 50)
 
-    def test_room_inactive_when_empty(self):
+    def test_room_keeps_counting_while_empty_under_grace(self):
         b = {}
         t0 = datetime.now(TZ)
         presence_heartbeat(b, "alice", t0)
         presence_leave(b, "alice", t0 + timedelta(seconds=40))
         ls, active = room_live_seconds(b, t0 + timedelta(seconds=50))
-        self.assertFalse(active)
-        self.assertEqual(ls, 0)
+        self.assertTrue(active)
+        self.assertGreaterEqual(ls, 50)
 
-    def test_room_resets_after_one_minute_empty(self):
+    def test_room_resets_after_empty_grace(self):
         b = {}
         t0 = datetime.now(TZ)
         presence_heartbeat(b, "alice", t0)
@@ -63,7 +63,7 @@ class PresenceLogicTests(unittest.TestCase):
         self.assertTrue(active2)
         self.assertLess(ls2, 5)
 
-    def test_rejoin_within_minute_keeps_room_session(self):
+    def test_rejoin_within_grace_keeps_counting_empty_gap(self):
         b = {}
         t0 = datetime.now(TZ)
         presence_heartbeat(b, "alice", t0)
@@ -71,9 +71,21 @@ class PresenceLogicTests(unittest.TestCase):
         presence_heartbeat(b, "alice", t0 + timedelta(seconds=50))
         ls, active = room_live_seconds(b, t0 + timedelta(seconds=70))
         self.assertTrue(active)
-        # ~30s ocupado + ~20s após voltar ≈ 50s (não conta os 20s vazios)
-        self.assertGreaterEqual(ls, 45)
-        self.assertLess(ls, 60)
+        # 70s contínuos (os 20s vazios entram na graça de 5 min)
+        self.assertGreaterEqual(ls, 65)
+        self.assertLess(ls, 80)
+
+    def test_stale_tick_does_not_inflate_on_join(self):
+        t0 = datetime.now(TZ)
+        old = (t0 - timedelta(hours=15)).isoformat(timespec="seconds")
+        b = {"live": {"room_tick_since": old, "room_accum_s": 54000, "users": {}}}
+        presence_heartbeat(b, "alice", t0)
+        ls, active = room_live_seconds(b, t0)
+        self.assertTrue(active)
+        self.assertLess(ls, 5)
+
+    def test_empty_grace_is_five_minutes(self):
+        self.assertEqual(PRESENCE_ROOM_EMPTY_GRACE_S, 300)
 
     def test_user_timer_independent_of_room(self):
         b = {}

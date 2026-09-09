@@ -1,0 +1,20 @@
+# WSL neste PC: Windows nao encaminha o IPv6 do Galene.
+# Galene escuta 127.0.0.1:18443; nginx IPv4 na 8443 (igual o sidecar na 8091).
+services:
+  galene:
+    command:
+      - -http
+      - 127.0.0.1:18443
+      - -insecure
+      - -turn
+      - ${TURN_PUBLIC_IP}:1194
+      - -udp-range
+      - 50000-50100
+      - -data
+      - /data
+      - -groups
+      - /groups
+      - -recordings
+      - /recordings
+      - -static
+      - /app/static

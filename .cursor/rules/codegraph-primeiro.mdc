@@ -5,9 +5,9 @@ alwaysApply: true
 
 # CodeGraph primeiro (absoluto)
 
-Este workspace: `s:\workspace\galene-castro`. Índice em `.codegraph/` (já inicializado). **Toda** busca, pesquisa, “onde fica X”, fluxo, impacto de edit ou leitura de código **começa** no CodeGraph. Não é opcional. Não comece por Grep/Glob/Read.
+Este workspace: `s:\Workspaces\galene-edicao-spartan`. Índice em `.codegraph/` (já inicializado). **Toda** busca, pesquisa, “onde fica X”, fluxo, impacto de edit ou leitura de código **começa** no CodeGraph. Não é opcional. Não comece por Grep/Glob/Read.
 
-1. **Primeiro** MCP `codegraph_explore` com `projectPath: s:\workspace\galene-castro` (esta sessão não tem projeto default). Equivalente CLI: `codegraph explore`; um símbolo: `codegraph node`; resto: `codegraph query`, `callers` / `callees` / `impact`. Índice duvidoso: `codegraph status` e, se preciso, `codegraph sync`.
+1. **Primeiro** MCP `codegraph_explore` com `projectPath: s:\Workspaces\galene-edicao-spartan` (esta sessão não tem projeto default). Equivalente CLI: `codegraph explore`; um símbolo: `codegraph node`; resto: `codegraph query`, `callers` / `callees` / `impact`. Índice duvidoso: `codegraph status` e, se preciso, `codegraph sync`.
 2. Source que o grafo devolver = já lido. **Proibido** reabrir o mesmo arquivo com Read “só para conferir”.
 3. Se o explore **cortar** (`signatures elided`, `trimmed`, “run another explore with the exact name”): **não** caia no Grep/Read. Novo explore/`node` com o **nome exato**. O grafo tem de entregar o corpo.
 4. `registry.py`, `static/*.js`, `galene.js`, `admin.js` e qualquer JS/Python **não** são exceção — passam pelo grafo.

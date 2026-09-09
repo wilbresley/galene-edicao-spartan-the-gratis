@@ -32,7 +32,9 @@ O Galene oficial sobe uma videoconferência SFU + TURN. Por cima foi feita uma i
 
 Isto **não** é o MiroTalk. MiroTalk P2P trava em NAT/4G sem TURN. Galene relê a mídia.
 
-Cache da sala (hoje): `galene.js?v=115`, `galene-spartan.css?v=99`, `protocol.js?v=3`, `spartan-boot.js?v=9`. Shell: `spartan-shell.js?v=4`, `spartan-shell.css?v=8`. Painel: `admin.js?v=38`, `admin.css?v=25`. Botão **Câmera**/**Tela** sob o nick só com vídeo/tela reais (mic = bolinha). **Reconexão:** &lt; 60 s preserva mic/tela; ≥ 60 s fecha mídia + overlay. **Tela:** FPS-alvo 60; bitrate auto **12 Mbps** / 1080p **10** / 720p **5**; bypass REMB; HUD `alvo · fps · kbps/teto`. Contador da sala no header **branco**. Quem assiste clica em **Tela** no nick. Salas 24h: só link direto; admin vê em **temporárias**. Reiniciar `docker restart spartan-reg` após mudar `registry.py`.
+Cache da sala (hoje): `galene.js?v=117`, `galene-spartan.css?v=99`, `protocol.js?v=3`, `spartan-boot.js?v=9`. Shell: `spartan-shell.js?v=4`, `spartan-shell.css?v=8`. Painel: `admin.js?v=38`, `admin.css?v=25`. Botão **Câmera**/**Tela** sob o nick só com vídeo/tela reais (mic = bolinha). Live de tela só executa no clique; fechar (X ou de novo Tela/Câmera) para de assistir só no teu cliente. Som da screenshare começa mudo (F5/foco não religam; desconexão reconstitui o volume que o usuário tinha ligado). **Reconexão:** &lt; 60 s preserva mic/tela; ≥ 60 s fecha mídia + overlay. **Tela:** FPS-alvo 60; bitrate auto **12 Mbps** / 1080p **10** / 720p **5**; bypass REMB; HUD `alvo · fps · kbps/teto`. Contador da sala no header **branco** (começa com gente na call; 5 min vazia zera). Quem assiste clica em **Tela** no nick. Salas 24h: só link direto; admin vê em **temporárias**. Reiniciar `docker restart spartan-reg` após mudar `registry.py`.
+
+**Snapshot 09/09/2026:** este texto descreve o pacote **antes** da reformulação (HUD ainda pode aparecer em quem assiste; teto da tela ainda é fixo 12/10/5 Mbps). O plano aprovado está na secção 11; ainda não está no código deste commit.
 
 ---
 
@@ -357,7 +359,7 @@ Depois: `docker restart spartan-reg`.
 
 Na sala, o microfone começa **desligado** (vermelho) em cada entrada — inclusive ao voltar do admin. O primeiro clique pede o microfone; os seguintes só mutam. A câmera fica num botão à parte. Ativar/Desativar da barra original estão escondidos.
 
-Lives com imagem **não** entram sozinhas na tela: aparece um botão verde (Câmera / Tela) sob o nick **só** quando há vídeo/tela de verdade; mic sozinho = só a bolinha. O clique abre no teu grid, outro clique tira. **Duas** lives já abrem **lado a lado** (a primeira em foco não deixa o grid numa coluna só). Fechar a câmera **não** desliga o microfone. Mensagem de texto abre o chat sozinho; dá para marcar **Não abrir o chat automaticamente**. Mensagens somem depois de **24 h**. Cada pessoa tem **Mudo** na lista (só no teu cliente). À esquerda do nome há uma bolinha: **cinza** (mic off), **amarelo** (mic ligado, parado), **verde** (falando), **vermelho** (mutado) — igual para si e para os outros. Sons curtos ao **entrar**, **sair** e **receber mensagem** (arquivos em `static/sounds/*.mp3`; cada um liga/desliga em Configurações e fica gravado neste computador para o teu nick). Header: ícones vermelhos, textos e nome da sala brancos; fundo do grid/lista `#33363d`. Salas permanentes mostram só o timer branco `HH:MM:SS` no header (**tempo da sala**, servidor; zera se vazia > 60 s). Tempo individual fica no menu do nick. Salas de 24h mostram à direita do nome: `Tempo até exclusão desta sala: HH:MM` (permanece no F5). Se a ligação cair, há graça de **60 s** (sem overlay no blip; mic/live preservados); só depois aparece **Ligação perdida**. O grid é de pares (1, 2, 4, 6… até 50). **Ocultar o meu** esconde as tuas imagens só para ti. Chat e definições abrem em janela por cima da sala (engrenagem, sem menu a deslizar). A janela de Configurações tem borda vermelha; o X de fechar (configurações, chat, lives e avisos) é um quadradinho vermelho com X branco. Configurações mostra só dispositivos e os três sons da sala; envio ilimitado, duas qualidades automático e a bolinha de fala ficam ligados por baixo, sem opções extra no menu.
+Lives com imagem **não** entram sozinhas na tela: aparece um botão verde (Câmera / Tela) sob o nick **só** quando há vídeo/tela de verdade; mic sozinho = só a bolinha. O clique abre no teu grid, outro clique (ou o X) tira e **para de baixar** essa live (quem transmite segue). **Duas** lives já abrem **lado a lado** (a primeira em foco não deixa o grid numa coluna só). Fechar a câmera **não** desliga o microfone. Mensagem de texto abre o chat sozinho; dá para marcar **Não abrir o chat automaticamente**. Mensagens somem depois de **24 h**. Cada pessoa tem **Mudo** na lista (só no teu cliente). À esquerda do nome há uma bolinha: **cinza** (mic off), **amarelo** (mic ligado, parado), **verde** (falando), **vermelho** (mutado) — igual para si e para os outros. Sons curtos ao **entrar**, **sair** e **receber mensagem** (arquivos em `static/sounds/*.mp3`; cada um liga/desliga em Configurações e fica gravado neste computador para o teu nick). Header: ícones vermelhos, textos e nome da sala brancos; fundo do grid/lista `#33363d`. Salas permanentes mostram só o timer branco `HH:MM:SS` no header (**tempo da sala**, servidor: começa quando entra gente na call; vazio segue 5 min e zera). Tempo individual fica no menu do nick. Salas de 24h mostram à direita do nome: `Tempo até exclusão desta sala: HH:MM` (permanece no F5). Se a ligação cair, há graça de **60 s** (sem overlay no blip; mic/live preservados); só depois aparece **Ligação perdida**. O grid é de pares (1, 2, 4, 6… até 50). **Ocultar o meu** esconde as tuas imagens só para ti. Chat e definições abrem em janela por cima da sala (engrenagem, sem menu a deslizar). A janela de Configurações tem borda vermelha; o X de fechar (configurações, chat, lives e avisos) é um quadradinho vermelho com X branco. Configurações mostra só dispositivos e os três sons da sala; envio ilimitado, duas qualidades automático e a bolinha de fala ficam ligados por baixo, sem opções extra no menu.
 
 Quem compartilha a tela e quer que os outros ouçam **o jogo e a voz** precisa dos **dois** ao mesmo tempo: microfone ligado **e** compartilhamento com áudio. No Chrome/Edge no **Windows**, no popup: escolhe **tela inteira** ou **aba**, e marca **compartilhar áudio**. Compartilhar só uma janela quase nunca traz o som do PC. No Linux o browser muitas vezes só captura áudio de aba; no Safari/iPhone não há áudio de sistema.
 
@@ -410,7 +412,22 @@ docker save galene:local | gzip > ~/galene-local-image.tgz
 
 ---
 
-## 10. Créditos
+## 10. Plano de reformulação (aprovado, ainda não neste pacote)
+
+Contrato do que entra **depois** do snapshot. Grid da sala e bolinhas de fala **não** mudam.
+
+| Fase | O quê |
+|---|---|
+| A | HUD só na live de quem transmite; mic com `voiceIsolation`; teto automático da tela; ICE sem loopback fora do lab |
+| B | `registry.json` atômico; beacon/presence/net-event sem nick solto |
+| C | senha admin só na sessão; `postMessage` com origem; `?v=` único; um painel |
+| D | `galene.js` em módulos Spartan (sem mover o grid); testes alinhados |
+
+Não entra: RNNoise/Krisp, REMB de volta, `forceRelay` global, gravar a sala.
+
+---
+
+## 11. Créditos
 
 - **Galene** by [Juliusz Chroboczek](https://www.irif.fr/~jch/) — https://galene.org  
 - A casca visual podes tornar tua; **não apagues** a atribuição do Galene no rodapé.

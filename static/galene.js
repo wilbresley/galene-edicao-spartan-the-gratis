@@ -289,6 +289,9 @@ let spartanBoost = {};
 let spartanHideOwn = false;
 /** @type {Record<string, boolean>} ocultar cada live própria (por id) */
 let spartanHideOwnStream = {};
+/** Som da tela que o usuário ligou (nick + rótulo). F5 começa mudo; desconexão reconstitui. */
+/** @type {Record<string, boolean>} */
+let spartanLiveSound = {};
 /** @type {{x:number,y:number}} */
 let spartanLastPointer = {x: 24, y: 80};
 
@@ -369,6 +372,11 @@ function spartanFindStream(userId, label) {
 function spartanApplyUserMute(c) {
     if(!c || c.up || !c.stream)
         return;
+    if(c.label === 'screenshare') {
+        spartanApplyDownRequest(c);
+        spartanApplyLiveSound(c);
+        return;
+    }
     let muted = !!(c.source && spartanUserMuted[c.source]);
     c.stream.getAudioTracks().forEach(function(t) {
         t.enabled = !muted;
@@ -382,23 +390,75 @@ function spartanApplyDownRequest(c) {
     if(!c || c.up || typeof c.request !== 'function')
         return;
     if(spartanIsOuvinte()) {
-        c.request(['audio']);
+        if(c.label === 'screenshare')
+            c.request([]);
+        else
+            c.request(['audio']);
+        spartanReleaseUnwatchedVideo(c);
         return;
     }
-    // Live aberta (clicou Tela/Câmera): sempre qualidade alta. Nunca video-low,
-    // mesmo com a tua câmara/tela ligadas ou o jogo aberto.
+    // Live aberta (clicou Tela/Câmera): sempre qualidade alta.
+    // Nunca baixa a imagem, mesmo com a sua câmera/tela ligadas ou o jogo aberto.
     if(spartanWatch[c.id]) {
-        c.request(['audio', 'video']);
+        if(c.label === 'screenshare') {
+            let key = spartanLiveSoundKey(c);
+            let wantSound = !!(key && spartanLiveSound[key]);
+            if(c.source && spartanUserMuted[c.source])
+                wantSound = false;
+            c.request(wantSound ? ['audio', 'video'] : ['video']);
+        } else {
+            c.request(['audio', 'video']);
+        }
+        if(c.stream && c.stream.getVideoTracks) {
+            c.stream.getVideoTracks().forEach(function(t) {
+                t.enabled = true;
+            });
+        }
+        let mediaOn = document.getElementById('media-' + c.localId);
+        if(mediaOn && mediaOn.paused)
+            mediaOn.play().catch(function() {});
         spartanBoostWatchedReceivers(c);
         return;
     }
-    // Não clicou: não baixa imagem. Só áudio, se existir.
-    // Tela sem áudio: video-low só para o botão não sumir (stream só-vídeo).
-    let hasAudio = !!(c.stream && c.stream.getAudioTracks && c.stream.getAudioTracks().length);
-    if(hasAudio)
-        c.request(['audio']);
+    // Fechou / não clicou: para o vídeo neste cliente (a transmissão da pessoa segue).
+    if(c.label === 'screenshare')
+        c.request([]);
     else
-        c.request(['audio', 'video-low']);
+        c.request(['audio']);
+    spartanReleaseUnwatchedVideo(c);
+}
+
+/**
+ * Padrão da sala: voz sim, imagem só das lives que você clicou.
+ */
+function spartanDefaultDownRequest() {
+    return {'': ['audio'], screenshare: []};
+}
+
+/**
+ * Para o vídeo desta live só para você. Não encerra a transmissão da outra pessoa.
+ * @param {Stream} c
+ */
+function spartanReleaseUnwatchedVideo(c) {
+    if(!c || c.up || spartanWatch[c.id])
+        return;
+    function muteVideo(t) {
+        if(!t || t.kind !== 'video')
+            return;
+        t.enabled = false;
+    }
+    try {
+        if(c.stream && c.stream.getVideoTracks)
+            c.stream.getVideoTracks().forEach(muteVideo);
+        if(c.pc && c.pc.getReceivers)
+            c.pc.getReceivers().forEach(function(r) { muteVideo(r.track); });
+    } catch(e) {}
+    if(c.label === 'screenshare') {
+        let media = document.getElementById('media-' + c.localId);
+        if(media) {
+            try { media.pause(); } catch(e) {}
+        }
+    }
 }
 
 function spartanBoostWatchedReceivers(c) {
@@ -1588,6 +1648,87 @@ function spartanMaybeRestoreWatch(c) {
         spartanWatch[c.id] = true;
 }
 
+function spartanLiveSoundKey(c) {
+    if(!c || c.up || c.label !== 'screenshare')
+        return '';
+    let uname = '';
+    try {
+        let u = serverConnection && serverConnection.users[c.source];
+        uname = (u && u.username) || '';
+    } catch(e) {}
+    if(!uname)
+        uname = c.source || '';
+    if(!uname)
+        return '';
+    return uname + '\t' + (c.label || '');
+}
+
+function spartanSnapshotLiveSound() {
+    let out = [];
+    for(let k in spartanLiveSound) {
+        if(spartanLiveSound[k])
+            out.push(k);
+    }
+    return out;
+}
+
+function spartanMaybeRestoreLiveSound(c) {
+    if(!c || c.up || c.label !== 'screenshare')
+        return;
+    let snap = window._spartanSoundSnap;
+    if(!snap || !snap.length)
+        return;
+    let key = spartanLiveSoundKey(c);
+    if(key && snap.indexOf(key) >= 0)
+        spartanLiveSound[key] = true;
+}
+
+/**
+ * Tela com som: mudo até o usuário ligar o volume. Voz do mic não passa por aqui.
+ * @param {Stream} c
+ * @param {HTMLMediaElement=} media
+ */
+function spartanApplyLiveSound(c, media) {
+    if(!c || c.up || c.label !== 'screenshare')
+        return;
+    let want = false;
+    let key = spartanLiveSoundKey(c);
+    if(key && spartanLiveSound[key])
+        want = true;
+    if(c.source && spartanUserMuted[c.source])
+        want = false;
+    if(c.stream && c.stream.getAudioTracks) {
+        c.stream.getAudioTracks().forEach(function(t) {
+            t.enabled = want;
+        });
+    }
+    if(!media)
+        media = document.getElementById('media-' + c.localId);
+    if(!media)
+        return;
+    media.muted = !want;
+    let controls = document.getElementById('controls-' + c.localId);
+    if(controls) {
+        let btn = getVideoButton(controls, 'volume-mute');
+        let slider = getVideoButton(controls, 'volume-slider');
+        if(btn && slider)
+            setVolumeButton(media.muted, btn, slider);
+    }
+}
+
+function spartanReapplyAllLiveSound() {
+    if(!serverConnection)
+        return;
+    for(let id in serverConnection.down) {
+        let c = serverConnection.down[id];
+        if(!c || c.label !== 'screenshare')
+            continue;
+        let media = document.getElementById('media-' + c.localId);
+        if(media)
+            spartanApplyLiveSound(c, media);
+    }
+}
+
 function spartanSnapshotUps(sc) {
     let keep = [];
     if(!sc)
@@ -2152,6 +2293,7 @@ function gotClose(code, reason) {
     if(!spartanDropSince) {
         spartanDropSince = Date.now();
         try { window._spartanWatchSnap = spartanSnapshotWatch(); } catch(e) {}
+        try { window._spartanSoundSnap = spartanSnapshotLiveSound(); } catch(e) {}
         spartanNetEvent({phase: 'drop', code: code, reason: String(reason || '')});
     }
     if(!spartanGraceTimer) {
@@ -2236,7 +2378,9 @@ function gotDownStream(c) {
         spartanHasVideo[c.id] = true;
     setMedia(c);
     spartanMaybeRestoreWatch(c);
+    spartanMaybeRestoreLiveSound(c);
     spartanApplyDownRequest(c);
+    spartanApplyLiveSound(c);
 }
 
 // Store current browser viewport height in css variable
@@ -2646,7 +2790,7 @@ getSelectElement('requestselect').onchange = function(e) {
     if(!(this instanceof HTMLSelectElement))
         throw new Error('Unexpected type for this');
     updateSettings({request: this.value});
-    serverConnection.request(mapRequest(this.value));
+    serverConnection.request(spartanDefaultDownRequest());
     if(serverConnection && serverConnection.down) {
         for(let id in serverConnection.down)
             spartanApplyDownRequest(serverConnection.down[id]);
@@ -3854,6 +3998,8 @@ async function setMedia(c, mirror, video) {
             media = document.createElement('video');
             if(c.up)
                 media.muted = true;
+            else if(c.label === 'screenshare')
+                media.muted = true;
         }
 
         media.classList.add('media');
@@ -3875,6 +4021,8 @@ async function setMedia(c, mirror, video) {
 
     if(!video && media.srcObject !== c.stream)
         media.srcObject = c.stream;
+    if(!c.up)
+        spartanApplyLiveSound(c, media);
 
     if(!c.up) {
         media.onfullscreenchange = function(e) {
@@ -3914,6 +4062,18 @@ function spartanBindPeerUi(div, media) {
     if(div.dataset.spartanUi === '1')
         return;
     div.dataset.spartanUi = '1';
+    media.addEventListener('play', function() {
+        let localId = media.id.replace(/^media-/, '');
+        let c = spartanFindByLocalId(localId);
+        if(c)
+            spartanApplyLiveSound(c, media);
+    });
+    media.addEventListener('playing', function() {
+        let localId = media.id.replace(/^media-/, '');
+        let c = spartanFindByLocalId(localId);
+        if(c)
+            spartanApplyLiveSound(c, media);
+    });
     media.addEventListener('loadedmetadata', function() {
         if(media.videoWidth > 0 && media.videoWidth < media.videoHeight)
             div.classList.add('peer-portrait');
@@ -4042,6 +4202,8 @@ function resetMedia(c) {
         return;
     }
     media.srcObject = media.srcObject;
+    if(!c.up)
+        spartanApplyLiveSound(c, media);
 }
 
 /**
@@ -4073,9 +4235,13 @@ function addCustomControls(media, container, c, toponly) {
         if(c.up && c.label === 'camera') {
             volume.remove();
         } else {
+            if(c.label === 'screenshare' && !c.up)
+                media.muted = true;
             setVolumeButton(media.muted,
                             getVideoButton(controls, "volume-mute"),
                             getVideoButton(controls, "volume-slider"));
+            if(c.label === 'screenshare' && !c.up)
+                spartanApplyLiveSound(c, media);
         }
         container.appendChild(controls);
     }
@@ -4163,14 +4329,31 @@ function registerControlHandlers(localId, media, container) {
     let volume = getVideoButton(container, 'volume');
     if (volume) {
         volume.onclick = function(event) {
-            let target = /** @type{HTMLElement} */(event.target);
-            if(!target.classList.contains('volume-mute'))
-                // if click on volume slider, do nothing
+            let t = event.target && event.target.closest ? event.target : null;
+            if(t && t.closest && t.closest('.volume-slider'))
+                return;
+            let muteIcon = t && t.closest ? t.closest('.volume-mute') : null;
+            if(!muteIcon)
+                muteIcon = getVideoButton(volume, 'volume-mute');
+            if(!muteIcon)
                 return;
             event.preventDefault();
             event.stopPropagation();
+            let c = spartanFindByLocalId(localId);
+            if(c && !c.up && c.label === 'screenshare') {
+                let key = spartanLiveSoundKey(c);
+                if(key) {
+                    if(spartanLiveSound[key])
+                        delete spartanLiveSound[key];
+                    else
+                        spartanLiveSound[key] = true;
+                }
+                spartanApplyDownRequest(c);
+                spartanApplyLiveSound(c, media);
+                return;
+            }
             media.muted = !media.muted;
-            setVolumeButton(media.muted, target,
+            setVolumeButton(media.muted, muteIcon,
                             getVideoButton(volume, "volume-slider"));
         };
         volume.oninput = function() {
@@ -4989,6 +5172,7 @@ function spartanResetRoomState() {
     spartanUserVol = {};
     spartanBoost = {};
     spartanHideOwnStream = {};
+    spartanLiveSound = {};
     spartanLastMicSeq = {};
     spartanHeardOn = {};
     spartanMutedAt = {};
@@ -5462,10 +5646,8 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
 
     if(typeof RTCPeerConnection === 'undefined')
         displayWarning("Este navegador não tem WebRTC");
-    else if(spartanIsOuvinte())
-        this.request({'': ['audio']});
     else
-        this.request({'': ['audio', 'video']});
+        this.request(spartanDefaultDownRequest());
 
     let recovering = !!(window._spartanRecoveringMedia) ||
         spartanIsRecovering() ||
@@ -7350,6 +7532,17 @@ async function start() {
     setViewportHeight();
     spartanSalasRoomBind();
 }
+
+document.addEventListener('visibilitychange', function() {
+    if(!document.hidden)
+        spartanReapplyAllLiveSound();
+});
+window.addEventListener('pageshow', function() {
+    spartanReapplyAllLiveSound();
+});
+window.addEventListener('focus', function() {
+    spartanReapplyAllLiveSound();
+});
 
 start();
 

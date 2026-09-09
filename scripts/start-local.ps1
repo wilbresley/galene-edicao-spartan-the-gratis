@@ -1,13 +1,20 @@
-# Sobe o Galene local neste PC (WSL2 + Docker Engine).
+# Sobe o Galene em /home/docker/galene no Debian WSL.
 # Duplo clique ou: powershell -File scripts\start-local.ps1
 $ErrorActionPreference = 'Stop'
-Write-Host 'Iniciando Ubuntu WSL + containers Galene...'
-# Mantém o WSL acordado: sem uma sessão aberta o VM desliga e o Firefox recusa :8443.
-Start-Process -FilePath 'wsl.exe' -ArgumentList '-d','Ubuntu-26.04','--','sleep','infinity' -WindowStyle Hidden
+$Distro = 'Debian'
+$Repo = '/mnt/s/Workspaces/galene-edicao-spartan'
+
+Write-Host 'Acordando Debian WSL...'
+Start-Process -FilePath 'wsl.exe' -ArgumentList '-d', $Distro, '--', 'sleep', 'infinity' -WindowStyle Hidden
 Start-Sleep -Seconds 2
-wsl -d Ubuntu-26.04 -- bash -lc "set -euo pipefail; systemctl is-active docker >/dev/null || true; cd /mnt/s/workspace/galene-castro; docker compose up -d --remove-orphans; docker compose ps"
+
+Write-Host 'Subindo /home/docker/galene + nginx...'
+wsl -d $Distro -u root -- python3 -c "p=r'$Repo/scripts/lab-boot.py'; d=open(p,'rb').read().replace(b'\r\n',b'\n').replace(b'\r',b'\n'); open('/tmp/lab-boot.py','wb').write(d)"
+wsl -d $Distro -u root -- python3 /tmp/lab-boot.py
+
 Write-Host ''
-Write-Host 'Home:  http://127.0.0.1:8443/          (shell SPA — mesma aba)'
-Write-Host 'Sala:  http://127.0.0.1:8443/#/group/spartan'
+Write-Host 'Home:  http://127.0.0.1:8443/          (use http e 127.0.0.1, nao localhost)'
+Write-Host 'Sala:  http://127.0.0.1:8443/group/spartan/'
 Write-Host 'Admin: http://127.0.0.1:8443/admin/'
-Write-Host 'Use http (nao https). Login: admin / Mudar@123'
+Write-Host 'Login fabrica: admin / Mudar@123  (troque no 1o acesso)'
+Write-Host 'Stack: /home/docker/galene   Distrobox: programas, nao Docker'
