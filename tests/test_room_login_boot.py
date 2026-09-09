@@ -29,9 +29,9 @@ class RoomLoginBootTests(unittest.TestCase):
 
     def test_start_hides_login_before_auto_connect(self):
         m = re.search(
-            r"async function start\(\) \{.*?^}\s*\nstart\(\);",
+            r"async function start\(\) \{.*?\nstart\(\);",
             self.js,
-            re.MULTILINE | re.DOTALL,
+            re.DOTALL,
         )
         self.assertIsNotNone(m, "start() não encontrado")
         body = m.group(0)
@@ -43,7 +43,7 @@ class RoomLoginBootTests(unittest.TestCase):
         )
 
     def test_galene_js_cache_bust_v105(self):
-        self.assertIn("galene.js?v=105", self.html)
+        self.assertIn("galene.js?v=118", self.html)
         js = (ROOT / "static" / "galene.js").read_text(encoding="utf-8")
         self.assertIn("spartanLiveHeaderTick", js)
         self.assertIn("spartanSyncPresence", js)

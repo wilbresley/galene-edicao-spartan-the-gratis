@@ -423,13 +423,30 @@ def random_room_slug(n=15):
             return s
     return secrets.token_urlsafe(12).lower().replace("_","").replace("-","")[:n]
 _SAVE_LOCK = Lock()
-def load():
-    return json.loads(DATA.read_text(encoding="utf-8")) if DATA.exists() else {}
-def save(d):
+def load_unlocked():
+    if not DATA.exists():
+        return {}
+    try:
+        return json.loads(DATA.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+def save_unlocked(d):
     DATA.parent.mkdir(parents=True, exist_ok=True)
     payload=json.dumps(d, indent=2, ensure_ascii=False)
+    t=DATA.with_suffix(".tmp"); t.write_text(payload, encoding="utf-8"); t.replace(DATA)
+def load():
     with _SAVE_LOCK:
-        t=DATA.with_suffix(".tmp"); t.write_text(payload, encoding="utf-8"); t.replace(DATA)
+        return load_unlocked()
+def save(d):
+    with _SAVE_LOCK:
+        save_unlocked(d)
+def mutate_registry(fn):
+    """Leitura-modificação-gravação atômica do registry.json."""
+    with _SAVE_LOCK:
+        d=load_unlocked()
+        r=fn(d)
+        save_unlocked(d)
+        return r
 def bucket(d,g):
     d.setdefault(g, {})
     for k in ("guests","pending","denied","blocked","created","temps","ipban","seen"): d[g].setdefault(k, {})
@@ -479,6 +496,29 @@ def is_open(gid):
     except Exception: return False
     pw=(g.get("wildcard-user") or {}).get("password")
     return (not pw) or (isinstance(pw, dict) and pw.get("type")=="wildcard")
+def presence_auth_ok(gid, user, password):
+    """Beacon/presença/net-event: nick + senha da sala (ou conta). Sala aberta só exige nick."""
+    if not ok_nick(user):
+        return False
+    if is_open(gid):
+        return True
+    pw = password if password is not None else ""
+    if not pw:
+        return False
+    if account_verify_password(user, pw):
+        return True
+    real, rec = find_group_user(gid, user)
+    if real and password_match((rec or {}).get("password"), pw):
+        return True
+    g = load_group(gid)
+    if not g:
+        g = {}
+        fp = GROUPS/f"{gid}.json"
+        if fp.exists():
+            try: g=json.loads(fp.read_text(encoding="utf-8"))
+            except Exception: g={}
+    wp=(g.get("wildcard-user") or {}).get("password")
+    return password_match(wp, pw)
 def galene_collection_path(path):
     """Listas da API Galene (.users / .groups / .tokens) só existem com barra final.
     Sem a barra o servidor devolve o texto cru '404 page not found' — e o painel
@@ -679,19 +719,20 @@ def expire_loop():
         except Exception: pass
 
 def presence_tick_all():
-    d = load()
     tnow = datetime.now(TZ)
-    dirty = False
-    for gid, b in list(d.items()):
-        if not isinstance(b, dict):
-            continue
-        before = json.dumps(b.get("live") or {}, sort_keys=True, default=str)
-        presence_prune_room(b, tnow, gid=gid)
-        after = json.dumps(b.get("live") or {}, sort_keys=True, default=str)
-        if before != after:
-            dirty = True
-    if dirty:
-        save(d)
+    with _SAVE_LOCK:
+        d = load_unlocked()
+        dirty = False
+        for gid, b in list(d.items()):
+            if not isinstance(b, dict):
+                continue
+            before = json.dumps(b.get("live") or {}, sort_keys=True, default=str)
+            presence_prune_room(b, tnow, gid=gid)
+            after = json.dumps(b.get("live") or {}, sort_keys=True, default=str)
+            if before != after:
+                dirty = True
+        if dirty:
+            save_unlocked(d)
 def panel_login_ok(user, password):
     """Só admin de verdade: sidecar.auth, config.json, cofre (op) ou op legado da main. Anfitrião 24h não entra."""
     user=norm_nick(user)
@@ -1062,14 +1103,7 @@ class H(BaseHTTPRequestHandler):
             if not ok: self.send_json(401, {"error":"nao autorizado"}); return
             self.send_json(200, accounts_public_view(load_accounts())); return
         if path=="/must-change":
-            user=norm_nick((q.get("user") or [""])[0])
-            d=load_accounts()
-            uid=d["by_nick"].get(user)
-            must=False
-            if uid is not None:
-                rec=d["by_id"].get(str(uid)) or {}
-                must=bool(rec.get("must_change"))
-            self.send_json(200, {"user":user,"must_change":must}); return
+            self.send_json(200, {"user":"", "must_change": False}); return
         if path=="/access-log":
             ok,_=self.admin_ok()
             if not ok: self.send_json(401, {"error":"nao autorizado"}); return
@@ -1169,38 +1203,63 @@ class H(BaseHTTPRequestHandler):
         body=self.read_json()
         g=(body.get("group") or "spartan").strip() or "spartan"; user=norm_nick(body.get("user") or "")
         if path=="/beacon":
+            pw=body.get("password") or body.get("pass") or ""
             if not ok_nick(user): self.send_json(400, {"error":"nick invalido"}); return
-            d=load(); b=bucket(d,g); t=now(); ip=self.cip()
-            if ip_banned(b, ip): self.send_json(403, {"error":"IP suspenso nesta sala por 24h"}); return
-            rec=b.setdefault("seen",{}).setdefault(user, {"first":t,"last":t,"ip":ip}); rec["last"]=t; rec["ip"]=ip
-            if is_named_user(g, user):
-                access_log("cadastrado", g, user, ip)
+            if not presence_auth_ok(g, user, pw):
+                self.send_json(401, {"error":"nao autorizado"}); return
+            def _beacon(d):
+                b=bucket(d,g); t=now(); ip=self.cip()
+                if ip_banned(b, ip):
+                    return {"_http": (403, {"error":"IP suspenso nesta sala por 24h"})}
+                rec=b.setdefault("seen",{}).setdefault(user, {"first":t,"last":t,"ip":ip}); rec["last"]=t; rec["ip"]=ip
+                if is_named_user(g, user):
+                    access_log("cadastrado", g, user, ip)
+                    presence_heartbeat(b, user, gid=g)
+                    return {"ok":True,"named":True}
+                if is_open(g):
+                    ensure_open_ouvinte(g)
+                    rec=b.setdefault("temps",{}).setdefault(user, {"first":t,"last":t,"ip":ip}); rec["last"]=t; rec["ip"]=ip
+                    access_log("temporario", g, user, ip)
+                else:
+                    rec=b["guests"].setdefault(user, {"first":t,"last":t,"ip":ip}); rec["last"]=t; rec["ip"]=ip
+                    access_log("convidado", g, user, ip)
                 presence_heartbeat(b, user, gid=g)
-                save(d); self.send_json(200, {"ok":True,"named":True}); return
-            if is_open(g):
-                ensure_open_ouvinte(g)
-                rec=b.setdefault("temps",{}).setdefault(user, {"first":t,"last":t,"ip":ip}); rec["last"]=t; rec["ip"]=ip
-                access_log("temporario", g, user, ip)
-            else:
-                rec=b["guests"].setdefault(user, {"first":t,"last":t,"ip":ip}); rec["last"]=t; rec["ip"]=ip
-                access_log("convidado", g, user, ip)
-            presence_heartbeat(b, user, gid=g)
-            save(d); self.send_json(200, {"ok":True}); return
+                return {"ok":True}
+            out=mutate_registry(_beacon)
+            if isinstance(out, dict) and out.get("_http"):
+                code, payload=out["_http"]; self.send_json(code, payload); return
+            self.send_json(200, out); return
         if path=="/presence":
+            pw=body.get("password") or body.get("pass") or ""
             if not ok_nick(user): self.send_json(400, {"error":"nick invalido"}); return
-            d=load(); b=bucket(d,g); tnow=datetime.now(TZ)
-            if body.get("leave"):
-                presence_leave(b, user, tnow, gid=g)
-            else:
-                presence_heartbeat(b, user, tnow, gid=g)
-            save(d)
-            room_ls, room_active=room_live_seconds(b, tnow, gid=g)
-            state=presence_user_state(b, user, tnow)
-            state["room_live_s"]=room_ls
-            state["room_active"]=room_active
-            state["user_live_s"]=state.get("live_s", 0)
-            state["user_active"]=state.get("active", False)
-            self.send_json(200, state); return
+            if not presence_auth_ok(g, user, pw):
+                self.send_json(401, {"error":"nao autorizado"}); return
+            def _pres(d):
+                b=bucket(d,g); tnow=datetime.now(TZ)
+                if body.get("leave"):
+                    presence_leave(b, user, tnow, gid=g)
+                else:
+                    presence_heartbeat(b, user, tnow, gid=g)
+                room_ls, room_active=room_live_seconds(b, tnow, gid=g)
+                state=presence_user_state(b, user, tnow)
+                state["room_live_s"]=room_ls
+                state["room_active"]=room_active
+                state["user_live_s"]=state.get("live_s", 0)
+                state["user_active"]=state.get("active", False)
+                return state
+            self.send_json(200, mutate_registry(_pres)); return
+        if path=="/must-change":
+            u=norm_nick(body.get("user") or user or "")
+            pw=body.get("password") if "password" in body else (body.get("pass") or "")
+            if pw is None: pw=""
+            must=False
+            if ok_nick(u) and pw and account_verify_password(u, pw):
+                d=load_accounts()
+                uid=d["by_nick"].get(u)
+                if uid is not None:
+                    rec=d["by_id"].get(str(uid)) or {}
+                    must=bool(rec.get("must_change"))
+            self.send_json(200, {"user":u,"must_change":must}); return
         if path=="/register":
             pw=body.get("password") or ""
             if not ok_nick(user) or len(pw)<8: self.send_json(400, {"error":"nick ou senha (minimo 8)"}); return
@@ -1236,6 +1295,9 @@ class H(BaseHTTPRequestHandler):
         if path=="/net-event":
             nick=norm_nick(body.get("user") or user or "") or "?"
             sala=(body.get("group") or g or "").strip() or "spartan"
+            pw=body.get("password") or body.get("pass") or ""
+            if nick != "?" and not presence_auth_ok(sala, nick, pw):
+                self.send_json(401, {"error":"nao autorizado"}); return
             ua=(body.get("ua") or self.headers.get("User-Agent") or "")[:180]
             rec={"quando":now(),"sala":sala,"nick":nick,"ip":self.cip(),
                  "phase": body.get("phase") or "drop",

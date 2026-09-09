@@ -110,6 +110,7 @@
   window.addEventListener('popstate', function() { navigate(parseRoute()); });
 
   window.addEventListener('message', function(ev) {
+    if(ev.origin !== location.origin) return;
     var d = ev.data || {};
     if(d.t === 'spartan-admin-close') closeAdmin();
     if(d.t === 'spartan-open-admin') openAdmin();
@@ -147,7 +148,7 @@
       preloaded = true;
       var l = document.createElement('link');
       l.rel = 'prefetch';
-      l.href = '/galene.js?v=98';
+      l.href = '/galene.js?v=118';
       document.head.appendChild(l);
     }, { once: true });
   }

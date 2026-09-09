@@ -735,6 +735,9 @@ ServerConnection.prototype.newUpStream = function(localId) {
     pc.onicecandidate = e => {
         if(!e.candidate)
             return;
+        if(typeof spartanFilterIceCandidate === 'function' &&
+           !spartanFilterIceCandidate(e.candidate))
+            return;
         c.gotLocalIce(e.candidate);
     };
 
@@ -880,6 +883,9 @@ ServerConnection.prototype.gotOffer = async function(id, label, source, username
 
         c.pc.onicecandidate = function(e) {
             if(!e.candidate)
+                return;
+            if(typeof spartanFilterIceCandidate === 'function' &&
+               !spartanFilterIceCandidate(e.candidate))
                 return;
             c.gotLocalIce(e.candidate);
         };

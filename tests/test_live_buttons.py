@@ -137,5 +137,47 @@ class ScreenShareSoundTests(unittest.TestCase):
         self.assertIn("spartanLiveSound[key]", body)
 
 
+class QualityHudAndMicTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        root = ROOT
+        cls.quality = (root / "static" / "spartan-quality.js").read_text(encoding="utf-8")
+        cls.net = (root / "static" / "spartan-net.js").read_text(encoding="utf-8")
+        cls.watch = (root / "static" / "spartan-watch.js").read_text(encoding="utf-8")
+        cls.html = (root / "static" / "galene.html").read_text(encoding="utf-8")
+
+    def test_hud_only_on_uplink(self):
+        m = re.search(
+            r"function spartanShouldShowHud\(c, dir\) \{.*?^}",
+            self.quality,
+            re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(m)
+        body = m.group(0)
+        self.assertIn("dir !== 'up'", body)
+        self.assertIn("screenshare", body)
+        self.assertIn("camera", body)
+
+    def test_hud_text_says_sending(self):
+        self.assertIn("enviando · alvo", self.quality)
+
+    def test_mic_asks_voice_isolation(self):
+        self.assertIn("voiceIsolation = true", self.net)
+        self.assertIn("echoCancellation = true", self.net)
+
+    def test_ice_drops_loopback_outside_lab(self):
+        self.assertIn("spartanFilterIceCandidate", self.watch)
+        self.assertIn("spartanIsLabHost", self.watch)
+        self.assertIn(r"127\.0\.0\.1", self.watch)
+
+    def test_room_html_loads_modules(self):
+        self.assertIn("spartan-quality.js?v=1", self.html)
+        self.assertIn("spartan-net.js?v=1", self.html)
+        self.assertIn("spartan-watch.js?v=1", self.html)
+        self.assertIn("galene.js?v=118", self.html)
+        self.assertIn("protocol.js?v=4", self.html)
+        self.assertIn('id="filterform" hidden', self.html)
+
+
 if __name__ == "__main__":
     unittest.main()

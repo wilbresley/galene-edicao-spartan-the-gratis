@@ -66,7 +66,7 @@ Logs: `docker compose logs -f`
 | Peça | Função |
 |---|---|
 | **Galene** | SFU + TURN: áudio/vídeo/tela entre várias pessoas |
-| **static/** | Interface Spartan (home, salas, admin, sala ao vivo, `sounds/*.mp3`) |
+| **static/** | Interface Spartan (home, salas, admin, sala ao vivo, `sounds/*.mp3`, `spartan-quality.js` / `spartan-net.js` / `spartan-watch.js`) |
 | **registry.py** | Sidecar (`spartan-reg`): convites, temporários, logs, IDs, beacon, **presença/timers** |
 | **groups/spartan.json** | Sala principal (modo **convite** na fábrica) |
 | **data/** | Config, contas, registry, sidecar.auth |
@@ -81,10 +81,10 @@ Várias pessoas no mesmo canal, com microfone, câmera e compartilhamento de tel
 - **Lives** — 1 em foco; 2 **lado a lado**; 3–4 em grid 2×2. Clique foca; outro clique tira o foco. Botão **Câmera**/**Tela** sob o nick só com vídeo/tela reais; mic = só a bolinha.
 - **Chat** — abre sozinho em mensagem nova (dá para desligar); textos somem depois de 24 h.
 - **Lista** — bolinha cinza/amarelo/verde/vermelho; mudo e volume só no teu fone; admin pode silenciar o mic do outro ou expulsar.
-- **Timers (servidor)** — header = tempo da sala (`HH:MM:SS`); menu do nick = tempo individual. Sala vazia > 1 min zera o da sala.
+- **Timers (servidor)** — header = tempo da sala (`HH:MM:SS`); menu do nick = tempo individual. Sala vazia **5 min** zera o da sala.
 - **Reconexão** — corte em **60 s**: abaixo disso, religa em silêncio e mantém mic/tela/câmera; acima, overlay e mídia desligada (precisa religar).
-- **Tela** — FPS-alvo **60**; bitrate auto **12 Mbps** (1080p60 de jogo ok); 720p se upload/distância fracos. HUD: `alvo · fps · kbps/teto`. Quem assiste clica em **Tela** no nick.
-- **Painel** (`/admin/`) — cadastrados, convites, salas, logs. Só admin da sala principal. Anfitrião de sala 24 h não entra.
+- **Tela** — FPS-alvo **60**; teto auto **12 Mbps** / 1080p **10** / 720p **5**, com escada se o upload apertar. HUD **só na live que você envia**. Mic com supressão pede `voiceIsolation`. Quem assiste clica em **Tela** no nick.
+- **Painel** (`/admin/`) — cadastrados, convites, salas, logs. Só admin da sala principal. `/painel/` redireciona para cá. Anfitrião de sala 24 h não entra.
 
 ### Cargos (3)
 

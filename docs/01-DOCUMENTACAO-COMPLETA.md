@@ -1,7 +1,7 @@
 # Spartan Chat (Galene) — documentação completa da implantação
 
 **Data da implantação:** 20 de agosto de 2026  
-**Última revisão deste documento:** 9 de setembro de 2026 (snapshot de garantia + plano de reformulação aprovado; a reformulação em si ainda não entrou neste commit)  
+**Última revisão deste documento:** 9 de setembro de 2026 (reformulação implantada: HUD só no envio, mic `voiceIsolation`, teto adaptativo, ICE sem loopback, registry atômico, módulos Spartan)  
 **Objetivo deste arquivo:** registrar *como o stack ficou no teu servidor*, para operação, backup e GitHub.  
 **Segredos:** nenhuma senha de produção, hash real do servidor, `sidecar.auth` vivo ou credencial operacional aparece aqui. Contas e senhas **da instalação** ficam só no servidor (`groups/*.json`, `data/config.json`, `data/sidecar.auth`).  
 **Exceção documentada:** o pacote `factory-reset/` traz a senha de fábrica `Mudar@123` (admin + convidados) de propósito — só para zerar o Docker; no primeiro login o admin **obrigatoriamente** troca as duas.
@@ -199,11 +199,16 @@ Arquivo: `registry.py`. Endpoints úteis (prefixo `/spartan-api` opcional):
 | GET | `/access-log` | admin Basic | últimas entradas de `data/access.log` (JSONL, ~1 ano) |
 | GET | `/net-log` | admin Basic | oscilações WS em `data/net.log` (JSONL, 30 dias, sem dedupe) |
 | GET | `/registry` | admin Basic | dump do registry |
-| POST | `/beacon` | sala | IP + visto; em sala pública chama `ensure_open_ouvinte` |
+| POST | `/beacon` | sala (nick+senha; pública = só nick) | IP + visto; gravação atômica (`mutate_registry`); em sala pública chama `ensure_open_ouvinte` |
+| POST | `/presence` | sala (nick+senha; pública = só nick) | heartbeat / leave; devolve `room_live_s` e `user_live_s` |
+| GET | `/presence-room` | público | tempo da sala + opcional tempo do nick |
+| GET | `/presence-user` | público | tempo individual do nick |
+| GET | `/must-change` | público | sempre `{must_change: false}` — não vaza se o nick existe |
+| POST | `/must-change` | sala (nick+senha da conta) | `{must_change: true/false}` só com senha certa |
 | POST | `/register` `/approve` `/quick` `/deny` `/block` `/unblock` `/forget` `/stamp` | fluxos de convite | cadastro / moderação |
 | POST | `/panel-login` | painel | só admin da **sala principal** / `config.json` / `sidecar.auth` |
 | POST | `/can-panel` | sala | igual ao panel-login, **sem** gravar log (mostra o botão Painel Admin **só** se a conta for admin cadastrado; anfitrião 24h = não) |
-| POST | `/net-event` | sala (beacon) | cliente reporta queda/recuperação WS (código, duração, se recuperou) |
+| POST | `/net-event` | sala (nick+senha se o nick não for `?`) | cliente reporta queda/recuperação WS (código, duração, se recuperou) |
 | POST | `/join-named` | sala extra | valida conta da main e copia o user (Verificado, nunca op) para a sala extra |
 | POST | `/create-room` | admin | cria sala extra: `open` (pública = 24h) ou convite; `ttl` opcional no convite; anfitrião só se `ttl` |
 | POST | `/first-setup` | admin | troca senha admin + amigos no 1º login |
@@ -214,7 +219,9 @@ Arquivo: `registry.py`. Endpoints úteis (prefixo `/spartan-api` opcional):
 
 Salas **extra** de 24h: o sidecar apaga o JSON do grupo quando `expires_at` chega (a cada ~20 s). Quem está dentro vê à **direita do nome da sala** `Tempo até exclusão desta sala: HH:MM`. O relógio liga no boot da página (`temp-status` + `sessionStorage spartanTtl:<grupo>`), então **sobrevive a F5 / rejoin** — não depende do submit do login. A **main** não entra neste prazo. Públicas extra que já existiam sem prazo ganham 24h no próximo start do sidecar. Ban de IP 24h só se `BAN_IP = True` (desligado).
 
-Beacon grava `seen[nick] = {first, last, ip}` para **todo mundo** (inclusive registrados), para o painel mostrar IP / sala / visto. IP prefere `CF-Connecting-IP` / hops úteis do XFF.
+Beacon grava `seen[nick] = {first, last, ip}` para **todo mundo** (inclusive registrados), para o painel mostrar IP / sala / visto. IP prefere `CF-Connecting-IP` / hops úteis do XFF. `load`/`save` do `registry.json` usam trava + arquivo `.tmp` (`mutate_registry`).
+
+**Lab WSL (este PC):** stack em `/home/docker/galene`. O Compose monta `GALENE_SRC` = pasta do Cursor (`static/` e `registry.py`). Mudou o JS: só **Ctrl+Shift+R**. Mudou o Python: `docker restart spartan-reg`. Não precisa `cp` de pacote no lab. Produção (`~/docker/galene` no Debian) continua pelo pacote `galene-sala-static`.
 
 ---
 
@@ -222,10 +229,10 @@ Beacon grava `seen[nick] = {first, last, ip}` para **todo mundo** (inclusive reg
 
 Volume `./static` por cima do static da imagem. Arquivos-chave:
 
-- `index.html` + `custom-home.js` — **landing** em `/`. **Nunca** copiar o painel por cima de `index.html`. Login do painel: **`/admin`** — arquivo `static/admin` (não pasta).
+- `index.html` + `custom-home.js` — **landing** em `/`. **Nunca** copiar o painel por cima de `index.html`. Login do painel: **`/admin/`** (`static/admin/index.html`). `/painel/` só redireciona.
 - `salas/` — busca, ordenação, paginação (5 linhas de altura fixa)
 - `admin/` — usuários, convidados, bloqueados, temporários, logs, **oscilações**, salas
-- `galene.html` + `galene.js` + `galene-spartan.css` + `spartan-boot.js` — sala
+- `galene.html` + `galene.js` + `spartan-quality.js` + `spartan-net.js` + `spartan-watch.js` + `galene-spartan.css` + `spartan-boot.js` — sala
 - Wallpaper `papel-de-parede.jpg`
 - Sons da sala `static/sounds/` — `entrar.mp3`, `sair.mp3`, `mensagem.mp3` (vão no Git; o instalador avisa se faltarem)
 - Rodapé fixo: Galene / Juliusz (esquerda), “Interface refeita por wilbresley” (centro), Outras salas/Home (direita). Sem linha cinza; fundo semitransparente por cima da imagem.
@@ -239,8 +246,8 @@ Comportamentos de sessão:
 - F5 na mesma sala reentra; ir para outra sala depois de Sair pede nick/senha.
 - Contador 24h (`#spartan-ttl`) reconstitui no `start()` (não só no submit do login): `spartanTtlRestore` + `GET /temp-status`. Anfitrião/op também faz poll.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
-- Admin SSO: handoff `localStorage` para abrir o painel já logado.
-- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=117`, `galene-spartan.css?v=99`, `protocol.js?v=3`, `toastify.js?v=3`, `spartan-boot.js?v=9`). Home shell: `spartan-shell.js?v=4`, `spartan-shell.css?v=8`, `custom-home.js?v=4`, `salas.js?v=5`. Painel: `admin.js?v=38`, `admin.css?v=25`. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar. Painel em **`/admin/`** (`static/admin/index.html`). Nunca copiar o painel por cima de `index.html` da raiz.
+- Admin SSO: senha do painel **só** em `sessionStorage` (`spartanAdmin`). O `localStorage.spartanAdminHandoff` antigo é apagado se ainda existir. Preferências de qualidade (HUD, 720p, modo jogo) ficam em `localStorage.spartanPrefs` **sem** senha.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=118`, `spartan-quality.js?v=1`, `spartan-net.js?v=1`, `spartan-watch.js?v=1`, `settings.js?v=2`, `galene-spartan.css?v=99`, `protocol.js?v=4`, `toastify.js?v=3`, `spartan-boot.js?v=9`). Home shell: `spartan-shell.js?v=5`, `spartan-shell.css?v=8`, `custom-home.js?v=4`. Painel: `admin.js?v=41`, `admin.css?v=28`, `spartan.css?v=24`. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar. Painel canónico em **`/admin/`** (`static/admin/index.html`). `/painel/` e `painel.html` só redirecionam para `/admin/`. Nunca copiar o painel por cima de `index.html` da raiz.
 
 Painel admin:
 
@@ -266,7 +273,7 @@ Painel admin:
 - “Solicitar registro” só para convite, não para pública.
 - Sem kick HTTP nativo: o cliente sai sozinho no purge / bloqueio.
 - Multi-live: botão **Tela** só no compartilhamento de tela; **Câmera** só com faixa de vídeo (mic sozinho = só a bolinha, sem texto Câmera). Cabeçalho preto acima do vídeo.
-- **Fluência:** live **assistida** (clicada) pede sempre vídeo alto — câmera `['audio','video']`; tela `['video']` e só inclui áudio se o espectador ligar o volume da tile. Nunca `video-low` na assistida. Tela que **envias**: FPS-alvo **60** (`frameRate` ideal/max sem `min` — Chrome rejeita `min` no getDisplayMedia), `maxFramerate` + `maintain-framerate`, `contentHint=motion` (modo jogo). Bitrate da tela **independente** do “Enviar” da câmera: auto **12 Mbps**, 1080p **10 Mbps**, 720p **5 Mbps**. Offer da screenshare **sem `goog-remb`** (senão o Galene prende ~200 kbps). HUD: `alvo 60 · N fps · kbps/teto`. Oscilar em torno do teto (com pico curto acima) é normal. Receivers assistidos: `degradationPreference=maintain-resolution`. Voz da sala (mic/câmera) continua no fone sem clicar. Tela **não** pede som nem imagem até o clique em **Tela**; o volume da tile começa mudo. Fechar (X ou de novo **Tela**/**Câmera**) **para de assistir só no teu cliente** — a pessoa continua transmitindo; você deixa de gastar internet nessa live. F5/foco voltam mudos; desconexão reconstitui quais telas tinham som ligado.
+- **Fluência:** live **assistida** (clicada) pede sempre vídeo alto — câmera `['audio','video']`; tela `['video']` e só inclui áudio se o espectador ligar o volume da tile. Nunca `video-low` na assistida. Tela que **envias**: FPS-alvo **60** (`frameRate` ideal/max sem `min` — Chrome rejeita `min` no getDisplayMedia), `maxFramerate` + `maintain-framerate`, `contentHint=motion` (modo jogo). Bitrate da tela **independente** do “Enviar” da câmera: teto auto **12 Mbps**, 1080p **10 Mbps**, 720p **5 Mbps**, com **escada automática** (`availableOutgoingBitrate`) se o upload apertar (pode cair a 30 fps). Offer da screenshare **sem `goog-remb`**. HUD **só na tua live** (`enviando · alvo · fps · kbps/teto`). Quem assiste não vê FPS. Oscilar em torno do teto (com pico curto acima) é normal. Receivers assistidos: `degradationPreference=maintain-resolution`. Voz da sala (mic/câmera) continua no fone sem clicar. Mic com supressão ligada pede `echoCancellation` / `noiseSuppression` / `autoGainControl` / `voiceIsolation`. Tela **não** pede som nem imagem até o clique em **Tela**; o volume da tile começa mudo. Fechar (X ou de novo **Tela**/**Câmera**) **para de assistir só no teu cliente** — a pessoa continua transmitindo; você deixa de gastar internet nessa live. F5/foco voltam mudos; desconexão reconstitui quais telas tinham som ligado. ICE ignora `127.0.0.1`/`::1` fora do lab; ICE restart só da live que caiu.
 - **Painel Admin** (botão na sala): depende **só** de `POST /can-panel` (conta cadastrada da main / sidecar). Não exige `op` da sala atual. Anfitrião 24h não vê o botão. Abre sempre em nova aba (`window.open` + handoff `spartanAdminHandoff`).
 - **Uma** live na sala: já entra em foco; clique extra nela não faz nada. Duas lives: **lado a lado** já na primeira abertura (o foco automático da primeira não deixa o grid numa coluna só). Três ou quatro: grid 2×2. Clique escolhe o foco.
 - **Minhas lives:** ícones de olho; verde = mostrando, vermelho = ocultando. O X nas lives dos outros **para de assistir** (não baixa mais o vídeo; a transmissão dela segue). O X na **própria** live **para** aquele share. Fechar a **câmera** (header ou X) com o mic ligado **mantém o microfone**; o ícone verde do mic acompanha o estado real.
@@ -367,54 +374,47 @@ A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export 
 31. 09/09/2026: **som da tela** — live de tela só executa no clique; áudio da screenshare começa mudo (ícone bate com o estado); F5/foco não religam o som; desconexão reconstitui quais telas o usuário tinha com volume. Cache: `galene.js?v=116`.
 32. 09/09/2026: **timer da sala** — conta só com gente na call; vazio segue 5 min e zera (não mais 60 s nem relógio inflado de tick antigo). Reiniciar `spartan-reg`.
 33. 09/09/2026: **fechar live** — X ou segundo clique em Tela/Câmera para de assistir só no teu lado (não baixa mais o vídeo; quem transmite segue). Cache: `galene.js?v=117`.
-34. 09/09/2026: **snapshot de garantia** no Git (privado + público) **antes** da reformulação: som da tela, timer 5 min, fechar-live, lab WSL. O plano abaixo ainda **não** estava no código neste commit.
+34. 09/09/2026: **snapshot de garantia** no Git (privado + público) **antes** da reformulação: som da tela, timer 5 min, fechar-live, lab WSL. Commit `9a6a6a7`.
+35. 09/09/2026: **reformulação** — HUD só no envio; mic `voiceIsolation`; teto adaptativo da tela; ICE sem loopback fora do lab; `registry.json` atômico + auth em beacon/presence/net-event; `must-change` GET não vaza nick; senha admin só na sessão; `postMessage` com origem; `?v=` alinhado; painel único `/admin/`; filtro blur escondido; `galene.js` quebrado em `spartan-quality.js` / `spartan-net.js` / `spartan-watch.js` (grid e bolinhas intactos). Lab WSL já serve `galene.js?v=118`. Reiniciar `spartan-reg`. Este commit é o estado implantado (depois do snapshot `9a6a6a7`).
 
 ---
 
-## 16. Plano de reformulação (aprovado 09/09/2026)
+## 16. Plano de reformulação (implantado 09/09/2026)
 
-Este bloco é o contrato do que vem **depois** do snapshot. Grid (`resizePeers`, CSS de `.peer`, `showHideMedia` de layout, `gotDownStream` estrutural) e **bolinhas de fala** não mudam de comportamento.
+Contrato cumprido depois do snapshot `9a6a6a7`. Grid (`resizePeers`, CSS de `.peer`, `showHideMedia` de layout, `gotDownStream` estrutural) e **bolinhas de fala** não mudaram de comportamento.
 
-### A — Live e áudio (sala)
+### A — Live e áudio (sala) — feito
 
 1. HUD de qualidade **só na live de quem transmite** (envio). Quem assiste não vê FPS.
-2. Microfone: com “Supressão de ruído” ligada, pedir de verdade `echoCancellation`, `noiseSuppression`, `autoGainControl` e `voiceIsolation` (Chrome/Edge). Desligada: continua cru (mesa / Easy Effects). Som da **tela** não passa por isso.
-3. Teto automático da screenshare pela capacidade de upload (`availableOutgoingBitrate` + kbps/fps reais): não volta o REMB ~200 kbps; escada até 720p/30 se o upload for fraco.
-4. ICE: fora do lab, ignorar candidato `127.0.0.1` / `::1`. Se o PC de mídia cair, ICE restart **só daquela live**, sem expulsar da sala. Sem `forceRelay` global.
+2. Microfone: com “Supressão de ruído” ligada, pede `echoCancellation`, `noiseSuppression`, `autoGainControl` e `voiceIsolation`. Desligada: cru. Som da **tela** não passa por isso.
+3. Teto automático da screenshare (`availableOutgoingBitrate` + kbps/fps): REMB continua fora; escada até ~30 fps se o upload for fraco.
+4. ICE: fora do lab, ignora `127.0.0.1` / `::1`. ICE restart **só daquela live** (já no `protocol.js`). Sem `forceRelay` global.
 
-### B — Sidecar e rede
+### B — Sidecar e rede — feito
 
-5. `load`+`save` do `registry.json` **atômicos** (trava no ciclo inteiro, não só na escrita).
-6. `/beacon`, `/presence`, `/net-event`: não aceitar nick solto; amarrar à sessão da sala (mesmo nick da call ou prova mínima). `must-change` não vaza se o nick existe.
+5. `load`+`save` do `registry.json` **atômicos** (`mutate_registry` / `save_unlocked` com tmp+replace).
+6. `/beacon`, `/presence`, `/net-event`: exigem nick + senha da sala (sala aberta = só nick). GET `/must-change` sempre `{must_change: false}`; o POST com senha certa é que responde o flag.
 7. Checklist Debian (ops, não chute no JS): timeout WS do NPM ≥ 3600 s; UDP 1194 + 50000–50100; Galene anuncia IP público, não Docker/`127.x`.
 
-### C — Sessão, cache, painel
+### C — Sessão, cache, painel — feito
 
-8. Senha do admin **só em `sessionStorage`**. Apagar `localStorage.spartanAdminHandoff`. Preferências de qualidade (HUD, 720p) podem ir para `localStorage` **sem** senha.
-9. `postMessage` shell↔iframe com origem do próprio host, não `*`.
-10. Um mapa único de `?v=` (home, sala, salas, admin, painel). Prefetch da home = mesma versão da sala.
-11. Um painel canónico (`/admin/`). `painel.html` deixa de ser segunda fonte de verdade (redirect ou o mesmo JS).
-12. Filtro de blur: ou volta a funcionar, ou some da UI (hoje o `reflectSettings` zera sempre).
+8. Senha do admin **só em `sessionStorage`**. `localStorage.spartanAdminHandoff` é apagado. Prefs de qualidade em `localStorage.spartanPrefs` sem senha.
+9. `postMessage` shell↔iframe com `location.origin`, não `*`.
+10. Mapa de `?v=` alinhado (home prefetch = sala).
+11. Painel canónico `/admin/`. `painel.html` e `/painel/` redirecionam.
+12. Filtro de blur saiu da UI (`#filterform` hidden).
 
-### D — Código e testes
+### D — Código e testes — feito
 
-13. Quebrar `galene.js` em módulos Spartan (`spartan-quality.js`, `spartan-net.js`, `spartan-watch.js`, …) **sem** mover `resizePeers` / grid. `protocol.js` do Galene fica.
-14. Testes: presença 5 min (não 60 s); `test_live_buttons` no comando do README; HUD só-up; lock do registry; mic `voiceIsolation`.
-15. Leftovers do upstream (`stats.html` na UI Spartan, `example/` se ninguém usa) só saem se não quebrarem rota.
+13. Módulos: `spartan-quality.js`, `spartan-net.js`, `spartan-watch.js`. `resizePeers` / grid ficaram no `galene.js`. `protocol.js` do Galene fica.
+14. Testes: presença 5 min; HUD só-up; `voiceIsolation`; lock do registry; `test_reform_spartan`.
+15. Leftovers do upstream (`stats.html`, `example/`, `painel.js`) **não** foram apagados — rotas antigas não quebram (`/painel/` redireciona).
 
-### E — O que este plano **não** faz
+### E — O que este plano **não** fez
 
 RNNoise/Krisp; religar REMB; `forceRelay` para todos; reescrever o grid; cortar `getStats`/AudioContext das bolinhas; gravar a sala; PWA.
 
-### Ordem de implantação (depois deste snapshot)
-
-1. A (live/mic/teto/ICE) → bump `?v=` → pacote estático.  
-2. B (lock + auth das APIs) → `docker restart spartan-reg`.  
-3. C (sessão, postMessage, `?v=`, painel).  
-4. D (módulos + testes).  
-5. Docs 01 e 02 de novo, com o que **entrou**.
-
-Cache **neste snapshot** (ainda o comportamento antigo de HUD): `galene.js?v=117`.
+Cache **atual:** `galene.js?v=118`, `protocol.js?v=4`, `spartan-quality.js?v=1`.
 
 ---
 

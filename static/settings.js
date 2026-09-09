@@ -68,6 +68,16 @@ function storeSettings(settings) {
         console.warn("Couldn't store settings:", e);
         fallbackSettings = settings;
     }
+    try {
+        let prefs = {
+            qualityHud: settings.qualityHud,
+            shareQuality: settings.shareQuality,
+            gameMode: settings.gameMode,
+            preprocessing: settings.preprocessing,
+            hqaudio: settings.hqaudio,
+        };
+        window.localStorage.setItem('spartanPrefs', JSON.stringify(prefs));
+    } catch(e) {}
 }
 
 /**
@@ -86,7 +96,17 @@ function getSettings() {
         console.warn("Couldn't retrieve settings:", e);
         settings = fallbackSettings;
     }
-    return settings || {};
+    settings = settings || {};
+    try {
+        let prefs = JSON.parse(window.localStorage.getItem('spartanPrefs') || 'null');
+        if(prefs && typeof prefs === 'object') {
+            ['qualityHud','shareQuality','gameMode','preprocessing','hqaudio'].forEach(function(k) {
+                if(settings[k] == null && prefs[k] != null)
+                    settings[k] = prefs[k];
+            });
+        }
+    } catch(e) {}
+    return settings;
 }
 
 /**

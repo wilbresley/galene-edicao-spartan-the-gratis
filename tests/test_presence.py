@@ -113,11 +113,32 @@ class PresenceLogicTests(unittest.TestCase):
         regtxt = (ROOT / "registry.py").read_text(encoding="utf-8")
         self.assertIn("/presence-room", regtxt)
         self.assertIn("PRESENCE_ROOM_EMPTY_GRACE_S", regtxt)
+        self.assertIn("def mutate_registry", regtxt)
+        self.assertIn("def presence_auth_ok", regtxt)
+        self.assertIn('{"user":"", "must_change": False}', regtxt)
         js = (ROOT / "static" / "galene.js").read_text(encoding="utf-8")
         self.assertIn("room_live_s", js)
         self.assertIn("user_live_s", js)
         self.assertIn("pagehide", js)
         self.assertIn("sendBeacon", js)
+        self.assertIn("password: window._spartanCred", js)
+
+    def test_presence_auth_open_room_nick_only(self):
+        orig = reg.is_open
+        try:
+            reg.is_open = lambda gid: True
+            self.assertTrue(reg.presence_auth_ok("demo", "alice", ""))
+            self.assertFalse(reg.presence_auth_ok("demo", "", ""))
+        finally:
+            reg.is_open = orig
+
+    def test_presence_auth_closed_room_needs_password(self):
+        orig = reg.is_open
+        try:
+            reg.is_open = lambda gid: False
+            self.assertFalse(reg.presence_auth_ok("demo", "alice", ""))
+        finally:
+            reg.is_open = orig
 
 
 if __name__ == "__main__":

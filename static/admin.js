@@ -16,7 +16,7 @@ function roomGid(){
 }
 function adminIsEmbed(){ try{ return new URLSearchParams(location.search).get('embed')==='1'; }catch(e){ return false; } }
 function adminInShell(){ return adminIsEmbed() && window.parent !== window; }
-function adminCloseShell(){ try{ if(window.parent!==window) window.parent.postMessage({t:'spartan-admin-close'},'*'); }catch(e){} }
+function adminCloseShell(){ try{ if(window.parent!==window) window.parent.postMessage({t:'spartan-admin-close'}, location.origin); }catch(e){} }
 function bindBackToRoom(){
  var a=document.querySelector('.btn-back');
  if(!a) return;

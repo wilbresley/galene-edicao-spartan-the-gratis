@@ -280,7 +280,7 @@
               <option value="1080p">1080p</option>
               <option value="720p">720p (upload lento)</option>
             </select>
-            <p class="set-help">720p ajuda upload lento. Vale na próxima vez que compartilhar. FPS-alvo da tela: 60 (fixo).</p>
+            <p class="set-help">720p ajuda upload lento. Em “máxima”, o teto desce sozinho se o upload não aguentar. FPS-alvo da tela: 60 (cai a 30 se a rede apertar). O HUD só aparece na <b>sua</b> live.</p>
           </form>
 
           <form>
@@ -291,7 +291,7 @@
 
           <form>
             <input id="qualityhudbox" type="checkbox" checked/>
-            <label for="qualityhudbox">Mostrar FPS e bitrate nas lives</label>
+            <label for="qualityhudbox">Mostrar FPS e bitrate na sua live</label>
           </form>
         </fieldset>
 
@@ -317,7 +317,7 @@
         <fieldset class="spartan-hide-setting">
           <legend>Envio e recepção</legend>
 
-          <form id="filterform">
+          <form id="filterform" hidden>
             <label for="filterselect" class="sidenav-label-first">Filtro:</label>
             <select id="filterselect" class="select select-inline">
               <option value="" selected>nenhum</option>
@@ -422,13 +422,16 @@
       </form>
     </dialog>
 
-    <script src="/protocol.js?v=3" defer></script>
+    <script src="/protocol.js?v=4" defer></script>
     <script src="/third-party/toastify/toastify.js?v=3" defer></script>
     <script src="/third-party/contextual/contextual.js" defer></script>
-    <script src="/settings.js" defer></script>
+    <script src="/settings.js?v=2" defer></script>
     <script src="/filter.js" defer></script>
     <script src="/spartan-salas.js?v=4" defer></script>
-    <script src="/galene.js?v=117" defer></script>
+    <script src="/spartan-watch.js?v=1" defer></script>
+    <script src="/spartan-net.js?v=1" defer></script>
+    <script src="/spartan-quality.js?v=1" defer></script>
+    <script src="/galene.js?v=118" defer></script>
   <div id="spartan-toast" hidden></div>
 <div id="spartan-drop" hidden>
   <div class="spartan-reg-card">

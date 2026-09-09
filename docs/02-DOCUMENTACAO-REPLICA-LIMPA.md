@@ -9,7 +9,7 @@ Há **dois caminhos**:
 | | Quando usar |
 |---|---|
 | **A — pacote pronto** | Alguém te passou o repo (ou um zip limpo). Mais rápido. |
-| **B — do zero** | Queres repetir o raciocínio da implantação original, comando a comando. |
+| **B — do zero** | Você quer repetir o raciocínio da implantação original, comando a comando. |
 
 Os dois terminam no mesmo tipo de stack. Sempre **as tuas** senhas e o **teu** domínio.
 
@@ -22,7 +22,7 @@ O Galene oficial sobe uma videoconferência SFU + TURN. Por cima foi feita uma i
 1. **Home** com wallpaper, marca, botão da sala da home, contador de gente online — **shell SPA** na raiz `/` (home, salas e sala na mesma aba, sem reload; hash `#/group/<id>`).
 2. **`/salas/`** — redireciona para `/#/salas` (lista integrada no shell).
 3. **`/admin/`** — painel (`static/admin/index.html`). Na sala, admin abre em **overlay full-screen** (só quem passa em `can-panel`). A raiz `/` é a landing, **nunca** o login do admin sozinho.
-4. **Sala** `/group/<id>/` — login no estilo da home; lives sob demanda (botão **Tela**/**Câmera** no nick). **Modo jogo**, preset **720p** (upload lento), **60 fps** na captura, HUD de FPS/bitrate (ligado por padrão; bloco **Transmissão** nas Configurações). Codec preferido **VP8** antes de VP9 na sala principal. No shell (`?shell=1`) a sala preenche o iframe; **Sair** volta à home do app.
+4. **Sala** `/group/<id>/` — login no estilo da home; lives sob demanda (botão **Tela**/**Câmera** no nick). **Modo jogo**, preset **720p** (upload lento), **60 fps** na captura, HUD **só na live que você envia**. Codec preferido **VP8** antes de VP9 na sala principal. JS Spartan extra: `spartan-quality.js`, `spartan-net.js`, `spartan-watch.js`. No shell (`?shell=1`) a sala preenche o iframe; **Sair** volta à home do app.
 5. **Sidecar** `registry.py` na porta **8091**, no proxy em `/spartan-api/`.
 6. Salas **públicas** (só nick, ou conta cadastrada) **sempre 24h** vs **convite extra** (definitiva **ou** 24h). A **principal** não expira.
 7. Sala **principal** (`site.json` → `main`) não apaga pelo painel; **home** pode apontar para outra (não para sala de 24h).
@@ -32,9 +32,9 @@ O Galene oficial sobe uma videoconferência SFU + TURN. Por cima foi feita uma i
 
 Isto **não** é o MiroTalk. MiroTalk P2P trava em NAT/4G sem TURN. Galene relê a mídia.
 
-Cache da sala (hoje): `galene.js?v=117`, `galene-spartan.css?v=99`, `protocol.js?v=3`, `spartan-boot.js?v=9`. Shell: `spartan-shell.js?v=4`, `spartan-shell.css?v=8`. Painel: `admin.js?v=38`, `admin.css?v=25`. Botão **Câmera**/**Tela** sob o nick só com vídeo/tela reais (mic = bolinha). Live de tela só executa no clique; fechar (X ou de novo Tela/Câmera) para de assistir só no teu cliente. Som da screenshare começa mudo (F5/foco não religam; desconexão reconstitui o volume que o usuário tinha ligado). **Reconexão:** &lt; 60 s preserva mic/tela; ≥ 60 s fecha mídia + overlay. **Tela:** FPS-alvo 60; bitrate auto **12 Mbps** / 1080p **10** / 720p **5**; bypass REMB; HUD `alvo · fps · kbps/teto`. Contador da sala no header **branco** (começa com gente na call; 5 min vazia zera). Quem assiste clica em **Tela** no nick. Salas 24h: só link direto; admin vê em **temporárias**. Reiniciar `docker restart spartan-reg` após mudar `registry.py`.
+Cache da sala (hoje): `galene.js?v=118`, `spartan-quality.js?v=1`, `spartan-net.js?v=1`, `spartan-watch.js?v=1`, `settings.js?v=2`, `galene-spartan.css?v=99`, `protocol.js?v=4`, `spartan-boot.js?v=9`. Shell: `spartan-shell.js?v=5`, `spartan-shell.css?v=8`. Painel: `admin.js?v=41`, `admin.css?v=28`. Botão **Câmera**/**Tela** sob o nick só com vídeo/tela reais (mic = bolinha). Live de tela só executa no clique; fechar (X ou de novo Tela/Câmera) para de assistir só no teu cliente. Som da screenshare começa mudo (F5/foco não religam; desconexão reconstitui o volume que o usuário tinha ligado). **Reconexão:** &lt; 60 s preserva mic/tela; ≥ 60 s fecha mídia + overlay. **Tela:** FPS-alvo 60; teto auto **12 Mbps** / 1080p **10** / 720p **5** com escada se o upload apertar; bypass REMB; HUD **só na tua live** (`enviando · alvo · fps · kbps`). Mic com supressão: `voiceIsolation`. Contador da sala no header **branco** (começa com gente na call; 5 min vazia zera). Quem assiste clica em **Tela** no nick. Salas 24h: só link direto; admin vê em **temporárias**. `/painel/` redireciona para `/admin/`. Reiniciar `docker restart spartan-reg` após mudar `registry.py`.
 
-**Snapshot 09/09/2026:** este texto descreve o pacote **antes** da reformulação (HUD ainda pode aparecer em quem assiste; teto da tela ainda é fixo 12/10/5 Mbps). O plano aprovado está na secção 11; ainda não está no código deste commit.
+**Reformulação 09/09/2026:** HUD só no envio; teto adaptativo; ICE sem loopback fora do lab; sidecar atômico com senha no beacon/presence; senha admin só na sessão. O plano da secção 10 está **no pacote**.
 
 ---
 
@@ -82,7 +82,7 @@ Galene: `-http :8443 -insecure`. TLS só no proxy.
 
 ### 4.1 Copiar o projeto para o servidor
 
-Se tens o Git (repo privado, convite, ou zip **sem** `sidecar.auth` / `registry.json` / salas reais):
+Se tem o Git (repo privado, convite, ou zip **sem** `sidecar.auth` / `registry.json` / salas reais):
 
 ```bash
 cd ~/docker
@@ -111,7 +111,7 @@ Edita:
 
 - `data/config.json` — `proxyURL`, `canonicalHost`, nick do **OPERADOR**
 - `groups/sala-principal.json` — mesmo nick, `displayName`
-- `data/site.json` — `"main"` e `"home"` = slug do ficheiro (ex.: `sala-principal`)
+- `data/site.json` — `"main"` e `"home"` = slug do arquivo (ex.: `sala-principal`)
 - `data/sidecar.auth` — uma linha `nick:senha` **em claro**, a **mesma** conta admin do `config.json`
 
 ### 4.3 Hash da senha do admin (sem galenectl na imagem)
@@ -191,7 +191,7 @@ Ctrl+Shift+R se o CSS/JS parecer velho.
 
 ## 5. Caminho B — instalar do zero (os comandos da implantação)
 
-Usa isto se **não** tens o `images/galene-local.tgz` e queres compilar o Galene.
+Usa isto se **não** tem o `images/galene-local.tgz` e quer compilar o Galene.
 
 ### 5.1 Pasta
 
@@ -412,22 +412,24 @@ docker save galene:local | gzip > ~/galene-local-image.tgz
 
 ---
 
-## 10. Plano de reformulação (aprovado, ainda não neste pacote)
+## 10. Plano de reformulação (implantado)
 
-Contrato do que entra **depois** do snapshot. Grid da sala e bolinhas de fala **não** mudam.
+Contrato depois do snapshot de garantia. Grid da sala e bolinhas de fala **não** mudaram.
 
 | Fase | O quê |
 |---|---|
 | A | HUD só na live de quem transmite; mic com `voiceIsolation`; teto automático da tela; ICE sem loopback fora do lab |
 | B | `registry.json` atômico; beacon/presence/net-event sem nick solto |
-| C | senha admin só na sessão; `postMessage` com origem; `?v=` único; um painel |
-| D | `galene.js` em módulos Spartan (sem mover o grid); testes alinhados |
+| C | senha admin só na sessão; `postMessage` com origem; `?v=` único; um painel (`/admin/`; `/painel/` redireciona) |
+| D | `spartan-quality.js` / `spartan-net.js` / `spartan-watch.js` (sem mover o grid); testes alinhados |
 
 Não entra: RNNoise/Krisp, REMB de volta, `forceRelay` global, gravar a sala.
+
+No WSL Debian de desenvolvimento o Compose monta o `static/` e o `registry.py` do clone: mudou JS → Ctrl+Shift+R; mudou Python → `docker restart spartan-reg`. Não precisa copiar pacote.
 
 ---
 
 ## 11. Créditos
 
 - **Galene** by [Juliusz Chroboczek](https://www.irif.fr/~jch/) — https://galene.org  
-- A casca visual podes tornar tua; **não apagues** a atribuição do Galene no rodapé.
+- A casca visual você pode tornar sua; **não apague** a atribuição do Galene no rodapé.

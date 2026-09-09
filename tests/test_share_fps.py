@@ -8,13 +8,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 JS = ROOT / "static" / "galene.js"
+QUALITY = ROOT / "static" / "spartan-quality.js"
 HTML = ROOT / "static" / "galene.html"
 
 
 class ShareFpsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.js = JS.read_text(encoding="utf-8")
+        cls.js = QUALITY.read_text(encoding="utf-8") + "\n" + JS.read_text(encoding="utf-8")
         cls.html = HTML.read_text(encoding="utf-8")
 
     def test_target_fps_is_60(self):
@@ -55,10 +56,11 @@ class ShareFpsTests(unittest.TestCase):
         self.assertIsNotNone(m)
         body = m.group(0)
         self.assertIn("screenshare", body)
-        self.assertIn("spartanScreenBitrateCap()", body)
+        self.assertIn("spartanEffectiveShareBps", body)
 
     def test_cache_bust(self):
-        self.assertIn("galene.js?v=115", self.html)
+        self.assertIn("galene.js?v=118", self.html)
+        self.assertIn("spartan-quality.js?v=1", self.html)
 
     def test_remb_bypass_for_screenshare(self):
         self.assertIn("spartanStripRembSdp", self.js)

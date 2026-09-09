@@ -8,4 +8,6 @@ chmod +x scripts/subir.sh && ./scripts/subir.sh
 
 - http://127.0.0.1:8443/group/spartan/ — `admin` / `Mudar@123`
 - Troque as senhas no primeiro login
+- Painel: http://127.0.0.1:8443/admin/
+- Depois de atualizar JS: **Ctrl+Shift+R** (cache `galene.js?v=118`)
 - Tutorial completo (júnior e sênior): [README.md](../README.md)

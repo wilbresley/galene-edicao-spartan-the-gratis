@@ -491,162 +491,6 @@ function spartanBoostWatchedReceivers(c) {
     } catch(e) {}
 }
 
-/** FPS-alvo da tela (sempre 60 — não oscilar com o conteúdo). */
-function spartanTargetShareFps() {
-    return 60;
-}
-
-/** Restrições de captura de tela (FPS / resolução). */
-function spartanShareVideoConstraints() {
-    let sq = getSettings().shareQuality || 'auto';
-    let fps = spartanTargetShareFps();
-    /** @type {any} */
-    let video = {
-        cursor: 'always',
-        // getDisplayMedia NÃO aceita min (Chrome: "min constraints are not supported").
-        frameRate: { ideal: fps, max: fps },
-    };
-    if(sq === '720p') {
-        video.width = { max: 1280, ideal: 1280 };
-        video.height = { max: 720, ideal: 720 };
-    } else if(sq === '1080p') {
-        video.width = { max: 1920, ideal: 1920 };
-        video.height = { max: 1080, ideal: 1080 };
-    }
-    return video;
-}
-
-/** Teto de bitrate para compartilhamento de tela (bps). */
-function spartanScreenBitrateCap() {
-    switch(getSettings().shareQuality || 'auto') {
-    case '720p': return 5000000;
-    case '1080p': return 10000000;
-    // auto: teto alto — o limite real deixa de ser o REMB ~200 kbps do Galene.
-    default: return 12000000;
-    }
-}
-
-/**
- * Galene manda goog-remb ~200 kbps se ninguém pediu vídeo alto (ou no ramp-up).
- * Na tela isso mata FPS/qualidade. Tiramos goog-remb do offer da screenshare
- * para o encoder respeitar o maxBitrate do cliente.
- * @param {string} sdp
- * @returns {string}
- */
-function spartanStripRembSdp(sdp) {
-    if(!sdp)
-        return sdp;
-    return String(sdp).replace(/a=rtcp-fb:[^\r\n]*goog-remb[^\r\n]*\r?\n/gi, '');
-}
-
-/** Instala bypass de REMB só em uplink de tela (uma vez). */
-function spartanInstallShareRembBypass() {
-    if(typeof Stream === 'undefined' || Stream.prototype._spartanShareRemb)
-        return;
-    Stream.prototype._spartanShareRemb = true;
-    let orig = Stream.prototype.negotiate;
-    Stream.prototype.negotiate = async function(restartIce) {
-        if(!this.up || this.label !== 'screenshare')
-            return await orig.call(this, restartIce);
-        let c = this;
-        /** @type {RTCOfferOptions} */
-        let options = {};
-        if(restartIce)
-            options = {iceRestart: true};
-        let offer = await c.pc.createOffer(options);
-        if(!offer)
-            throw new Error("Didn't create offer");
-        let sdp = spartanStripRembSdp(offer.sdp);
-        await c.pc.setLocalDescription({type: 'offer', sdp: sdp});
-        c.sc.send({
-            type: 'offer',
-            source: c.sc.id,
-            username: c.sc.username,
-            kind: this.localDescriptionSent ? 'renegotiate' : '',
-            id: c.id,
-            replace: this.replace,
-            label: c.label,
-            sdp: c.pc.localDescription.sdp,
-        });
-        this.localDescriptionSent = true;
-        this.replace = null;
-        c.flushLocalIceCandidates();
-        try {
-            c.pc.getSenders().forEach(function(s) {
-                spartanApplyVideoSenderPrefs(s, 'screenshare');
-            });
-        } catch(e) {}
-    };
-}
-
-try { spartanInstallShareRembBypass(); } catch(e) {}
-
-/**
- * Força FPS/bitrate no sender de vídeo (tela ou câmera).
- * @param {RTCRtpSender} sender
- * @param {string} label
- */
-async function spartanApplyVideoSenderPrefs(sender, label) {
-    if(!sender || !sender.track || sender.track.kind !== 'video')
-        return;
-    let fps = spartanTargetShareFps();
-    let bps = getMaxVideoThroughput();
-    if(label === 'screenshare') {
-        // Independente do "Enviar" da câmera — senão 700 kbps mata o FPS.
-        bps = spartanScreenBitrateCap();
-    }
-    try {
-        let p = sender.getParameters();
-        if(!p.encodings || !p.encodings.length)
-            p.encodings = [{}];
-        p.encodings.forEach(function(e) {
-            if(label === 'screenshare' || getSettings().gameMode !== false)
-                e.maxFramerate = fps;
-            if(bps)
-                e.maxBitrate = bps;
-            else
-                e.maxBitrate = unlimitedRate;
-            if(label === 'screenshare') {
-                try { e.priority = 'high'; } catch(e1) {}
-                try { e.networkPriority = 'high'; } catch(e2) {}
-            }
-        });
-        if(label === 'screenshare' || getSettings().gameMode !== false)
-            p.degradationPreference = 'maintain-framerate';
-        else
-            p.degradationPreference = 'maintain-resolution';
-        await sender.setParameters(p);
-    } catch(e) {}
-}
-
-/**
- * Aplica frameRate 60 na track de captura (pós getDisplayMedia).
- * @param {MediaStream} stream
- */
-async function spartanLockShareTrackFps(stream) {
-    if(!stream || !stream.getVideoTracks)
-        return;
-    let fps = spartanTargetShareFps();
-    let tracks = stream.getVideoTracks();
-    for(let i = 0; i < tracks.length; i++) {
-        let t = tracks[i];
-        try {
-            await t.applyConstraints({ frameRate: { ideal: fps, max: fps } });
-        } catch(e1) {
-            try {
-                await t.applyConstraints({ frameRate: fps });
-            } catch(e2) {}
-        }
-        try { t.contentHint = getSettings().gameMode === false ? 'detail' : 'motion'; } catch(e3) {}
-    }
-}
-
-function spartanNotifyPanel(ok) {
-    try {
-        if(window.parent !== window)
-            window.parent.postMessage({t: 'spartan-panel', ok: !!ok}, '*');
-    } catch(e) {}
-}
 
 function spartanInShell() {
     try {
@@ -691,7 +535,7 @@ function spartanOpenAdminPanel() {
         if(window.parent !== window && window.parent.SpartanApp)
             window.parent.SpartanApp.openAdmin();
         else if(window.parent !== window)
-            window.parent.postMessage({t: 'spartan-open-admin'}, '*');
+            spartanPostToParent({t: 'spartan-open-admin'});
         else if(window.SpartanApp)
             window.SpartanApp.openAdmin();
         else
@@ -701,91 +545,6 @@ function spartanOpenAdminPanel() {
     }
 }
 
-/** @type {Record<string, {bytes: number, ts: number}>} */
-let spartanRtpPrev = {};
-
-function spartanRtpStats(stats, dir, streamKey) {
-    let fps = 0, kbps = 0;
-    for(let tid in stats) {
-        let s = stats[tid];
-        let rtp = s && (dir === 'up' ? s['outbound-rtp'] : s['inbound-rtp']);
-        if(!rtp)
-            continue;
-        if(typeof rtp.framesPerSecond === 'number')
-            fps = Math.max(fps, rtp.framesPerSecond);
-        if(typeof rtp.rate === 'number' && rtp.rate > 0)
-            kbps = Math.max(kbps, Math.round(rtp.rate / 1000));
-        let bytes = typeof rtp.bytesSent === 'number' ? rtp.bytesSent
-            : (typeof rtp.bytesReceived === 'number' ? rtp.bytesReceived : null);
-        if(kbps <= 0 && bytes !== null && typeof rtp.timestamp === 'number') {
-            let key = (streamKey || '') + ':' + tid + ':' + dir;
-            let prev = spartanRtpPrev[key] || null;
-            if(prev && rtp.timestamp > prev.ts) {
-                let dt = (rtp.timestamp - prev.ts) / 1000;
-                if(dt > 0)
-                    kbps = Math.max(kbps, ((bytes - prev.bytes) * 8) / dt / 1000);
-            }
-            spartanRtpPrev[key] = {bytes: bytes, ts: rtp.timestamp};
-        }
-    }
-    return {fps: Math.round(fps), kbps: Math.round(kbps)};
-}
-
-function spartanShouldShowHud(c, dir) {
-    if(!c)
-        return false;
-    if(getSettings().qualityHud)
-        return true;
-    return dir === 'up' && c.label === 'screenshare';
-}
-
-/** @type {Record<string, number>} */
-let spartanHudFpsSmooth = {};
-
-function spartanUpdateQualityHud(c, stats, dir) {
-    if(!spartanShouldShowHud(c, dir))
-        return;
-    let peer = document.getElementById('peer-' + c.localId);
-    if(!peer)
-        return;
-    let hud = document.getElementById('qhud-' + c.localId);
-    if(!hud) {
-        hud = document.createElement('div');
-        hud.id = 'qhud-' + c.localId;
-        hud.className = 'spartan-quality-hud';
-        peer.appendChild(hud);
-    }
-    let m = spartanRtpStats(stats, dir, String(c.localId));
-    let res = '';
-    let capFps = 0;
-    try {
-        let vt = c.stream && c.stream.getVideoTracks && c.stream.getVideoTracks()[0];
-        if(vt && vt.getSettings) {
-            let s = vt.getSettings();
-            if(s.width && s.height) res = s.width + '×' + s.height + ' · ';
-            if(typeof s.frameRate === 'number' && s.frameRate > 0)
-                capFps = Math.round(s.frameRate);
-        }
-    } catch(e) {}
-    let key = String(c.localId);
-    let prev = spartanHudFpsSmooth[key];
-    if(prev == null || !isFinite(prev))
-        prev = m.fps;
-    // Suaviza o número do HUD (o outbound-rtp pula frame a frame).
-    let smooth = Math.round(prev * 0.55 + (m.fps || 0) * 0.45);
-    spartanHudFpsSmooth[key] = smooth;
-    let alvo = (dir === 'up' && c.label === 'screenshare')
-        ? spartanTargetShareFps()
-        : (capFps || smooth || '—');
-    let br = '';
-    if(dir === 'up' && c.label === 'screenshare') {
-        let capKb = Math.round(spartanScreenBitrateCap() / 1000);
-        br = (m.kbps || '—') + '/' + capKb + ' kbps';
-    } else {
-        br = (m.kbps || '—') + ' kbps';
-    }
-    hud.textContent = res + 'alvo ' + alvo + ' · ' + (smooth || '—') + ' fps · ' + br;
-}
 
 let spartanUploadWarnAt = 0;
 function spartanCheckUploadWarn(c, stats) {
@@ -1573,6 +1332,7 @@ function spartanNetEvent(ev) {
         let payload = {
             group: group,
             user: u,
+            password: window._spartanCred || '',
             phase: ev.phase || 'drop',
             duration_ms: ev.duration_ms != null ? ev.duration_ms : (spartanDropSince ? (Date.now() - spartanDropSince) : 0),
             code: ev.code,
@@ -2069,7 +1829,7 @@ function spartanCommitSession() {
             sessionStorage.setItem('spartanGlobalCred', JSON.stringify({user: username, pass: pw, account: true}));
             let handoff = JSON.stringify({user: username, pass: pw});
             sessionStorage.setItem('spartanAdmin', handoff);
-            localStorage.setItem('spartanAdminHandoff', handoff);
+            try { localStorage.removeItem('spartanAdminHandoff'); } catch(e1) {}
         } else {
             sessionStorage.setItem('spartanGuestCred:' + group, JSON.stringify({user: username, pass: pw}));
         }
@@ -2142,7 +1902,7 @@ function setAdminPanel(forceOff) {
       try{
         let hand={user:String(cred.user).trim().toLowerCase(),pass:cred.pass};
         sessionStorage.setItem('spartanAdmin',JSON.stringify(hand));
-        localStorage.setItem('spartanAdminHandoff',JSON.stringify(hand));
+        try { localStorage.removeItem('spartanAdminHandoff'); } catch(e1) {}
       }catch(e){}
     } else {
       window._spartanPanelAdmin=false;
@@ -2863,6 +2623,8 @@ function gotUpStats(stats) {
     setLabel(this);
     spartanUpdateQualityHud(this, stats, 'up');
     spartanCheckUploadWarn(this, stats);
+    if(this.label === 'screenshare')
+        spartanAdaptShareFromStats(this, stats);
     // Reaplica teto: o browser às vezes “esquece” maxBitrate após REMB/renegociação.
     if(this.label === 'screenshare' && this.pc) {
         let now = Date.now();
@@ -3615,8 +3377,6 @@ async function addLocalMedia(localId, audioOnly) {
     let audio = true;
     /** @type{boolean|MediaTrackConstraints|false} */
     let video = audioOnly ? false : true;
-    if(audioOnly && !audio)
-        audio = true;
 
     if(!audioOnly && !spartanIsCoarsePointer()) {
         audio = settings.audio ? {deviceId: settings.audio} : true;
@@ -3633,14 +3393,11 @@ async function addLocalMedia(localId, audioOnly) {
                 video.aspectRatio = { ideal: 4/3 };
             }
         }
-        if(audio && typeof audio === 'object') {
-            if(!settings.preprocessing) {
-                audio.echoCancellation = false;
-                audio.noiseSuppression = false;
-                audio.autoGainControl = false;
-            }
-        }
     }
+    if(audio === true)
+        audio = {};
+    if(audio && typeof audio === 'object')
+        audio = spartanMicConstraints(audio);
 
     let old = serverConnection.findByLocalId(localId);
     if(old) {
@@ -3656,7 +3413,9 @@ async function addLocalMedia(localId, audioOnly) {
     try {
         stream = await navigator.mediaDevices.getUserMedia(constraints);
     } catch(e) {
-        let retry = {audio: true, video: !audioOnly};
+        let retryAudio = spartanMicConstraints(settings.audio ? {deviceId: settings.audio} : {});
+        delete retryAudio.voiceIsolation;
+        let retry = {audio: retryAudio, video: !audioOnly};
         try {
             stream = await navigator.mediaDevices.getUserMedia(retry);
         } catch(e2) {
@@ -7553,7 +7312,7 @@ function spartanOnJoin(){
    window._spartanLiveTutorial=true;
    spartanToast('Dica: clique em Tela ou Câmera ao lado do nick para ver a live em alta qualidade.');
   }
-  fetch('/spartan-api/beacon',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({group:group,user:u})}).catch(function(){});
+  fetch('/spartan-api/beacon',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({group:group,user:u,password:window._spartanCred||''})}).catch(function(){});
   spartanStartPresenceBeat();
   spartanMaybeFirstSetup(u);
   spartanLoadTtl(u);
@@ -7563,7 +7322,7 @@ function spartanOnJoin(){
 }
 async function spartanMaybeFirstSetup(u){
  try{
-  const r=await fetch('/spartan-api/must-change?user='+encodeURIComponent(u),{cache:'no-store'});
+  const r=await fetch('/spartan-api/must-change',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:u,password:window._spartanCred||''})});
   const j=await r.json();
   if(!j||!j.must_change) return;
   const modal=document.getElementById('spartan-first-modal');
@@ -7593,7 +7352,7 @@ async function spartanMaybeFirstSetup(u){
      const hand={user:String(u).toLowerCase(),pass:a};
      sessionStorage.setItem('spartanSession:'+group,JSON.stringify({user:u,pass:a,group:group}));
      sessionStorage.setItem('spartanAdmin',JSON.stringify(hand));
-     localStorage.setItem('spartanAdminHandoff',JSON.stringify(hand));
+     try { localStorage.removeItem('spartanAdminHandoff'); } catch(e1) {}
     }catch(e){}
     modal.hidden=true;
     spartanToast('Senhas atualizadas. Guarde as novas senhas.');
@@ -7737,7 +7496,7 @@ function spartanFmtDuration(sec) {
 function spartanPresenceSend(leave) {
     var u = serverConnection && serverConnection.username;
     if(!u || !group) return;
-    var body = JSON.stringify({group: group, user: u, leave: !!leave});
+    var body = JSON.stringify({group: group, user: u, leave: !!leave, password: window._spartanCred || ''});
     if(leave && typeof navigator !== 'undefined' && navigator.sendBeacon) {
         try {
             navigator.sendBeacon('/spartan-api/presence', new Blob([body], {type: 'application/json'}));
