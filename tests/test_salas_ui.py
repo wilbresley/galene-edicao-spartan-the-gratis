@@ -29,11 +29,13 @@ class SalasUiTests(unittest.TestCase):
         self.assertNotIn("spartan-salas-list", self.galene)
         self.assertNotIn("spartan-salas-pager", self.galene)
 
-    def test_index_salas_page_no_temporaries(self):
-        self.assertIn("spartan-salas-page-grid", self.index)
-        self.assertIn('id="salas-main"', self.index)
-        self.assertIn('id="salas-perm"', self.index)
-        self.assertNotIn('id="salas-temp"', self.index)
+    def test_index_home_login_not_salas_page(self):
+        self.assertIn('id="spartan-login-form"', self.index)
+        self.assertIn('id="spartan-guest-form"', self.index)
+        self.assertIn("#/convidado", self.index)
+        self.assertNotIn("spartan-salas-page-grid", self.index)
+        self.assertNotIn('id="salas-main"', self.index)
+        self.assertNotIn('id="salas-perm"', self.index)
         self.assertNotIn("Temporárias (24h)", self.index)
 
     def test_js_hide_temporary_default(self):
@@ -57,7 +59,7 @@ class SalasUiTests(unittest.TestCase):
         block = self.css.split("spartan-v95", 1)[1][:1200]
         self.assertIn("align-items:center!important", block)
         self.assertIn("align-self:center!important", block)
-        self.assertIn("spartan-shell.css?v=8", self.index)
+        self.assertIn("spartan-shell.css?v=26", self.index)
         shell = (ROOT / "static" / "spartan-shell.css").read_text(encoding="utf-8")
         self.assertIn("align-self: center !important", shell)
 

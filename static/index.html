@@ -1,6 +1,6 @@
 <!DOCTYPE html>
-<!-- Shell SPA Spartan: home, salas e sala na mesma aba. Painel admin em overlay. -->
-<html lang="pt-BR" class="spartan-home spartan-shell">
+<!-- Shell SPA Spartan: login, convidado e servidor (estilo Fluxer). -->
+<html lang="pt-BR" class="spartan-home spartan-shell spartan-people-collapsed">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -9,24 +9,32 @@
 <link rel="stylesheet" href="/common.css"/>
 <link rel="stylesheet" href="/mainpage.css"/>
 <link rel="stylesheet" href="/spartan.css?v=24"/>
-<link rel="stylesheet" href="/galene-spartan.css?v=99"/>
-<link rel="stylesheet" href="/spartan-shell.css?v=8"/>
-<link rel="prefetch" href="/galene.js?v=118"/>
+<link rel="stylesheet" href="/galene-spartan.css?v=104"/>
+<link rel="stylesheet" href="/spartan-shell.css?v=26"/>
+<link rel="prefetch" href="/galene.js?v=126"/>
 <link rel="prefetch" href="/protocol.js?v=4"/>
 <link rel="prefetch" href="/spartan-quality.js?v=1"/>
 <link rel="prefetch" href="/spartan-net.js?v=1"/>
 <link rel="prefetch" href="/spartan-watch.js?v=1"/>
-<script src="/custom-home.js?v=4" defer></script>
-<script src="/spartan-shell.js?v=5" defer></script>
+<script src="/custom-home.js?v=10" defer></script>
+<script src="/spartan-servers.js?v=19" defer></script>
+<script src="/spartan-shell.js?v=8" defer></script>
 </head>
 <body>
 <div id="spartan-shell-root">
   <div id="spartan-view-home" class="spartan-view on">
     <div class="home">
       <div class="spartan-brand">Spartan</div>
-      <p class="spartan-tag">Cade a Live?</p>
-      <a id="spartan-btn" class="spartan-btn" href="#/group/spartan" data-spartan-route="group:spartan">Entrar na sala Spartan</a>
-      <div id="candangos" class="candangos">Candangos online 0</div>
+      <p class="spartan-tag">Cadê a Live?</p>
+      <form id="spartan-login-form" class="spartan-login-form">
+        <label for="spartan-login-user">Usuário</label>
+        <input id="spartan-login-user" type="text" name="username" autocomplete="username" maxlength="32" required/>
+        <label for="spartan-login-pass">Senha</label>
+        <input id="spartan-login-pass" type="password" name="password" autocomplete="current-password" required/>
+        <button type="submit" class="spartan-btn" id="spartan-login-btn">Entrar</button>
+        <p id="spartan-login-msg" class="spartan-invite-msg"></p>
+      </form>
+      <a class="spartan-guest-link" href="#/convidado" data-spartan-route="convidado">Convidado?</a>
       <form id="groupform" hidden>
         <input id="group"/>
         <input id="submitbutton" type="submit"/>
@@ -39,42 +47,179 @@
     <footer class="signature">
       <span class="foot-left"><a href="https://galene.org">Galene</a> by <a href="https://www.irif.fr/~jch/">Juliusz Chroboczek</a></span>
       <span class="foot-mid">Interface refeita por <a href="https://github.com/wilbresley" target="_blank" rel="noopener">wilbresley</a></span>
-      <span class="foot-right"><a class="btn-salas" href="#/salas" data-spartan-route="salas">Outras salas</a></span>
+      <span class="foot-right"></span>
     </footer>
   </div>
 
-  <div id="spartan-view-salas" class="spartan-view">
-    <div class="home salas-page">
+  <div id="spartan-view-guest" class="spartan-view">
+    <div class="home">
       <div class="spartan-brand">Spartan</div>
-      <p class="spartan-tag">Outras salas</p>
-      <div class="salas-tools">
-        <input id="sala-q" type="search" placeholder="Buscar sala…" autocomplete="off" spellcheck="false"/>
-        <div class="list-tools">
-          <button type="button" class="sort-btn on" data-sort="az">A–Z</button>
-          <button type="button" class="sort-btn" data-sort="time">Recentes</button>
+      <p class="spartan-tag" id="spartan-guest-tag">Entrar com convite</p>
+      <form id="spartan-guest-form" class="spartan-login-form">
+        <label for="spartan-guest-user">Nick</label>
+        <input id="spartan-guest-user" type="text" maxlength="32" autocomplete="username" required/>
+        <label for="spartan-guest-pass">Senha</label>
+        <input id="spartan-guest-pass" type="password" autocomplete="new-password" minlength="8" required/>
+        <label for="spartan-guest-pass2">Repita a senha</label>
+        <input id="spartan-guest-pass2" type="password" autocomplete="new-password" minlength="8" required/>
+        <div id="spartan-guest-invite-wrap">
+          <label for="spartan-guest-invite">Link de convite</label>
+          <input id="spartan-guest-invite" type="text" autocomplete="off" spellcheck="false"/>
         </div>
-      </div>
-      <div class="spartan-salas-grid spartan-salas-page-grid spartan-salas-grid-public">
-        <div class="spartan-salas-col spartan-salas-col-perm">
-          <h3 class="spartan-salas-col-title">Sala principal</h3>
-          <div id="salas-main" class="spartan-salas-main-slot"></div>
-          <h3 class="spartan-salas-col-title spartan-salas-section-title">Permanentes</h3>
-          <div id="salas-perm" class="spartan-salas-scroll"></div>
-        </div>
-      </div>
-      <a class="spartan-btn" href="#/" data-spartan-route="home">Voltar</a>
+        <button type="submit" class="spartan-btn">Criar conta e entrar</button>
+        <p id="spartan-guest-msg" class="spartan-invite-msg"></p>
+      </form>
+      <a class="spartan-guest-link" href="#/" data-spartan-route="home">Já tenho conta</a>
     </div>
     <footer class="signature">
       <span class="foot-left"><a href="https://galene.org">Galene</a> by <a href="https://www.irif.fr/~jch/">Juliusz Chroboczek</a></span>
       <span class="foot-mid">Interface refeita por <a href="https://github.com/wilbresley" target="_blank" rel="noopener">wilbresley</a></span>
-      <span class="foot-right"><a class="btn-salas" href="#/" data-spartan-route="home">Home</a></span>
+      <span class="foot-right"></span>
     </footer>
-    <script src="/spartan-salas.js?v=4" defer></script>
-    <script src="/salas.js?v=8" defer></script>
   </div>
 
   <div id="spartan-view-room" class="spartan-view">
-    <iframe id="spartan-room-frame" title="Sala Spartan" src="about:blank" allow="camera; microphone; display-capture; autoplay; fullscreen"></iframe>
+    <aside id="spartan-guild-rail" aria-label="Servidores"></aside>
+    <aside id="spartan-channel-rail" aria-label="Canais">
+      <h2 id="spartan-server-title">Spartan</h2>
+      <div id="spartan-channel-list"></div>
+      <p id="spartan-channel-hint" hidden></p>
+      <div id="spartan-user-bar" hidden>
+        <div class="spartan-user-who">
+          <span id="spartan-user-avatar" aria-hidden="true">?</span>
+          <span class="spartan-user-meta">
+            <strong id="spartan-user-nick"></strong>
+            <small id="spartan-user-voice"></small>
+          </span>
+        </div>
+        <div class="spartan-user-acts">
+          <button type="button" id="spartan-user-mic" title="Microfone" aria-label="Microfone">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
+          </button>
+          <button type="button" id="spartan-user-share" title="Compartilhar tela" aria-label="Compartilhar tela">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5v2h3v2H6v-2h3v-2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm0 2v10h16V5H4zm8 1.2 3.8 3.8h-2.3V14h-3V10H8.2L12 6.2z"/></svg>
+          </button>
+          <button type="button" id="spartan-user-cam" title="Câmera" aria-label="Câmera">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17 10.5V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3.5l4 4v-11l-4 4z"/></svg>
+          </button>
+          <button type="button" id="spartan-user-settings" title="Configurações" aria-label="Configurações">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.6.24-1.15.55-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06-.94s.02.63.06.94L2.83 14.16a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.42.34.68.22l2.39-.96c.48.39 1.03.7 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.6-.24 1.15-.55 1.63-.94l2.39.96c.26.12.54.02.68-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg>
+          </button>
+          <button type="button" id="spartan-user-leave" title="Sair" aria-label="Sair">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10 17v2H4V5h6V3H2v18h8v-2h2zm1.5-9.5L16.2 12l-4.7 4.5 1.4 1.5L20 12l-7.1-6-1.4 1.5z"/></svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+    <div id="spartan-room-stage">
+      <div id="spartan-leave-call" hidden>Saindo da call…</div>
+      <iframe id="spartan-room-frame" title="Sala Spartan" src="about:blank" allow="camera; microphone; display-capture; autoplay; fullscreen"></iframe>
+      <div id="spartan-text-pane" hidden>
+        <div class="spartan-text-head">
+          <h3 id="spartan-text-title">Chat Geral</h3>
+          <button type="button" id="spartan-text-quiet" title="Este chat não abre sozinho">Não abrir sozinho</button>
+          <button type="button" id="spartan-text-hide" title="Fechar chat">Fechar</button>
+        </div>
+        <div id="spartan-text-log"></div>
+        <form id="spartan-text-form">
+          <input id="spartan-text-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,audio/mpeg,.png,.jpg,.jpeg,.gif,.webp,.mp4,.mp3" hidden/>
+          <button type="button" id="spartan-text-attach" title="Enviar arquivo">Arquivo</button>
+          <input id="spartan-text-input" maxlength="2000" placeholder="Mensagem ou cole um print" autocomplete="off"/>
+          <button type="submit">Enviar</button>
+        </form>
+      </div>
+    </div>
+    <aside id="spartan-people-strip" aria-label="Mostrar membros">
+      <button type="button" id="spartan-people-show" title="Mostrar membros" aria-label="Mostrar membros">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm-8 1a3.5 3.5 0 1 0-3.5-3.5A3.5 3.5 0 0 0 8 12zm8 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4zM8 15c-.29 0-.62 0-1 .05C5.23 15.43 2 16.55 2 18.5V20h6v-2.5c0-.84.33-2.15 2.23-3.12C9.37 15.13 8.7 15 8 15z"/></svg>
+      </button>
+    </aside>
+    <aside id="spartan-server-people" aria-label="Quem está no servidor">
+      <div class="spartan-people-head">
+        <h3>No servidor</h3>
+        <button type="button" id="spartan-people-toggle" title="Ocultar lista">Ocultar</button>
+      </div>
+      <div id="spartan-people-list"></div>
+    </aside>
+  </div>
+</div>
+
+<button type="button" id="spartan-text-show" hidden>Chat</button>
+
+<div id="spartan-switch-ask" hidden>
+  <div class="spartan-switch-card" role="dialog" aria-modal="true" aria-labelledby="spartan-switch-title">
+    <h3 id="spartan-switch-title">Trocar de canal?</h3>
+    <p id="spartan-switch-msg">Você está compartilhando a tela ou assistindo uma live. Se trocar agora, a transmissão cai e as lives que você está vendo param.</p>
+    <div class="spartan-switch-actions">
+      <button type="button" id="spartan-switch-stay">Ficar neste canal</button>
+      <button type="button" id="spartan-switch-go">Trocar mesmo</button>
+    </div>
+  </div>
+</div>
+
+<div id="spartan-invite-ask" hidden>
+  <div class="spartan-switch-card" role="dialog" aria-modal="true" aria-labelledby="spartan-invite-ask-title">
+    <h3 id="spartan-invite-ask-title">Convite para outro servidor</h3>
+    <p id="spartan-invite-ask-msg">Você foi convidado para outro servidor. Quer entrar?</p>
+    <div class="spartan-switch-actions">
+      <button type="button" id="spartan-invite-no">Não</button>
+      <button type="button" id="spartan-invite-yes">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<div id="spartan-first-modal" hidden>
+  <div class="spartan-reg-card">
+    <h2>Primeiro acesso</h2>
+    <p id="spartan-first-lead">Troque a senha de fábrica. Não use Mudar@123 de novo.</p>
+    <div id="spartan-first-admin-fields" hidden>
+      <label for="spartan-first-admin">Nova senha do admin</label>
+      <input id="spartan-first-admin" type="password" minlength="8" autocomplete="new-password"/>
+      <label for="spartan-first-friends">Nova senha dos convidados</label>
+      <input id="spartan-first-friends" type="password" minlength="8" autocomplete="new-password"/>
+    </div>
+    <div id="spartan-first-user-fields">
+      <label for="spartan-first-new">Nova senha</label>
+      <input id="spartan-first-new" type="password" minlength="8" autocomplete="new-password"/>
+      <label for="spartan-first-new2">Confirmar senha</label>
+      <input id="spartan-first-new2" type="password" minlength="8" autocomplete="new-password"/>
+    </div>
+    <p id="spartan-first-err"></p>
+    <button type="button" id="spartan-first-ok">Salvar e continuar</button>
+  </div>
+</div>
+
+<div id="spartan-shell-settings" hidden>
+  <div class="spartan-shell-settings-card" role="dialog" aria-modal="true" aria-labelledby="spartan-shell-settings-title">
+    <h2 id="spartan-shell-settings-title">Configurações</h2>
+    <label for="spartan-shell-shareq">Tela compartilhada</label>
+    <select id="spartan-shell-shareq">
+      <option value="auto">máxima (rede boa)</option>
+      <option value="1080p">1080p</option>
+      <option value="720p">720p (upload lento)</option>
+    </select>
+    <fieldset class="spartan-shell-sounds">
+      <legend>Notificações da sala</legend>
+      <label><input type="checkbox" id="spartan-shell-snd-in" checked/> Som ao entrar</label>
+      <label><input type="checkbox" id="spartan-shell-snd-out" checked/> Som ao sair</label>
+      <label><input type="checkbox" id="spartan-shell-snd-msg" checked/> Som de mensagem</label>
+    </fieldset>
+    <div class="spartan-shell-settings-acts">
+      <button type="button" id="spartan-shell-chpw" class="ok">Trocar senha</button>
+      <button type="button" id="spartan-shell-admin" hidden>Painel Admin</button>
+    </div>
+    <button type="button" id="spartan-shell-settings-close">Fechar</button>
+  </div>
+</div>
+
+<div id="spartan-leave-ask" hidden>
+  <div class="spartan-switch-card" role="dialog" aria-modal="true" aria-labelledby="spartan-leave-title">
+    <h3 id="spartan-leave-title">Sair agora?</h3>
+    <p id="spartan-leave-msg">Você sai da call e volta para a tela de login. Mic, lives e tela param.</p>
+    <div class="spartan-switch-actions">
+      <button type="button" id="spartan-leave-no">Continuar aqui</button>
+      <button type="button" id="spartan-leave-yes">Sair</button>
+    </div>
   </div>
 </div>
 

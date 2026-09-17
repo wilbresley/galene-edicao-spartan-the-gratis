@@ -83,7 +83,7 @@ async function reg(path,body){
  return data;
 }
 function $(id){return document.getElementById(id);}
-function permLabel(p){return ({op:'Admin',admin:'Admin',present:'Verificado',ouvinte:'Ouvinte',message:'Ouvinte',observe:'Ouvinte'})[p]||p;}
+function permLabel(p){return ({op:'Admin',admin:'Admin',present:'Usuário',ouvinte:'Usuário',message:'Usuário',observe:'Usuário'})[p]||p;}
 function roleFromPerm(p){
  if(p==='op'||p==='admin') return 'op';
  if(Array.isArray(p)){
@@ -109,8 +109,8 @@ function fmtQuando(iso){
 }
 function fmtSeen(name,gid,rec){rec=rec||{}; var bits=[]; if(gid) bits.push("sala "+gid); if(rec.ip) bits.push("IP "+rec.ip); var v=rec.last||rec.first||rec.at; if(v) bits.push("visto "+fmtQuando(v)); return bits.join(" · ");}
 function tipoLabel(t){return ({cadastrado:"Cadastrado",convidado:"Convidado",temporario:"Temporário",pedido_cadastro:"Pedido de cadastro",conta_aprovada:"Conta aprovada",conta_criada:"Conta criada",painel_admin:"Admin (painel)"})[t]||t||"—";}
-var PERM_OPTS=[{v:"op",l:"Admin"},{v:"present",l:"Verificado"},{v:"ouvinte",l:"Ouvinte"}];
-function permLabelBtn(p){for(var i=0;i<PERM_OPTS.length;i++){if(PERM_OPTS[i].v===p)return PERM_OPTS[i].l;}return "Verificado";}
+var PERM_OPTS=[{v:"op",l:"Admin"},{v:"present",l:"Usuário"}];
+function permLabelBtn(p){for(var i=0;i<PERM_OPTS.length;i++){if(PERM_OPTS[i].v===p)return PERM_OPTS[i].l;}return "Usuário";}
 function closeAllRoleMenus(){document.querySelectorAll(".role-menu.open").forEach(function(m){m.classList.remove("open");});document.querySelectorAll(".role-btn.open").forEach(function(b){b.classList.remove("open");});}
 document.addEventListener("click",function(e){if(!e.target.closest||!e.target.closest(".role-wrap"))closeAllRoleMenus();});
 var LOG_CACHE=[];
@@ -218,12 +218,8 @@ async function loadUsers(){
     }catch(e){uiMsg(e.message);}
    };
    row.querySelector('.rst').onclick=async()=>{
-    const inp=$('ui-dlg-input'); if(inp) inp.type='password';
-    const np=await uiPrompt('Nova senha para '+name+':');
-    if(np==null) return;
-    if(!np){uiMsg('Digite a nova senha');return;}
-    if(!await uiConfirm('Confirmar nova senha para '+name+'?')) return;
-    try{await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name)+'/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:np}); uiMsg('Senha de '+name+' atualizada');}
+    if(!await uiConfirm('Resetar senha de '+name+' para Mudar@123? No próximo login ela troca.')) return;
+    try{await reg('/reset-factory-password',{nick:name}); uiMsg('Senha de '+name+' voltou para Mudar@123');}
     catch(e){uiMsg(e.message);}
    };
    row.querySelector('.del').onclick=async()=>{
@@ -301,7 +297,7 @@ async function loadRooms(){
     try{
      try{await api('/.groups/'+encodeURIComponent(n)+'/.wildcard-user',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:'present'})});}catch(e){}
      await api('/.groups/'+encodeURIComponent(n)+'/.wildcard-user/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});
-     ed.querySelector('.mpw').value=''; uiMsg('Senha de amigos (Verificado) atualizada');
+     ed.querySelector('.mpw').value=''; uiMsg('Senha de amigos atualizada');
     }catch(e){uiMsg(e.message);}
    };
    wrap.appendChild(ed);
@@ -358,8 +354,8 @@ async function loadGuests(){
   function add(cls,label,fn){const bt=document.createElement('button'); bt.type='button'; bt.className=cls; bt.textContent=label; bt.onclick=fn; acts.appendChild(bt);}
   async function go(path){try{await reg(path,{group:GROUP,user:name}); loadUsers._k=null; loadGuests._k=null; if(loadBlocked) loadBlocked._k=null; await loadUsers(); await loadGuests(); await loadBlocked();}catch(e){uiMsg(e.message);}}
   if(st==='guest'||st==='pending') add('reg','Cadastrar', async()=>{
-   const pw=await uiPrompt('Senha para '+name+' (mínimo 8):'); if(!pw||pw.length<8){uiMsg('Senha curta');return;}
-   try{await reg('/quick',{group:GROUP,user:name,password:pw,permissions:'present'}); loadUsers._k=null; loadGuests._k=null; if(loadBlocked) loadBlocked._k=null; await loadUsers(); await loadGuests(); await loadBlocked();}catch(e){uiMsg(e.message);}
+   if(!await uiConfirm('Cadastrar '+name+' com senha Mudar@123? No primeiro login ela troca.')) return;
+   try{await reg('/quick',{group:GROUP,user:name,permissions:'present'}); loadUsers._k=null; loadGuests._k=null; if(loadBlocked) loadBlocked._k=null; await loadUsers(); await loadGuests(); await loadBlocked();}catch(e){uiMsg(e.message);}
   });
   if(st==='pending'){ add('okbtn','Aprovar',()=>go('/approve')); add('deny','Negar',async()=>{if(await uiConfirm('Negar e bloquear o nick '+name+'?')) go('/deny');}); }
   if(st==='guest') add('blk','Bloquear',async()=>{if(await uiConfirm('Bloquear '+name+'? Ele não entra mais até desbloquear. A conta não é apagada.')) go('/block');});
@@ -502,12 +498,12 @@ $('btn-login').onclick=async()=>{
 $('p').addEventListener('keydown',e=>{if(e.key==='Enter')$('btn-login').click();});
 $('btn-out').onclick=()=>{try{sessionStorage.removeItem('spartanAdmin');}catch(e){} location.href='/';};
 $('btn-create').onclick=async()=>{
- const n=($('nu').value||'').trim().toLowerCase(), p=$('np').value, perm=$('nperm').value; $('nu').value=n; $('create-msg').textContent='';
- if(!n||!p){$('create-msg').textContent='Nome e senha obrigatórios';return;}
+ const n=($('nu').value||'').trim().toLowerCase(), perm=$('nperm').value; $('nu').value=n; $('create-msg').textContent='';
+ if(!n){$('create-msg').textContent='Informe o nick';return;}
  try{
-  await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(n),{method:'PUT',headers:{'Content-Type':'application/json','If-None-Match':'*'},body:JSON.stringify({permissions:permToApi(perm)})});
-  await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(n)+'/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:p});
-  $('nu').value=''; $('np').value=''; $('create-msg').textContent='Usuário '+n+' criado'; await loadUsers();
+  await reg('/quick',{group:GROUP,user:n,permissions:perm});
+  $('nu').value=''; $('create-msg').textContent='Usuário '+n+' criado. Senha inicial Mudar@123 — avise o nick; no 1º login ela troca.';
+  await loadUsers();
  }catch(e){$('create-msg').textContent=e.message;}
 };
 function syncRoomForm(){

@@ -2108,6 +2108,47 @@ html.spartan-in-shell #sidebarnav.sidenav {
   z-index: 9000 !important;
 }
 
+html.spartan-in-shell.spartan-rejoin #login-container,
+html.spartan-in-shell body.spartan-in #login-container {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+html.spartan-in-shell header,
+html.spartan-in-shell .topnav,
+html.spartan-in-shell .nav-menu,
+html.spartan-in-shell #header,
+html.spartan-in-shell #left-sidebar,
+html.spartan-in-shell #channel-chat-btn,
+html.spartan-in-shell #users,
+html.spartan-in-shell #resizer,
+html.spartan-in-shell #left,
+html.spartan-in-shell #show-chat,
+html.spartan-in-shell #show-video,
+html.spartan-in-shell #collapse-video,
+html.spartan-in-shell #sidebarCollapse,
+html.spartan-in-shell footer.signature {
+  display: none !important;
+}
+
+html.spartan-in-shell .row.full-height,
+html.spartan-in-shell .container,
+html.spartan-in-shell #mainrow,
+html.spartan-in-shell #right,
+html.spartan-in-shell #video-container,
+html.spartan-in-shell #expand-video {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+html.spartan-in-shell body {
+  background: #313338 !important;
+}
+
 .spartan-quality-hud{
  position:absolute;
  left:6px;
@@ -2776,7 +2817,7 @@ body.spartan-in #users {
 }
 
 html.spartan-in-shell #spartan-salas-btn {
-  display: block;
+  display: none !important;
 }
 
 #spartan-salas-btn:hover {
@@ -3308,4 +3349,95 @@ html.spartan-shell #spartan-view-salas .home.salas-page{
   text-align:center!important;
   white-space:normal!important;
  }
+}
+
+/* spartan-v100 — Ausentes nulo; toasts discretos; sem Outras salas na cara */
+html.spartan-afk #camerabutton,
+html.spartan-afk #sharebutton,
+html.spartan-afk #presentbutton{
+ pointer-events:none!important;
+ opacity:.35!important;
+}
+#spartan-toast.spartan-toast-quiet{
+ left:auto;right:.7rem;bottom:.7rem;transform:none;
+ font-size:.78rem;font-weight:600;opacity:.88;
+ padding:.4rem .65rem;max-width:min(70vw,280px)
+}
+
+/* shell: some o chrome velho; o grid ocupa o iframe inteiro */
+html.spartan-in-shell header,
+html.spartan-in-shell header.fixed-top,
+html.spartan-in-shell .topnav,
+html.spartan-in-shell .navbar,
+html.spartan-in-shell .nav-menu,
+html.spartan-in-shell #header,
+html.spartan-in-shell #title,
+html.spartan-in-shell #title.header-title,
+html.spartan-in-shell .header-title,
+html.spartan-in-shell .galene-header,
+html.spartan-in-shell .users-header,
+html.spartan-in-shell #left-sidebar,
+html.spartan-in-shell #channel-chat-btn,
+html.spartan-in-shell #users,
+html.spartan-in-shell #resizer,
+html.spartan-in-shell #left,
+html.spartan-in-shell #show-chat,
+html.spartan-in-shell #show-video,
+html.spartan-in-shell #collapse-video,
+html.spartan-in-shell #sidebarCollapse,
+html.spartan-in-shell #spartan-live,
+html.spartan-in-shell #spartan-ttl,
+html.spartan-in-shell #hideownbutton,
+html.spartan-in-shell footer.signature,
+html.spartan-in-shell #login-container,
+html.spartan-in-shell #chat,
+html.spartan-in-shell #spartan-reg-btn,
+html.spartan-in-shell #spartan-salas-btn{
+ display:none!important;
+ visibility:hidden!important;
+ height:0!important;
+ max-height:0!important;
+ overflow:hidden!important;
+ opacity:0!important;
+ pointer-events:none!important;
+ position:absolute!important;
+ left:-9999px!important;
+}
+html.spartan-in-shell #main.app,
+html.spartan-in-shell .row.full-height,
+html.spartan-in-shell .container,
+html.spartan-in-shell #mainrow,
+html.spartan-in-shell #right,
+html.spartan-in-shell #video-container,
+html.spartan-in-shell #expand-video{
+ display:block!important;
+ visibility:visible!important;
+ position:absolute!important;
+ inset:0!important;
+ width:100%!important;
+ height:100%!important;
+ max-width:none!important;
+ max-height:none!important;
+ margin:0!important;
+ padding:0!important;
+}
+html.spartan-in-shell #peers{
+ display:grid!important;
+ visibility:visible!important;
+ position:absolute!important;
+ inset:0!important;
+ width:100%!important;
+ height:100%!important;
+ max-width:none!important;
+ max-height:none!important;
+ margin:0!important;
+ padding:0!important;
+ align-content:stretch;
+ justify-content:stretch;
+}
+html.spartan-in-shell #video-container.invisible,
+html.spartan-in-shell body.spartan-in #video-container{
+ display:block!important;
+ visibility:visible!important;
+ opacity:1!important;
 }

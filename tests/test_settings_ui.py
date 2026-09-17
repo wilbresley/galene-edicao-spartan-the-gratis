@@ -89,7 +89,7 @@ class SettingsUiTests(unittest.TestCase):
         cls.tree = _parse_settings()
 
     def test_html_cache_bust_css_v98(self):
-        self.assertIn("galene-spartan.css?v=99", self.html)
+        self.assertIn("galene-spartan.css?v=104", self.html)
         self.assertIn('id="spartan-live"', self.html)
         self.assertNotIn("Ao vivo:", self.html)
         self.assertIn("00:00:00", self.html)
@@ -178,7 +178,7 @@ class SettingsLiveTests(unittest.TestCase):
             self.skipTest("Galene não está em http://127.0.0.1:8443/")
         self.assertIn("spartan-sounds-setting", self.live)
         self.assertNotIn("Som do chat", self.live)
-        self.assertIn("galene-spartan.css?v=99", self.live)
+        self.assertIn("galene-spartan.css?v=104", self.live)
 
 
 if __name__ == "__main__":

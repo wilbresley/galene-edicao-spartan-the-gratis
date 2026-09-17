@@ -1,10 +1,10 @@
 # Spartan Chat (Galene) — documentação completa da implantação
 
 **Data da implantação:** 20 de agosto de 2026  
-**Última revisão deste documento:** 9 de setembro de 2026 (reformulação implantada: HUD só no envio, mic `voiceIsolation`, teto adaptativo, ICE sem loopback, registry atômico, módulos Spartan)  
+**Última revisão deste documento:** 17 de setembro de 2026 (volume só no clique; mudo amarelo/vermelho; chat na mensagem nova)  
 **Objetivo deste arquivo:** registrar *como o stack ficou no teu servidor*, para operação, backup e GitHub.  
 **Segredos:** nenhuma senha de produção, hash real do servidor, `sidecar.auth` vivo ou credencial operacional aparece aqui. Contas e senhas **da instalação** ficam só no servidor (`groups/*.json`, `data/config.json`, `data/sidecar.auth`).  
-**Exceção documentada:** o pacote `factory-reset/` traz a senha de fábrica `Mudar@123` (admin + convidados) de propósito — só para zerar o Docker; no primeiro login o admin **obrigatoriamente** troca as duas.
+**Exceção documentada:** o pacote `factory-reset/` traz a senha de fábrica `Mudar@123` (admin, contas novas e convidados) de propósito — só para zerar o Docker; no primeiro login **todo mundo** troca a senha. Admin também troca a senha dos convidados da sala.
 
 A versão para mandar a um amigo (placeholders, sem IP/domínio teu) está em `02-DOCUMENTACAO-REPLICA-LIMPA.md`.
 
@@ -87,6 +87,7 @@ Imagem do Galene: **`galene:local`**, a mesma salva no Debian (`docker save`, 20
   data/                    → /data
       config.json
       registry.json        (convidados, temps, seen, pending…)
+      servers.json         (servidores, canais, membros, convite, chat texto)
       site.json            (sala main + sala da home)
       sidecar.auth         (Basic da API; 0600; NÃO vai para Git)
       var/
@@ -120,7 +121,7 @@ Host: `chat.bresley.win`
 
 | URL | Tela |
 |---|---|
-| `/` | Home (botão da sala marcada como home) |
+| `/` | Home: nick + senha da conta; **Convidado?** (`#/convidado`) ou link de convite `#/i/<código>` |
 | `/salas/` | Lista de outras salas (busca, A–Z / Recentes, 5 por página) |
 | `/admin` | Painel. Neste Galene isso é um **arquivo** `static/admin` (cópia do HTML). Se `static/admin` for **pasta**, `/admin` dá 404. |
 | `/group/<id>/` | Sala Galene (login Spartan + sala) |
@@ -170,18 +171,19 @@ Se a main for apagada por fora (API Galene crua), a home cai no primeiro grupo p
 
 Nunca documente nem commite senhas **de produção**.
 
-### 9.2 Cargos na sala (3 só)
+### 9.2 Cargos na sala (Admin e Usuário)
 
 | Cargo (UI) | Valor Galene | Quem nasce assim | Pode |
 |---|---|---|---|
-| **Admin** | `op` | conta admin | moderar + tudo |
-| **Verificado** | `present` (string → present+message) | **convidado** (sala convite / senha de amigos) | lives, transmitir, chat texto e voz |
-| **Ouvinte** | `["present"]` (present **sem** message) | **temporário** (sala pública) | só voz (falar/ouvir); **sem** lives, **sem** chat texto, **sem** transmitir vídeo/tela |
+| **Admin** | `op` | conta admin | painel + tudo |
+| **Usuário** | `present` (string → present+message) | conta criada no painel (nick só) | lives, transmitir, chat texto e voz |
 
-- Tipo de entrada (cadastrado / convidado / temporário) ≠ cargo. Nos logs, “Admin (painel)” é só o evento de login no `/admin`, não um 4º cargo.
-- Sala pública: o sidecar (`ensure_open_ouvinte` no beacon) alinha o wildcard para Ouvinte.
-- Sala convite: wildcard permanece Verificado (`present`).
-- Painel: menu de cargo moderno; Renomear verde; Redefinir senha em modal; aba Logs com filtros (tipo, nick, IP).
+- Criar usuário no painel: **só o nick**. Senha inicial de todo mundo: `Mudar@123`. No primeiro login a pessoa **tem** que trocar (`must_change` + modal). Admin no 1º login ainda troca a senha dele **e** a dos convidados da sala (`/first-setup`); usuário comum só a própria (`/first-password`).
+- Cargos convidado / ouvinte / temporário ficam **arquivados** no código (wildcard, abas Convidados/Temporários) para um módulo extra depois (compatibilidade Zulip). Não aparecem no menu de cargo.
+- Tipo de entrada (cadastrado / convidado / temporário) ≠ cargo. Nos logs, “Admin (painel)” é só o evento de login no `/admin`.
+- Sala pública: o sidecar (`ensure_open_ouvinte` no beacon) ainda alinha o wildcard antigo; o menu de cargo do painel não oferece Ouvinte.
+- Sala convite: wildcard permanece Usuário (`present`).
+- Painel: menu de cargo Admin / Usuário; arraste `⋮⋮` das salas **só na aba Servidores**; a ordem (texto sempre acima da voz) vale na lista da sala.
 
 ---
 
@@ -204,24 +206,51 @@ Arquivo: `registry.py`. Endpoints úteis (prefixo `/spartan-api` opcional):
 | GET | `/presence-room` | público | tempo da sala + opcional tempo do nick |
 | GET | `/presence-user` | público | tempo individual do nick |
 | GET | `/must-change` | público | sempre `{must_change: false}` — não vaza se o nick existe |
-| POST | `/must-change` | sala (nick+senha da conta) | `{must_change: true/false}` só com senha certa |
-| POST | `/register` `/approve` `/quick` `/deny` `/block` `/unblock` `/forget` `/stamp` | fluxos de convite | cadastro / moderação |
-| POST | `/panel-login` | painel | só admin da **sala principal** / `config.json` / `sidecar.auth` |
-| POST | `/can-panel` | sala | igual ao panel-login, **sem** gravar log (mostra o botão Painel Admin **só** se a conta for admin cadastrado; anfitrião 24h = não) |
+| POST | `/must-change` | sala (nick+senha da conta) | `{must_change, admin}` só com senha certa |
+| POST | `/register` `/approve` `/quick` `/deny` `/block` `/unblock` `/forget` `/stamp` | fluxos de convite | cadastro / moderação. `/quick` sem senha usa `Mudar@123` e marca `must_change` |
+| POST | `/reset-factory-password` | admin | volta a senha do nick para `Mudar@123` e exige troca no próximo login |
+| POST | `/panel-login` | painel | admin global (`scope=admin`) **ou** moderador/dono de servidor (`scope=mod`) |
+| POST | `/can-panel` | sala | igual ao panel-login, **sem** gravar log; devolve `{ok, scope}` |
 | POST | `/net-event` | sala (nick+senha se o nick não for `?`) | cliente reporta queda/recuperação WS (código, duração, se recuperou) |
-| POST | `/join-named` | sala extra | valida conta da main e copia o user (Verificado, nunca op) para a sala extra |
+| POST | `/join-named` | sala extra | valida conta da main e copia o user (Usuário, nunca op) para a sala extra |
 | POST | `/create-room` | admin | cria sala extra: `open` (pública = 24h) ou convite; `ttl` opcional no convite; anfitrião só se `ttl` |
 | POST | `/first-setup` | admin | troca senha admin + amigos no 1º login |
+| POST | `/first-password` | conta com `must_change` | troca só a senha do usuário no 1º login |
 | POST | `/rename-user` | admin | renomeia por ID imutável |
 | POST | `/site-home` | admin | define sala da home |
 | POST | `/rename-main` | admin | renomeia slug + título da main |
+| GET | `/servers` | membro (`?user=`) | só os servidores em que o nick **já é membro** (oficial também exige lista); sem nick, lista vazia; cada item traz `text_heads` (contagem do chat, sem o texto) |
+| GET | `/server` | membro | detalhe + presença; **401** sem nick, **403** sem acesso |
+| GET | `/server-text` | membro | últimas mensagens do canal só-texto |
+| GET | `/server-file` | membro (`?id=&server=&user=`) | baixa imagem/mp4/mp3 do chat (até 100 MB) |
+| GET | `/server-invite` | público | prévia do convite (`?code=`) |
+| POST | `/server-create` | admin global | cria servidor extra (não aninha servidor) |
+| POST | `/server-channel` | admin ou moderador daquele servidor | canal voz (grupo Galene) ou só-texto |
+| POST | `/server-join` | conta + código ou link | entra **na hora** (membro); soma o servidor na lista |
+| POST | `/server-approve` `/server-deny` | admin ou moderador | aprova/recusa no sidecar |
+| POST | `/server-mod` | **admin global** | marca Moderador **só no sidecar** (`galene_perm` continua `present`); o nick já precisa ter acesso |
+| POST | `/server-member-add` | admin/mod daquele servidor | inclui cadastrado que ainda não tem acesso; se estiver na call de outro, some da lista na hora |
+| POST | `/server-member-remove` | admin/mod daquele servidor | tira o acesso e **expulsa da call** (`kicks`); mod não tira outro mod/dono |
+| POST | `/server-addable` | admin/mod daquele servidor | cadastrados **sem** acesso (para a janela Adicionar) |
+| POST | `/user-servers` | admin global | todos os servidores de um nick, com `has` + botões de incluir/tirar |
+| POST | `/server-kicked` | a vítima | confirma que aplicou a expulsão |
+| POST | `/server-here` | membro | presença em canal de texto |
+| POST | `/server-text` | membro (não ouvinte) | mensagem no chat do servidor |
+| POST | `/server-file` | membro (não ouvinte) | multipart: imagem, mp4 ou mp3 até 100 MB em `data/chat-files/` |
+| POST | `/server-view` | membro (nick+senha) | detalhe com convite/pendentes/`members` se puder gerir; **403** sem acesso |
+| POST | `/account-login` | conta | valida senha; devolve só os servidores com acesso, `home` vazio se não tiver nenhum, `panel_scope` |
+| POST | `/server-guest` | nick + senha 2× + convite (código ou link `#/i/…`) | cria conta e entra no servidor na hora |
+| POST | `/server-move` | admin/mod | arrasta nick para um canal de voz (inclui Ausentes) |
+| POST | `/server-moved` | a vítima | confirma que aplicou a troca |
+| POST | `/server-invite-rotate` | admin ou moderador | gera **link novo**; o antigo deixa de valer |
+| POST | `/server-delete` | admin/dono | apaga servidor extra; o oficial **não apaga** |
 | * | `/gapi/*` | admin | proxy da API Galene (`/galene-api/v0/...`). Coleções (`.users/`, `.groups/`, `.tokens/`) ganham barra final aqui — sem isso o Galene responde `404 page not found` e o texto aparece embaixo do **Entrar** no painel. |
 
 Salas **extra** de 24h: o sidecar apaga o JSON do grupo quando `expires_at` chega (a cada ~20 s). Quem está dentro vê à **direita do nome da sala** `Tempo até exclusão desta sala: HH:MM`. O relógio liga no boot da página (`temp-status` + `sessionStorage spartanTtl:<grupo>`), então **sobrevive a F5 / rejoin** — não depende do submit do login. A **main** não entra neste prazo. Públicas extra que já existiam sem prazo ganham 24h no próximo start do sidecar. Ban de IP 24h só se `BAN_IP = True` (desligado).
 
 Beacon grava `seen[nick] = {first, last, ip}` para **todo mundo** (inclusive registrados), para o painel mostrar IP / sala / visto. IP prefere `CF-Connecting-IP` / hops úteis do XFF. `load`/`save` do `registry.json` usam trava + arquivo `.tmp` (`mutate_registry`).
 
-**Lab WSL (este PC):** stack em `/home/docker/galene`. O Compose monta `GALENE_SRC` = pasta do Cursor (`static/` e `registry.py`). Mudou o JS: só **Ctrl+Shift+R**. Mudou o Python: `docker restart spartan-reg`. Não precisa `cp` de pacote no lab. Produção (`~/docker/galene` no Debian) continua pelo pacote `galene-sala-static`.
+**Lab WSL (este PC):** stack em `/home/docker/galene`. O Compose monta `GALENE_SRC` = pasta do Cursor (`static/` e `registry.py`). Mudou o JS: só **Ctrl+Shift+R**. Mudou o Python: `docker restart spartan-reg`. Não precisa `cp` de pacote no lab. Produção (`~/docker/galene` no Debian) continua pelo pacote `galene-sala-static`. Zerar o lab: `scripts/reset-lab.ps1` (reaplica `factory-reset/`, inclusive senha de fábrica; **não** puxa `data/` nem `groups/` do repo).
 
 ---
 
@@ -229,13 +258,13 @@ Beacon grava `seen[nick] = {first, last, ip}` para **todo mundo** (inclusive reg
 
 Volume `./static` por cima do static da imagem. Arquivos-chave:
 
-- `index.html` + `custom-home.js` — **landing** em `/`. **Nunca** copiar o painel por cima de `index.html`. Login do painel: **`/admin/`** (`static/admin/index.html`). `/painel/` só redireciona.
+- `index.html` + `custom-home.js` — **landing** em `/`: só nick + senha; **Convidado?** ou o link `#/i/<código>` cria conta já no servidor. Quem já tem conta loga e o convite soma o servidor. Logado vê um cartão para confirmar. **Nunca** copiar o painel por cima de `index.html`. Login do painel: **`/admin/`** (`static/admin/index.html`). `/painel/` só redireciona.
 - `salas/` — busca, ordenação, paginação (5 linhas de altura fixa)
-- `admin/` — usuários, convidados, bloqueados, temporários, logs, **oscilações**, salas
+- `admin/` — usuários, convidados, bloqueados, temporários, logs, **oscilações**, salas, **servidores**
 - `galene.html` + `galene.js` + `spartan-quality.js` + `spartan-net.js` + `spartan-watch.js` + `galene-spartan.css` + `spartan-boot.js` — sala
 - Wallpaper `papel-de-parede.jpg`
 - Sons da sala `static/sounds/` — `entrar.mp3`, `sair.mp3`, `mensagem.mp3` (vão no Git; o instalador avisa se faltarem)
-- Rodapé fixo: Galene / Juliusz (esquerda), “Interface refeita por wilbresley” (centro), Outras salas/Home (direita). Sem linha cinza; fundo semitransparente por cima da imagem.
+- Rodapé fixo: Galene / Juliusz (esquerda), “Interface refeita por wilbresley” (centro). Sem lista **Outras salas** na home nem no rodapé da call.
 
 Comportamentos de sessão:
 
@@ -247,7 +276,7 @@ Comportamentos de sessão:
 - Contador 24h (`#spartan-ttl`) reconstitui no `start()` (não só no submit do login): `spartanTtlRestore` + `GET /temp-status`. Anfitrião/op também faz poll.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: senha do painel **só** em `sessionStorage` (`spartanAdmin`). O `localStorage.spartanAdminHandoff` antigo é apagado se ainda existir. Preferências de qualidade (HUD, 720p, modo jogo) ficam em `localStorage.spartanPrefs` **sem** senha.
-- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=118`, `spartan-quality.js?v=1`, `spartan-net.js?v=1`, `spartan-watch.js?v=1`, `settings.js?v=2`, `galene-spartan.css?v=99`, `protocol.js?v=4`, `toastify.js?v=3`, `spartan-boot.js?v=9`). Home shell: `spartan-shell.js?v=5`, `spartan-shell.css?v=8`, `custom-home.js?v=4`. Painel: `admin.js?v=41`, `admin.css?v=28`, `spartan.css?v=24`. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar. Painel canónico em **`/admin/`** (`static/admin/index.html`). `/painel/` e `painel.html` só redirecionam para `/admin/`. Nunca copiar o painel por cima de `index.html` da raiz.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=126`, `spartan-quality.js?v=1`, `spartan-net.js?v=1`, `spartan-watch.js?v=1`, `settings.js?v=2`, `galene-spartan.css?v=104`, `protocol.js?v=4`, `toastify.js?v=3`, `spartan-boot.js?v=11`). Home shell: `spartan-shell.js?v=8`, `spartan-shell.css?v=26`, `spartan-servers.js?v=19`, `custom-home.js?v=10`. Painel: `admin.js?v=50`, `admin.css?v=35`, `spartan.css?v=24`. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar. Painel canónico em **`/admin/`** (`static/admin/index.html`). `/painel/` e `painel.html` só redirecionam para `/admin/`. Nunca copiar o painel por cima de `index.html` da raiz.
 
 Painel admin:
 
@@ -258,10 +287,11 @@ Painel admin:
 - Senha dos amigos **só na aba Salas** (por sala). A aba Usuários não duplica isso.
 - Listas: A–Z (padrão) ou Recentes.
 - Main no topo, sem Apagar; outras podem ir para a home.
-- Cargos: Admin / Verificado / Ouvinte (sem “só chat”).
+- Cargos: Admin / Usuário na call (Galene). **Moderador** é cargo do sidecar **por servidor** — na call ele continua Usuário.
 - Logs: filtros por tipo, nick e IP; horário Brasília.
 - **Oscilações:** aba própria; `data/net.log` 30 dias; filtros nick/sala/IP; cada queda conta.
 - **Criar sala:** convite definitiva (padrão); checkbox **Sala temporária (24h)**; pública sempre 24h; bloco anfitrião só aparece com ttl.
+- **Servidores:** aba no painel. **Admin global** vê tudo. **Moderador** só esta aba e só os servidores em que é membro. Spartan oficial também exige convite/inclusão (não entra todo verificado). Cartão tem **Usuários** (busca, remover, adicionar cadastrado que ainda não tem acesso). Aba Usuários (só admin) tem **Servidores** por pessoa. Campo de moderador lista quem já tem acesso. Convite é **link eterno** (`origem/#/i/<código>`); **Trocar link** invalida o antigo. Quem abre o link cria a conta já naquele servidor, ou (se já tem conta) loga e entra; logado confirma num cartão. Categorias só Texto / Voz. Quatro colunas: ícones, canais, grid (espaço exclusivo), membros (ocultos, cada um numa caixinha). Clicar em texto abre janela **por cima do grid** (não troca a call). Chat Geral aceita colar print e enviar imagem / mp4 / mp3 até **100 MB** (`POST /server-file`, arquivos em `data/chat-files/`). O overlay do chat **abre na mensagem mais nova**. Só outra voz ou Ausentes desconecta. No canal de voz: quadrados **Tela/Câmera** (sempre visíveis se a pessoa estiver transmitindo); **Mudo** nas cores antigas (cinza / amarelo no teu fone / vermelho o mic dele / os dois); **volume** só aparece ao clicar na pessoa. Aba **Salas** do painel: sala principal + extras de verdade; canal de voz de servidor **não** entra em Temporárias (24h) e **não** some sozinho. Barra: mic, tela, câmera, engrenagem, Sair. Paleta cinza estilo Fluxer; vermelho só acento.
 
 ---
 
@@ -274,14 +304,15 @@ Painel admin:
 - Sem kick HTTP nativo: o cliente sai sozinho no purge / bloqueio.
 - Multi-live: botão **Tela** só no compartilhamento de tela; **Câmera** só com faixa de vídeo (mic sozinho = só a bolinha, sem texto Câmera). Cabeçalho preto acima do vídeo.
 - **Fluência:** live **assistida** (clicada) pede sempre vídeo alto — câmera `['audio','video']`; tela `['video']` e só inclui áudio se o espectador ligar o volume da tile. Nunca `video-low` na assistida. Tela que **envias**: FPS-alvo **60** (`frameRate` ideal/max sem `min` — Chrome rejeita `min` no getDisplayMedia), `maxFramerate` + `maintain-framerate`, `contentHint=motion` (modo jogo). Bitrate da tela **independente** do “Enviar” da câmera: teto auto **12 Mbps**, 1080p **10 Mbps**, 720p **5 Mbps**, com **escada automática** (`availableOutgoingBitrate`) se o upload apertar (pode cair a 30 fps). Offer da screenshare **sem `goog-remb`**. HUD **só na tua live** (`enviando · alvo · fps · kbps/teto`). Quem assiste não vê FPS. Oscilar em torno do teto (com pico curto acima) é normal. Receivers assistidos: `degradationPreference=maintain-resolution`. Voz da sala (mic/câmera) continua no fone sem clicar. Mic com supressão ligada pede `echoCancellation` / `noiseSuppression` / `autoGainControl` / `voiceIsolation`. Tela **não** pede som nem imagem até o clique em **Tela**; o volume da tile começa mudo. Fechar (X ou de novo **Tela**/**Câmera**) **para de assistir só no teu cliente** — a pessoa continua transmitindo; você deixa de gastar internet nessa live. F5/foco voltam mudos; desconexão reconstitui quais telas tinham som ligado. ICE ignora `127.0.0.1`/`::1` fora do lab; ICE restart só da live que caiu.
-- **Painel Admin** (botão na sala): depende **só** de `POST /can-panel` (conta cadastrada da main / sidecar). Não exige `op` da sala atual. Anfitrião 24h não vê o botão. Abre sempre em nova aba (`window.open` + handoff `spartanAdminHandoff`).
+- **Painel Admin** (botão nas configurações da casca e na sala): só `POST /can-panel` com `scope=admin`. Usuário comum **não** vê. Anfitrião 24h **não** vê.
 - **Uma** live na sala: já entra em foco; clique extra nela não faz nada. Duas lives: **lado a lado** já na primeira abertura (o foco automático da primeira não deixa o grid numa coluna só). Três ou quatro: grid 2×2. Clique escolhe o foco.
 - **Minhas lives:** ícones de olho; verde = mostrando, vermelho = ocultando. O X nas lives dos outros **para de assistir** (não baixa mais o vídeo; a transmissão dela segue). O X na **própria** live **para** aquele share. Fechar a **câmera** (header ou X) com o mic ligado **mantém o microfone**; o ícone verde do mic acompanha o estado real.
 - Engrenagem: rótulo **Configurações**. Painel só com o que a sala usa: perfil (trocar senha / admin), dispositivos (câmera, microfone, espelhar, ruído, áudio HQ) e **Sons da sala** (entrada, saída e mensagem, cada um à parte). As escolhas de som ficam em `localStorage` por nick neste browser. Fora do menu (fixo por baixo): envio **ilimitado**, duas qualidades **automático** (no Firefox, desligado), receber **tudo**, filtros desligados, modo quadro desligado, detectar atividade **sempre ligado** (é a mesma lógica da bolinha).
 - **Sair** no cabeçalho (vermelho `#dc2626`), com confirmação.
-- **Ouvinte** (`body.spartan-ouvinte`): microfone ok; sem lives, sem chat texto, sem câmera/tela.
+- **Ouvinte** legado (`body.spartan-ouvinte`): ainda no cliente para o módulo extra depois; o painel não cria mais este cargo.
 - Lista de usuários: clique esquerdo (PC) abre o menu. No **celular**, o drawer da lista desliza da esquerda; o menu do usuário só com **segurar 1 s**, em `position:fixed` por cima do drawer (`z-index` alto). Soltar o dedo **não** fecha o menu (o clique sintético é ignorado ~900 ms).
-- Menu do outro usuário: **Mudo** (só o teu fone), **Volume (seu fone)** 0–400% em passos de 5%, e se for admin: apresentar / **Silenciar microfone** (muta o mic **dele** para toda a sala) / Expulsar. Sem Identificar (não manda IP) e sem enviar arquivo.
+- Menu do outro usuário (lista da sala, fora da casca): **Mudo** (só o teu fone), **Volume (seu fone)** 0–400% em passos de 5%, e se for admin: apresentar / **Silenciar microfone** (muta o mic **dele** para toda a sala) / Expulsar. Sem Identificar (não manda IP) e sem enviar arquivo.
+- Na **casca** (lista do canal de voz): barra de volume **só ao clicar** na pessoa; Tela/Câmera na linha dela; Mudo cinza / amarelo / vermelho / os dois.
 - Bolinha: **cinza** off; **amarelo** mic ligado parado; **verde** falando; **vermelho** mutado. Publish segue a **faixa** (`enabled`+`live` → `on`; senão `localMute` → `muted`) e reenvia o estado a cada ~2,5 s. Nos outros, `micstate === 'muted'` é absoluto (analisador/stats não pintam amarelo). Desmutar / falar com faixa viva publica `on` mesmo que o `localMute` da sessão tenha ficado preso.
 - Sons da sala (`static/sounds/`): `entrar.mp3`, `sair.mp3`, `mensagem.mp3`. Toca para os **outros** (não para você, não no histórico, não no lote dos 1,5 s ao entrar). Configurações: três interruptores (entrada / saída / mensagem), ligados por padrão, gravados neste computador por nick. O browser só libera o áudio depois do primeiro clique/tecla.
 - Queda da ligação, depois que você já entrou: **graça de 60 s** (corte único).
@@ -333,7 +364,7 @@ sudo chown "$USER:$USER" ~/docker/galene/data/registry.json
 - Imagem Docker: `docker save galene:local | gzip > ~/galene-local-image.tgz` — cópia no Git em `images/galene-local.tgz`.
 - Repo privado: https://github.com/wilbresley/galene-edicao-spartan — **sem** senhas. Clone + `docker load` + `compose up -d`.
 - Repo público (pacote para clonar): https://github.com/wilbresley/galene-edicao-spartan-the-gratis
-- Histórico desta conversa Cursor (privado): `docs/exports/` — markdown + JSONL para importar noutro chat.
+- Histórico desta conversa Cursor (privado): `docs/exports/` e `docs/conversas-ia/` — markdown + JSONL para importar noutro chat. Comece por `docs/exports/RESUMO-CONVERSA-20260917.md`.
 
 A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export do chat.
 
@@ -376,6 +407,22 @@ A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export 
 33. 09/09/2026: **fechar live** — X ou segundo clique em Tela/Câmera para de assistir só no teu lado (não baixa mais o vídeo; quem transmite segue). Cache: `galene.js?v=117`.
 34. 09/09/2026: **snapshot de garantia** no Git (privado + público) **antes** da reformulação: som da tela, timer 5 min, fechar-live, lab WSL. Commit `9a6a6a7`.
 35. 09/09/2026: **reformulação** — HUD só no envio; mic `voiceIsolation`; teto adaptativo da tela; ICE sem loopback fora do lab; `registry.json` atômico + auth em beacon/presence/net-event; `must-change` GET não vaza nick; senha admin só na sessão; `postMessage` com origem; `?v=` alinhado; painel único `/admin/`; filtro blur escondido; `galene.js` quebrado em `spartan-quality.js` / `spartan-net.js` / `spartan-watch.js` (grid e bolinhas intactos). Lab WSL já serve `galene.js?v=118`. Reiniciar `spartan-reg`. Este commit é o estado implantado (depois do snapshot `9a6a6a7`).
+36. 17/09/2026: **shell Fluxer** — home nick+senha; tela Convidado (senha 2× + convite); preset Voz 1–3 + Chat Geral + Ausentes; convite entra na hora; texto não troca o iframe da voz; arrastar entre vozes; toasts quietos. Reiniciar `spartan-reg`.
+37. 17/09/2026: **casca da sala** — iframe só o grid (sem header/lista/chat velhos); Chat Geral ao logar; gente no canal com avatar + bolinha de mic; barra com mic, tela, engrenagem e Sair. Cache `galene.js?v=121`, `spartan-boot.js?v=11`.
+38. 17/09/2026: **layout em colunas** — grid na coluna inteira (chat por cima, não ao lado); membros com botão discreto. Cache `galene-spartan.css?v=103`.
+39. 17/09/2026: **chat com arquivo + lives na casca** — preset só Chat Geral (texto extra pelo admin); colar print / imagem / mp4 / mp3 até 100 MB em `data/chat-files/`; Tela/Câmera, volume e mudo debaixo do nick no canal; botão câmera. Cache `galene.js?v=122`.
+40. 17/09/2026: **grid na casca** — `#peers` volta a ser grade (Tela 1 / Tela 2 lado a lado); sem ícone de olho; clicar no quadrado da *sua* live só oculta no teu grid. Cache `galene.js?v=123`, `galene-spartan.css?v=104`, `spartan-shell.css?v=18`, `spartan-servers.js?v=8`.
+41. 17/09/2026: **troca de voz com salvaguarda** — mic sozinho troca na hora; tela/câmera ou live assistida abre cartão no meio da tela (Ficar / Trocar). Lista de membros compacta (bola + nome na mesma linha). Cache `spartan-servers.js?v=10`, `spartan-shell.css?v=20`.
+42. 17/09/2026: **canais por servidor** — ID `servidor__canal` (Voz 1 da Tardis ≠ Voz 1 do Spartan). Painel lista, renomeia e apaga canal. Cache `spartan-servers.js?v=11`, `admin.js?v=43`. Reiniciar `spartan-reg`.
+43. 17/09/2026: **call não cai ao olhar outro servidor** — ícone do servidor só troca texto/membros; mic, lives e tela seguem. Só entra na voz nova se clicar num canal de voz. Engrenagem esconde o chat por cima, abre o menu de configurações (e o admin); se não estiver em call, abre o painel direto. Cache `galene.js?v=124`, `spartan-servers.js?v=12`, `spartan-shell.css?v=21`.
+44. 17/09/2026: **admin de servidores** — cartão por servidor, colunas texto/voz; poll sem piscar (só redesenha se mudou); Sair com cartão flutuante (sem `confirm` nativo); login/convidado centralizados. Cache `admin.js?v=44`, `admin.css?v=31`, `spartan-servers.js?v=13`, `spartan-shell.css?v=22`.
+45. 17/09/2026: **acesso por lista** — verificado só vê servidor convidado/adicionado (Spartan oficial inclusive). Moderador no painel só aba Servidores dos que tem. Janela Usuários no cartão (busca, remover, adicionar); aba Usuários com Servidores por pessoa. Tirar alguém expulsa da call na hora. Cache `admin.js?v=45`, `admin.css?v=32`, `spartan-servers.js?v=14`, `custom-home.js?v=7`. Reiniciar `spartan-reg`.
+46. 17/09/2026: **apagar canal de verdade** (não volta no fim da lista); janela de membros lista cadastrado mesmo sem login; confirmação na frente; botão verde **Adicionar e remover usuários**. Cache `admin.js?v=46`, `admin.css?v=33`. Reiniciar `spartan-reg`.
+47. 17/09/2026: **1º login** exige troca das senhas de fábrica na casca (não só na call). Preset por servidor: Chat Geral, Voz 1 e Ausentes **fixos** (renomeia, não apaga; Ausentes sempre `key=ausentes` + 🔇); Voz 2/3 apagam. Arrasta `⋮⋮` para reordenar. Engrenagem abre configurações (admin é botão de dentro). Cache `custom-home.js?v=8`, `spartan-servers.js?v=15`, `spartan-shell.css?v=23`, `admin.js?v=47`, `admin.css?v=34`. Reiniciar `spartan-reg`.
+48. 17/09/2026: **Painel Admin só para admin** nas configurações. Convite vira **link eterno** `#/i/<código>`; **Trocar link** gera outro e o antigo cai. Conta nova pelo link já entra no servidor; quem já tem conta loga e o convite soma o servidor; logado confirma num cartão (Não só fecha). Cache `galene.js?v=126`, `custom-home.js?v=10`, `spartan-servers.js?v=17`, `spartan-shell.js?v=8`, `spartan-shell.css?v=24`, `admin.js?v=49`, `admin.css?v=35`. Reiniciar `spartan-reg`.
+49. 17/09/2026: **chat de texto** — janela de configurações cola no conteúdo; botão amarelo **Chat** (some ao abrir); mensagem nova no servidor em foco abre o overlay (por canal dá para **Não abrir sozinho**); outro servidor só ponto no ícone + som, **botão direito** silencia. Cache `spartan-servers.js?v=18`, `spartan-shell.css?v=25`. Reiniciar `spartan-reg`.
+50. 17/09/2026: **aba Salas** — canais de voz dos servidores (Ausentes, Voz 2/3, slug do outro servidor) saem da lista de temporárias e **não** ganham prazo de 24h nem somem sozinhos. Abrir aponta para a casca (`/#/s/…` / `/#/group/…`), não para o login velho `/group/`. Cache `admin.js?v=50`. Reiniciar `spartan-reg`.
+51. 17/09/2026: **lista de voz** — barra de volume só ao clicar na pessoa; botões Tela/Câmera ficam visíveis; Mudo nas cores antigas (amarelo / vermelho / os dois). Chat abre na mensagem mais nova. Cache `spartan-servers.js?v=19`, `spartan-shell.css?v=26`.
 
 ---
 
@@ -414,7 +461,7 @@ Contrato cumprido depois do snapshot `9a6a6a7`. Grid (`resizePeers`, CSS de `.pe
 
 RNNoise/Krisp; religar REMB; `forceRelay` para todos; reescrever o grid; cortar `getStats`/AudioContext das bolinhas; gravar a sala; PWA.
 
-Cache **atual:** `galene.js?v=118`, `protocol.js?v=4`, `spartan-quality.js?v=1`.
+Cache **atual:** `galene.js?v=121`, `protocol.js?v=4`, `spartan-quality.js?v=1`.
 
 ---
 

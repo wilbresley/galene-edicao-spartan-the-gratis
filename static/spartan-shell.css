@@ -57,6 +57,7 @@ html.spartan-shell #spartan-shell-root {
 
 /* Home e salas: cartão centralizado, fundo em tela cheia */
 html.spartan-shell #spartan-view-home.on,
+html.spartan-shell #spartan-view-guest.on,
 html.spartan-shell #spartan-view-salas.on {
   align-items: center !important;
   justify-content: center !important;
@@ -65,7 +66,12 @@ html.spartan-shell #spartan-view-salas.on {
 }
 
 html.spartan-shell #spartan-view-home .home,
+html.spartan-shell #spartan-view-guest .home,
 html.spartan-shell #spartan-view-salas .home {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  text-align: center !important;
   flex-shrink: 0;
   align-self: center !important;
   margin-left: auto !important;
@@ -81,9 +87,10 @@ html.spartan-shell #spartan-view-salas .home.salas-page {
   overflow: hidden;
 }
 
-/* Sala: iframe ocupa 100% — sem barra extra do shell */
+/* Sala/servidor: trilhos + palco da call (iframe) */
 html.spartan-shell #spartan-view-room.on {
   flex: 1 1 auto;
+  flex-direction: row;
   min-height: 0;
 }
 
@@ -108,17 +115,487 @@ html.spartan-shell.spartan-in-room #spartan-shell-root {
 html.spartan-shell.spartan-in-room #spartan-view-room.on {
   min-height: 100vh;
   min-height: 100dvh;
+  height: 100%;
+  height: 100dvh;
+}
+
+#spartan-guild-rail {
+  flex: 0 0 56px;
+  width: 56px;
+  background: #111;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.7rem 0.25rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  border-right: 1px solid #2a2a2a;
+}
+#spartan-guild-rail::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+.spartan-guild-btn {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 14px;
+  background: #33363d;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.spartan-guild-btn.on {
+  background: #dc2626;
+  border-radius: 14px;
+}
+.spartan-guild-btn.muted { opacity: .72; }
+.spartan-guild-btn.unread::after,
+.spartan-guild-btn.unread-quiet::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px #111214;
+}
+.spartan-guild-btn.unread::after { background: #eab308; }
+.spartan-guild-btn.unread-quiet::after { background: #9ca3af; }
+
+#spartan-channel-rail {
+  flex: 0 0 220px;
+  width: 220px;
+  background: #1e1f22;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid #2a2a2a;
+}
+
+#spartan-server-title {
+  margin: 0;
+  padding: 0.85rem 0.9rem 0.4rem;
+  font-size: 1rem;
+  color: #fff;
+}
+
+#spartan-channel-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0.3rem 0.55rem 1rem;
+}
+
+.spartan-chan-cat h3 {
+  margin: 0.7rem 0.35rem 0.25rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #b5bac1;
+}
+
+.spartan-chan-btn {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: #dbdee1;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.spartan-chan-btn.on {
+  background: #33363d;
+  color: #fff;
+}
+.spartan-chan-btn.unread { color: #facc15; font-weight: 800; }
+
+#spartan-channel-hint {
+  color: #f87171;
+  font-size: 0.8rem;
+  padding: 0 0.8rem 0.8rem;
+}
+
+#spartan-room-stage {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  background: #313338;
+}
+
+#spartan-leave-call {
+  position: absolute;
+  top: 0.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  background: #111;
+  color: #fff;
+  border: 1px solid #dc2626;
+  border-radius: 8px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
 }
 
 #spartan-room-frame {
-  flex: 1 1 auto;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   width: 100% !important;
+  height: 100% !important;
   min-width: 0;
   min-height: 0;
-  height: 100%;
   border: 0;
   display: block;
-  background: #000;
+  background: #313338;
+}
+
+#spartan-room-frame[hidden],
+#spartan-text-pane[hidden],
+#spartan-leave-call[hidden] {
+  display: none !important;
+}
+
+#spartan-switch-ask {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(0, 0, 0, 0.62);
+}
+#spartan-switch-ask[hidden],
+#spartan-leave-ask[hidden],
+#spartan-invite-ask[hidden] {
+  display: none !important;
+}
+#spartan-invite-ask {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(0, 0, 0, 0.62);
+}
+#spartan-leave-ask {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(0, 0, 0, 0.62);
+}
+.spartan-switch-card {
+  width: min(460px, 92vw);
+  background: #1e1f22;
+  border: 1px solid #dc2626;
+  border-radius: 16px;
+  padding: 1.7rem 1.55rem 1.4rem;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+#spartan-switch-title,
+#spartan-leave-title {
+  margin: 0 0 0.75rem;
+  color: #fff;
+  font-size: 1.65rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+#spartan-switch-msg,
+#spartan-leave-msg {
+  margin: 0 0 1.35rem;
+  color: #e8eaed;
+  font-size: 1.18rem;
+  line-height: 1.5;
+  font-weight: 500;
+}
+.spartan-switch-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+#spartan-switch-stay,
+#spartan-switch-go {
+  border: none;
+  border-radius: 10px;
+  padding: 0.75rem 1.25rem;
+  font-size: 1.08rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+#spartan-switch-stay {
+  background: #3b3d44;
+  color: #fff;
+}
+#spartan-switch-stay:hover {
+  background: #4a4d55;
+}
+#spartan-switch-go {
+  background: #dc2626;
+  color: #fff;
+}
+#spartan-switch-go:hover {
+  background: #b91c1c;
+}
+
+#spartan-text-pane {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: auto !important;
+  max-width: none !important;
+  background: #2b2d31;
+  color: #fff;
+}
+
+#spartan-text-title {
+  margin: 0;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+#spartan-text-log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.8rem 1rem;
+}
+
+#spartan-text-log p {
+  margin: 0 0 0.45rem;
+}
+
+#spartan-text-form {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.7rem;
+  border-top: 1px solid #3f4147;
+  flex-shrink: 0;
+}
+
+#spartan-text-input {
+  flex: 1;
+  background: #1e1f22;
+  color: #fff;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+}
+
+#spartan-text-form button {
+  background: #dc2626;
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+}
+#spartan-text-attach {
+  background: #4e5058;
+  color: #fff;
+}
+#spartan-text-log .spartan-chat-img,
+#spartan-text-log .spartan-chat-vid {
+  display: block;
+  max-width: 100%;
+  margin-top: 0.4rem;
+  border-radius: 8px;
+  background: #1e1f22;
+}
+#spartan-text-log audio {
+  display: block;
+  width: 100%;
+  margin-top: 0.4rem;
+}
+
+#spartan-server-people {
+  flex: 0 0 248px;
+  width: 248px;
+  background: #2b2d31;
+  color: #fff;
+  overflow-y: auto;
+  border-left: 1px solid #2a2a2a;
+}
+
+#spartan-server-people h3 {
+  margin: 0;
+  padding: 0;
+  font-size: 0.85rem;
+  color: #fff;
+  text-align: center;
+}
+
+.spartan-people-sec {
+  margin: 0.4rem 0.55rem 0.15rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #b5bac1;
+  text-align: left;
+}
+.spartan-people-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  text-align: left;
+  gap: 0.45rem;
+  margin: 0.12rem 0.45rem;
+  padding: 0.28rem 0.4rem;
+  background: #1e1f22;
+  border: 1px solid #3f4147;
+  border-radius: 8px;
+}
+.spartan-people-av {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #dc2626;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+.spartan-people-card strong {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fff;
+  background: none;
+  padding: 0;
+  font-weight: 600;
+  font-size: 0.84rem;
+}
+.spartan-people-card span {
+  color: #b5bac1;
+  font-size: 0.75rem;
+}
+.spartan-people-card.off {
+  opacity: 0.65;
+}
+.spartan-people-card.off .spartan-people-av {
+  background: #4a4d55;
+}
+.spartan-people-card.off strong {
+  color: #9aa0a6;
+}
+.spartan-people-empty {
+  text-align: center;
+  padding: 0.5rem 0.9rem;
+  color: #b5bac1;
+  font-size: 0.78rem;
+}
+html:not(.spartan-in-room) #spartan-people-strip,
+html:not(.spartan-in-room) #spartan-server-people {
+  display: none !important;
+}
+
+.spartan-invite-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.9rem 0 0;
+  width: min(280px, 90%);
+}
+
+.spartan-invite-label {
+  margin: 0;
+  color: #fff;
+  font-weight: 700;
+}
+
+.spartan-invite-form input {
+  background: #1e1f22;
+  color: #fff;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+}
+
+.spartan-invite-btn {
+  background: #33363d;
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.spartan-invite-msg {
+  min-height: 1.2em;
+  margin: 0;
+  color: #fecaca;
+  font-size: 0.85rem;
+}
+
+.spartan-chan-tools {
+  margin-top: 0.8rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid #2a2a2a;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.spartan-chan-tools input,
+.spartan-chan-tools select {
+  background: #111;
+  color: #fff;
+  border: 1px solid #7f1d1d;
+  border-radius: 6px;
+  padding: 0.35rem 0.45rem;
+}
+
+.spartan-chan-tools button {
+  background: #dc2626;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+}
+
+.spartan-invite-copy {
+  margin: 0.3rem 0 0;
+  color: #86efac;
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+
+@media (max-width: 820px) {
+  #spartan-channel-rail { flex-basis: 180px; width: 180px; }
 }
 
 html.spartan-shell #spartan-view-home.on footer.signature,
@@ -171,3 +648,426 @@ html.spartan-shell #spartan-view-salas.on footer.signature {
   min-height: 0;
   background: #0d0d0f;
 }
+
+/* Fluxer — camadas de cinza */
+html.spartan-shell #spartan-view-guest.on {
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1rem 1rem 5rem;
+}
+
+.spartan-login-form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  width: 100%;
+  max-width: 22rem;
+  margin: 0.6rem auto 0;
+  text-align: left;
+  align-self: center;
+}
+
+.spartan-login-form label {
+  color: #fff;
+  font-size: 0.85rem;
+}
+
+.spartan-login-form input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #1e1f22;
+  color: #fff;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+}
+
+.spartan-login-form .spartan-btn {
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.spartan-guest-link {
+  display: inline-block;
+  margin-top: 0.85rem;
+  color: #fecaca;
+  font-weight: 700;
+  text-align: center;
+}
+
+#spartan-guild-rail { background: #1e1f22; border-right: 1px solid #111; }
+#spartan-channel-rail { background: #2b2d31; border-right: 1px solid #1e1f22; }
+#spartan-server-people { background: #2b2d31; border-left: 1px solid #1e1f22; }
+#spartan-room-stage { background: #313338; flex-direction: column; }
+#spartan-room-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0;
+  min-height: 0;
+}
+#spartan-text-pane {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  width: auto !important;
+  max-width: none !important;
+  flex: none !important;
+  background: #313338;
+  border: 0;
+}
+html.spartan-settings-up #spartan-room-frame {
+  z-index: 50;
+}
+html.spartan-settings-up #spartan-text-pane {
+  z-index: 1;
+}
+#spartan-user-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0.4rem;
+  margin: 0.4rem;
+  padding: 0.45rem;
+  background: #232428;
+  border-radius: 8px;
+  flex: 0 0 auto;
+}
+#spartan-user-bar[hidden] { display: none !important; }
+.spartan-user-who {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+#spartan-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #dc2626;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.9rem;
+  flex: 0 0 auto;
+}
+.spartan-user-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+#spartan-user-nick {
+  color: #f2f3f5;
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#spartan-user-voice {
+  color: #23a559;
+  font-size: 0.68rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.spartan-user-acts {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  flex: 0 0 auto;
+}
+.spartan-user-acts button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: #b5bac1;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.spartan-user-acts button:hover { background: #3b3d44; color: #fff; }
+.spartan-user-acts button.on { color: #23a559; }
+.spartan-user-acts button.off { color: #ed4245; }
+.spartan-user-acts svg { width: 18px; height: 18px; display: block; }
+.spartan-chan-row { margin: 0 0 0.15rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.1rem; }
+.spartan-chan-grip {
+  flex: 0 0 auto;
+  cursor: grab;
+  color: #b5bac1;
+  font-size: 0.9rem;
+  letter-spacing: -0.12em;
+  padding: 0.2rem 0.15rem;
+  user-select: none;
+}
+.spartan-chan-grip:active { cursor: grabbing; }
+.spartan-chan-row.dragging { opacity: 0.55; }
+.spartan-chan-btn.live { color: #23a559; }
+.spartan-chan-user {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1 1 100%;
+  width: calc(100% - 0.55rem);
+  margin: 0.12rem 0 0.12rem 0.55rem;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: #dbdee1;
+  font-size: 0.82rem;
+  cursor: grab;
+  padding: 0.15rem 0.2rem;
+  border-radius: 4px;
+}
+.spartan-user-lives {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1 1 100%;
+  width: 100%;
+  margin: 0.2rem 0 0 1.7rem;
+  box-sizing: border-box;
+}
+.spartan-user-lives[hidden] { display: none !important; }
+.spartan-user-lives .user-live-btn {
+  flex: 1 1 calc(50% - 6px);
+  min-width: 4.2rem;
+}
+.spartan-user-audio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 100%;
+  width: 100%;
+  margin: 0.12rem 0 0 1.7rem;
+  box-sizing: border-box;
+}
+.spartan-chan-ident .user-mute-btn,
+.spartan-user-audio .user-mute-btn {
+  flex: 0 0 auto;
+  background: #3f4147;
+  color: #e5e7eb;
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.spartan-chan-ident .user-mute-btn.mute-local,
+.spartan-user-audio .user-mute-btn.mute-local {
+  background: #eab308;
+  color: #111;
+}
+.spartan-chan-ident .user-mute-btn.mute-remote,
+.spartan-chan-ident .user-mute-btn.on,
+.spartan-user-audio .user-mute-btn.mute-remote,
+.spartan-user-audio .user-mute-btn.on {
+  background: #dc2626;
+  color: #fff;
+}
+.spartan-chan-ident .user-mute-btn.mute-both,
+.spartan-user-audio .user-mute-btn.mute-both {
+  background: linear-gradient(90deg, #eab308 0 50%, #dc2626 50% 100%);
+  color: #111;
+  text-shadow: 0 0 2px #fff;
+}
+.spartan-user-audio .user-vol-slider {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.spartan-chan-user:hover { background: #35373c; }
+.spartan-chan-ident {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.spartan-chan-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #dc2626;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+.spartan-talk-dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6b7280;
+}
+.spartan-chan-user.user-talk-idle .spartan-talk-dot {
+  background: #eab308;
+  box-shadow: 0 0 6px #eab308;
+}
+.spartan-chan-user.user-talk-on .spartan-talk-dot {
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+}
+.spartan-chan-user.user-talk-muted .spartan-talk-dot {
+  background: #dc2626;
+  box-shadow: 0 0 6px #dc2626;
+}
+.spartan-chan-nick {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spartan-chan-row.drop { outline: 1px dashed #dc2626; }
+.spartan-text-head, .spartan-people-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  padding: 0.55rem 0.8rem 0.2rem;
+}
+.spartan-people-head {
+  padding: 0.7rem 0.7rem 0.25rem;
+}
+.spartan-text-head h3, .spartan-people-head h3 {
+  margin: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spartan-text-head button, .spartan-people-head button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  background: #1e1f22;
+  color: #dbdee1;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.28rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+html.spartan-people-collapsed #spartan-server-people { display: none !important; }
+html:not(.spartan-people-collapsed) #spartan-people-strip { display: none !important; }
+#spartan-people-strip {
+  flex: 0 0 32px;
+  width: 32px;
+  background: #2b2d31;
+  border-left: 1px solid #1e1f22;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0.4rem 0.1rem;
+}
+#spartan-people-show {
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  color: #b5bac1;
+  border: 0;
+  border-radius: 6px;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#spartan-people-show svg { width: 16px; height: 16px; display: block; }
+#spartan-people-show:hover { color: #fff; background: #3b3d44; }
+#spartan-text-show {
+  position: fixed;
+  z-index: 40;
+  bottom: 0.85rem;
+  right: 0.85rem;
+  background: #eab308;
+  color: #111;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.45rem 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(0,0,0,.4);
+}
+#spartan-text-show[hidden] { display: none !important; }
+#spartan-text-badge { display: none !important; }
+#spartan-text-pane[hidden] { display: none !important; }
+#spartan-room-frame[hidden] { display: none !important; }
+
+#spartan-first-modal { z-index: 11050; }
+#spartan-shell-settings {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0,0,0,.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+#spartan-shell-settings[hidden] { display: none !important; }
+.spartan-shell-settings-card {
+  width: max-content;
+  max-width: min(22rem, calc(100vw - 2rem));
+  height: auto;
+  background: #1e1f22;
+  color: #f2f3f5;
+  border-radius: 12px;
+  padding: 0.9rem 1rem 1rem;
+  box-shadow: 0 18px 40px rgba(0,0,0,.45);
+}
+.spartan-shell-settings-card h2 { margin: 0 0 .8rem; font-size: 1.15rem; color: #fff; }
+.spartan-shell-settings-card label, .spartan-shell-settings-card legend { color: #fff; }
+.spartan-shell-settings-card select {
+  width: 100%;
+  min-width: 16rem;
+  margin: .25rem 0 .7rem;
+  background: #111214;
+  color: #fff;
+  border: 1px solid #3b3d44;
+  border-radius: 8px;
+  padding: .4rem .5rem;
+}
+.spartan-shell-sounds {
+  border: 1px solid #3b3d44;
+  border-radius: 8px;
+  padding: .5rem .7rem .6rem;
+  margin: 0 0 .8rem;
+}
+.spartan-shell-sounds label { display: flex; gap: .45rem; align-items: center; margin: .25rem 0; }
+.spartan-shell-settings-acts { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0 0 .7rem; }
+.spartan-shell-settings-acts button, #spartan-shell-settings-close {
+  border: 0;
+  border-radius: 8px;
+  padding: .45rem .75rem;
+  cursor: pointer;
+  font-weight: 700;
+}
+#spartan-shell-chpw { background: #16a34a; color: #fff; }
+#spartan-shell-admin { background: #dc2626; color: #fff; }
+#spartan-shell-admin[hidden] { display: none !important; }
+#spartan-shell-settings-close { background: #3b3d44; color: #fff; }

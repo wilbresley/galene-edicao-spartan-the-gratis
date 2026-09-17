@@ -58,16 +58,27 @@ def ensure_layout():
         (f"{factory}/sidecar.auth", f"{APP}/data/sidecar.auth"),
         (f"{factory}/spartan.json", f"{APP}/groups/spartan.json"),
     ]
-    # Se o compose antigo rodou no repo, traz os dados vivos uma vez.
-    if os.path.isfile(f"{SRC}/data/config.json") and not os.path.isfile(f"{APP}/data/config.json"):
-        for name in ("config.json", "site.json", "accounts.json", "registry.json", "sidecar.auth"):
-            s, d = f"{SRC}/data/{name}", f"{APP}/data/{name}"
-            if os.path.isfile(s):
-                shutil.copy2(s, d)
-        if os.path.isfile(f"{SRC}/groups/spartan.json"):
-            shutil.copy2(f"{SRC}/groups/spartan.json", f"{APP}/groups/spartan.json")
+    force = os.environ.get("FORCE_FACTORY", "").strip().lower() in ("1", "true", "yes")
+    if force:
+        groups_dir = f"{APP}/groups"
+        if os.path.isdir(groups_dir):
+            for name in os.listdir(groups_dir):
+                if name == "spartan.json":
+                    continue
+                p = os.path.join(groups_dir, name)
+                if os.path.isfile(p):
+                    os.remove(p)
+        for extra in ("servers.json", "access.log", "net.log"):
+            p = f"{APP}/data/{extra}"
+            if os.path.isfile(p):
+                os.remove(p)
+        chat = f"{APP}/data/chat-files"
+        if os.path.isdir(chat):
+            shutil.rmtree(chat, ignore_errors=True)
     for src, dst in pairs:
-        if not os.path.isfile(dst) and os.path.isfile(src):
+        if not os.path.isfile(src):
+            continue
+        if force or not os.path.isfile(dst):
             shutil.copy2(src, dst)
     if os.path.isfile(f"{APP}/data/sidecar.auth"):
         os.chmod(f"{APP}/data/sidecar.auth", 0o600)

@@ -25,7 +25,12 @@ class RoomLoginBootTests(unittest.TestCase):
         self.assertIn("spartan-rejoin", self.boot)
 
     def test_boot_cache_bust_v9(self):
-        self.assertIn("spartan-boot.js?v=9", self.html)
+        self.assertIn("spartan-boot.js?v=11", self.html)
+
+    def test_boot_copies_parent_session(self):
+        self.assertIn("window.parent.sessionStorage", self.boot)
+        self.assertIn("spartanGlobalCred", self.boot)
+        self.assertIn("spartan-in-shell", self.boot)
 
     def test_start_hides_login_before_auto_connect(self):
         m = re.search(
@@ -43,10 +48,11 @@ class RoomLoginBootTests(unittest.TestCase):
         )
 
     def test_galene_js_cache_bust_v105(self):
-        self.assertIn("galene.js?v=118", self.html)
-        js = (ROOT / "static" / "galene.js").read_text(encoding="utf-8")
-        self.assertIn("spartanLiveHeaderTick", js)
-        self.assertIn("spartanSyncPresence", js)
+        self.assertIn("galene.js?v=126", self.html)
+        self.assertIn("spartanLiveHeaderTick", self.js)
+        self.assertIn("spartanSyncPresence", self.js)
+        self.assertIn("spartanStoreGet", self.js)
+        self.assertIn("window.parent.sessionStorage", self.js)
 
 
 if __name__ == "__main__":

@@ -8,9 +8,9 @@
 <link rel="icon" type="image/jpeg" href="/icone-separtan.jpg"/>
 <link rel="stylesheet" href="/common.css"/>
 <link rel="stylesheet" href="/spartan-pages.css?v=5"/>
-<link rel="stylesheet" href="/admin.css?v=28"/>
+<link rel="stylesheet" href="/admin.css?v=35"/>
 <link rel="stylesheet" href="/spartan.css?v=24"/>
-<script src="/admin.js?v=41" defer></script>
+<script src="/admin.js?v=50" defer></script>
 </head>
 <body>
 <header class="admin-top">
@@ -38,6 +38,7 @@
 <button type="button" class="tab" data-tab="logs">Logs</button>
 <button type="button" class="tab" data-tab="net">Oscilações</button>
 <button type="button" class="tab" data-tab="rooms">Salas</button>
+<button type="button" class="tab" data-tab="servers">Servidores</button>
 </nav>
 <div id="tab-users" class="tab-page">
 <div class="split">
@@ -53,19 +54,16 @@
 <div class="stack">
 <section class="admin-card">
 <h2>Novo usuário</h2>
-<label for="nu">Nome</label>
-<input id="nu" type="text"/>
-<label for="np">Senha</label>
-<input id="np" type="password"/>
+<label for="nu">Nick</label>
+<input id="nu" type="text" autocomplete="off"/>
 <label for="nperm">Cargo</label>
 <select id="nperm">
-<option value="present">Verificado</option>
+<option value="present">Usuário</option>
 <option value="op">Admin</option>
-<option value="ouvinte">Ouvinte</option>
 </select>
 <button type="button" id="btn-create">Criar</button>
 <p id="create-msg" class="ok"></p>
-<p class="hint">Admin: moderar e tudo. Verificado: lives, transmitir e chats. Ouvinte: só voz (sem lives, sem texto, sem transmitir).</p>
+<p class="hint">Só o nick. Senha inicial de todo mundo: Mudar@123. No primeiro login a pessoa troca. Admin: painel e tudo. Usuário: lives, transmitir e chats.</p>
 </section>
 </div>
 </div>
@@ -138,16 +136,28 @@
 <h3 class="rooms-col-title">Sala principal</h3>
 <div id="rooms-main" class="rooms-main-slot"></div>
 <h3 class="rooms-col-title rooms-section-title">Permanentes <span id="rooms-perm-count" class="rooms-count"></span></h3>
-<p class="hint rooms-section-hint">Aparecem na lista pública. Podem ser definidas como entrada do site.</p>
+<p class="hint rooms-section-hint">Sala extra avulsa (não é canal de voz). Pode ser a entrada do site. Canais dos servidores ficam na aba Servidores.</p>
 <div id="rooms-perm" class="rooms-col-scroll"></div>
 </div>
 <div class="rooms-col rooms-col-temp">
 <h3 class="rooms-col-title">Temporárias (24h) <span id="rooms-temp-count" class="rooms-count"></span></h3>
-<p class="hint rooms-section-hint">Só você vê aqui. Somem sozinhas; não entram na lista pública.</p>
+<p class="hint rooms-section-hint">Só o que você criar neste botão com prazo de 24h. Canais de voz dos servidores não entram nesta lista.</p>
 <div id="rooms-temp" class="rooms-col-scroll"></div>
 </div>
 </div>
 </div>
+</div>
+<div id="tab-servers" class="tab-page" hidden>
+<section class="admin-card">
+<h2>Servidores</h2>
+<p class="hint">Só entra quem foi convidado ou adicionado na lista. Moderador vê só os servidores dele nesta aba. Só o admin global promove moderador.</p>
+<div class="server-create-row">
+<input id="server-title" type="text" placeholder="Nome do servidor (ex: Tardis)" autocomplete="off"/>
+<button type="button" id="btn-server-create">Criar servidor</button>
+</div>
+<p id="server-msg" class="err"></p>
+<div id="servers-list"></div>
+</section>
 </div>
 <div id="room-create-dlg" hidden>
 <div class="room-create-panel admin-card">
@@ -201,6 +211,22 @@
 </div>
 </div>
 <div id="ui-toast" hidden></div>
+<div id="mem-dlg" hidden><div class="admin-card dlg-card mem-dlg-card">
+<div class="mem-dlg-head"><h2 id="mem-dlg-title">Usuários</h2><button type="button" id="mem-dlg-close" class="ghost">Fechar</button></div>
+<input id="mem-dlg-q" type="search" placeholder="Buscar cadastrado (mesmo quem nunca entrou)" autocomplete="off"/>
+<div id="mem-dlg-list" class="mem-dlg-list"></div>
+<div class="dlg-acts"><button type="button" id="mem-dlg-add">Adicionar ao servidor</button></div>
+</div></div>
+<div id="mem-add-dlg" hidden><div class="admin-card dlg-card mem-dlg-card">
+<div class="mem-dlg-head"><h2 id="mem-add-title">Adicionar</h2><button type="button" id="mem-add-close" class="ghost">Fechar</button></div>
+<input id="mem-add-q" type="search" placeholder="Buscar quem ainda não tem acesso" autocomplete="off"/>
+<div id="mem-add-list" class="mem-dlg-list"></div>
+</div></div>
+<div id="user-srv-dlg" hidden><div class="admin-card dlg-card mem-dlg-card">
+<div class="mem-dlg-head"><h2 id="user-srv-title">Servidores</h2><button type="button" id="user-srv-close" class="ghost">Fechar</button></div>
+<input id="user-srv-q" type="search" placeholder="Buscar servidor" autocomplete="off"/>
+<div id="user-srv-list" class="mem-dlg-list"></div>
+</div></div>
 <div id="ui-dlg" hidden><div class="admin-card dlg-card">
 <p id="ui-dlg-msg"></p>
 <input id="ui-dlg-input" type="password"/>

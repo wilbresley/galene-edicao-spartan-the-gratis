@@ -1,3 +1,45 @@
 try{if(sessionStorage.getItem('spartanLoggedOut')){sessionStorage.removeItem('spartanSession');sessionStorage.removeItem('spartanPending');Object.keys(sessionStorage).forEach(function(k){if(k.indexOf('spartanSession:')===0)sessionStorage.removeItem(k);});}else{sessionStorage.removeItem('spartanSession');sessionStorage.removeItem('spartanPending');}}catch(e){}
+(function(){try{if(new URLSearchParams(location.search).get('shell')==='1')document.documentElement.classList.add('spartan-in-shell');}catch(e){}})();
 (function(){var m=location.pathname.match(/\/group\/([^/]+)/);if(!m)return;try{if(new URLSearchParams(location.search).get('shell')==='1')return;if(window.top!==window)return;if(location.search&&new URLSearchParams(location.search).has('token'))return;location.replace('/#/group/'+encodeURIComponent(decodeURIComponent(m[1])));}catch(e){}})();
-(function(){var m=location.pathname.match(/\/group\/([^/]+)/);var gid=m?decodeURIComponent(m[1]):'';if(!gid)return;var out=false,can=false,me=null;try{out=!!sessionStorage.getItem('spartanLoggedOut');if(!out){var x=JSON.parse(sessionStorage.getItem('spartanSession:'+gid)||'null');if(x&&x.pass&&(!x.group||x.group===gid))can=true;if(!can){var g=JSON.parse(sessionStorage.getItem('spartanGlobalCred')||'null');if(g&&g.user&&g.pass&&g.account!==false)can=true;}if(!can){var gc=JSON.parse(sessionStorage.getItem('spartanGuestCred:'+gid)||'null');if(gc&&gc.user&&gc.pass)can=true;}var rq=new XMLHttpRequest();rq.open('GET','/spartan-api/rooms',false);rq.send(null);var list=JSON.parse(rq.responseText)||[];me=(list.filter(function(r){return r.id===gid;})[0])||null;}catch(e){}document.documentElement.classList.add(can?'spartan-rejoin':'spartan-need-login');if(me&&me.open)document.documentElement.classList.add('spartan-open-room');if(me&&me.ttl)document.documentElement.classList.add('spartan-ttl-room');})();
+(function(){
+  var m=location.pathname.match(/\/group\/([^/]+)/);
+  var gid=m?decodeURIComponent(m[1]):'';
+  if(!gid)return;
+  try{
+    if(window.parent&&window.parent!==window){
+      var ps=window.parent.sessionStorage;
+      var i,k,v;
+      for(i=0;i<ps.length;i++){
+        k=ps.key(i);
+        if(!k)continue;
+        if(k!=='spartanGlobalCred'&&k!=='spartanAdmin'&&k.indexOf('spartanSession:')!==0&&k.indexOf('spartanGuestCred:')!==0)continue;
+        v=ps.getItem(k);
+        if(v&&!sessionStorage.getItem(k))sessionStorage.setItem(k,v);
+      }
+    }
+  }catch(e){}
+  var out=false,can=false,me=null;
+  try{
+    out=!!sessionStorage.getItem('spartanLoggedOut');
+    if(!out){
+      var x=JSON.parse(sessionStorage.getItem('spartanSession:'+gid)||'null');
+      if(x&&x.pass&&(!x.group||x.group===gid))can=true;
+      if(!can){
+        var g=JSON.parse(sessionStorage.getItem('spartanGlobalCred')||'null');
+        if(g&&g.user&&g.pass&&g.account!==false)can=true;
+      }
+      if(!can){
+        var gc=JSON.parse(sessionStorage.getItem('spartanGuestCred:'+gid)||'null');
+        if(gc&&gc.user&&gc.pass)can=true;
+      }
+      var rq=new XMLHttpRequest();
+      rq.open('GET','/spartan-api/rooms',false);
+      rq.send(null);
+      var list=JSON.parse(rq.responseText)||[];
+      me=(list.filter(function(r){return r.id===gid;})[0])||null;
+    }
+  }catch(e){}
+  document.documentElement.classList.add(can?'spartan-rejoin':'spartan-need-login');
+  if(me&&me.open)document.documentElement.classList.add('spartan-open-room');
+  if(me&&me.ttl)document.documentElement.classList.add('spartan-ttl-room');
+})();

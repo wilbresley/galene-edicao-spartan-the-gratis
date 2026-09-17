@@ -335,7 +335,7 @@ function spartanSyncLiveFocus() {
         vc.dataset.spartanAutoFocus = '1';
         return;
     }
-    if(vc.dataset.spartanAutoFocus === '1') {
+    if(peers.length >= 2 && vc.dataset.spartanAutoFocus === '1') {
         vc.classList.remove('peer-focus-mode');
         document.querySelectorAll('#peers .peer-focus').forEach(function(p) {
             p.classList.remove('peer-focus');
@@ -389,6 +389,15 @@ function spartanApplyUserMute(c) {
 function spartanApplyDownRequest(c) {
     if(!c || c.up || typeof c.request !== 'function')
         return;
+    if(spartanIsAfk()) {
+        c.request([]);
+        if(c.stream) {
+            c.stream.getAudioTracks().forEach(function(t) { t.enabled = false; });
+            c.stream.getVideoTracks().forEach(function(t) { t.enabled = false; });
+        }
+        spartanReleaseUnwatchedVideo(c);
+        return;
+    }
     if(spartanIsOuvinte()) {
         if(c.label === 'screenshare')
             c.request([]);
@@ -498,6 +507,123 @@ function spartanInShell() {
     } catch(e) {
         return false;
     }
+}
+
+function spartanNotifyShellMedia() {
+    if(!spartanInShell())
+        return;
+    let mic = false;
+    let share = false;
+    let nick = '';
+    try {
+        mic = !!findUpMedia('camera') && !getSettings().localMute;
+    } catch(e) {}
+    try {
+        share = !!findUpMedia('screenshare');
+    } catch(e) {}
+    let cam = false;
+    try {
+        let c = findUpMedia('camera');
+        cam = !!(c && streamHasRealVideo(c.stream));
+    } catch(e) {}
+    try {
+        nick = (serverConnection && serverConnection.username) || '';
+        if(!nick)
+            nick = getInputElement('username').value || '';
+    } catch(e) {}
+    spartanPostToParent({t: 'spartan-media', nick: nick, mic: !!mic, share: !!share, cam: !!cam});
+}
+
+let spartanTalkPayload = '';
+function spartanNotifyShellTalk() {
+    if(!spartanInShell())
+        return;
+    let users = [];
+    try {
+        if(serverConnection && serverConnection.users) {
+            for(let id in serverConnection.users) {
+                let u = serverConnection.users[id] || {};
+                users.push({
+                    nick: u.username || '',
+                    talk: spartanPeerTalkMode(id),
+                    me: !!(serverConnection.id && id === serverConnection.id),
+                });
+            }
+        }
+    } catch(e) {}
+    let payload = {t: 'spartan-talk', users: users};
+    let js = JSON.stringify(payload);
+    if(js === spartanTalkPayload)
+        return;
+    spartanTalkPayload = js;
+    spartanPostToParent(payload);
+}
+
+let spartanRosterTimer = 0;
+function spartanNotifyShellRoster() {
+    if(!spartanInShell())
+        return;
+    if(spartanRosterTimer)
+        return;
+    spartanRosterTimer = setTimeout(function() {
+        spartanRosterTimer = 0;
+        spartanNotifyShellRosterNow();
+    }, 50);
+}
+function spartanNotifyShellRosterNow() {
+    if(!spartanInShell() || !serverConnection || !serverConnection.users)
+        return;
+    let users = [];
+    for(let id in serverConnection.users) {
+        let u = serverConnection.users[id] || {};
+        let lives = [];
+        let list = spartanUserLives(id);
+        for(let i = 0; i < list.length; i++) {
+            let c = list[i];
+            let on = c.up ? !spartanHideOwnStream[c.id] : !!spartanWatch[c.id];
+            lives.push({
+                id: c.id,
+                label: c.label === 'screenshare' ? 'screenshare' : 'camera',
+                on: !!on,
+                up: !!c.up,
+            });
+        }
+        users.push({
+            id: id,
+            nick: u.username || '',
+            talk: spartanPeerTalkMode(id),
+            me: !!(serverConnection.id && id === serverConnection.id),
+            lives: lives,
+            muteLocal: !!spartanUserMuted[id],
+            muteRemote: spartanRemoteMuted(id),
+            vol: (spartanUserVol[id] == null ? 100 : spartanUserVol[id]),
+        });
+    }
+    spartanPostToParent({t: 'spartan-roster', users: users});
+}
+
+function spartanIsAfk() {
+    try {
+        return !!(window._spartanAfk || document.documentElement.classList.contains('spartan-afk'));
+    } catch(e) {
+        return false;
+    }
+}
+
+function spartanApplyAfk() {
+    if(!spartanIsAfk())
+        return;
+    try { setLocalMute(true, true); } catch(e) {}
+    try {
+        let cam = findUpMedia('camera');
+        if(cam)
+            cam.close();
+    } catch(e) {}
+    try {
+        let sh = findUpMedia('screenshare');
+        if(sh)
+            sh.close();
+    } catch(e) {}
 }
 
 function spartanGoHome(qs) {
@@ -764,6 +890,8 @@ function spartanRefreshAllMedia() {
     showVideo();
     spartanSyncLiveFocus();
     resizePeers();
+    try { spartanNotifyShellMedia(); } catch(e) {}
+    try { spartanNotifyShellRoster(); } catch(e) {}
 }
 
 /**
@@ -817,7 +945,7 @@ function spartanFillUserLives(userId, elt) {
             b.textContent = camTotal <= 1 ? 'Câmera' : ('Câmera ' + camIdx);
         }
         if(c.up) {
-            if(!spartanHideOwn && !spartanHideOwnStream[c.id])
+            if(!spartanHideOwnStream[c.id])
                 b.classList.add('on');
         } else if(spartanWatch[c.id]) {
             b.classList.add('on');
@@ -1297,11 +1425,13 @@ function spartanSetChatUnread(on) {
 function openNav() {
     document.getElementById('sidebarnav').classList.add('spartan-settings-open');
     document.body.classList.add('spartan-settings-on');
+    try { window.parent.postMessage({ t: 'spartan-settings', open: true }, location.origin); } catch(e) {}
 }
 
 function closeNav() {
     document.getElementById('sidebarnav').classList.remove('spartan-settings-open');
     document.body.classList.remove('spartan-settings-on');
+    try { window.parent.postMessage({ t: 'spartan-settings', open: false }, location.origin); } catch(e) {}
 }
 
 let spartanDidJoin = false;
@@ -1753,17 +1883,35 @@ function spartanRejectJoin() {
     setConnected(false);
 }
 
+function spartanStoreGet(key) {
+    try {
+        let v = sessionStorage.getItem(key);
+        if(v)
+            return v;
+    } catch(e) {}
+    try {
+        if(window.parent && window.parent !== window) {
+            let p = window.parent.sessionStorage.getItem(key);
+            if(p) {
+                try { sessionStorage.setItem(key, p); } catch(e2) {}
+                return p;
+            }
+        }
+    } catch(e) {}
+    return null;
+}
+
 function spartanLoadStoredSession(forGroup) {
     try {
-        if(sessionStorage.getItem('spartanLoggedOut'))
+        if(spartanStoreGet('spartanLoggedOut'))
             return null;
-        let s = JSON.parse(sessionStorage.getItem('spartanSession:' + forGroup) || 'null');
+        let s = JSON.parse(spartanStoreGet('spartanSession:' + forGroup) || 'null');
         if(s && s.user && s.pass && (!s.group || s.group === forGroup))
             return s;
-        let g = JSON.parse(sessionStorage.getItem('spartanGlobalCred') || 'null');
+        let g = JSON.parse(spartanStoreGet('spartanGlobalCred') || 'null');
         if(g && g.user && g.pass && g.account !== false)
             return {user: g.user, pass: g.pass, group: forGroup, account: true};
-        let gc = JSON.parse(sessionStorage.getItem('spartanGuestCred:' + forGroup) || 'null');
+        let gc = JSON.parse(spartanStoreGet('spartanGuestCred:' + forGroup) || 'null');
         if(gc && gc.user && gc.pass)
             return {user: gc.user, pass: gc.pass, group: forGroup, account: false};
     } catch(e) {}
@@ -1895,7 +2043,7 @@ function setAdminPanel(forceOff) {
  fetch('/spartan-api/can-panel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:cred.user,password:cred.pass})})
   .then(function(r){return r.json();})
   .then(function(j){
-    if(j&&j.ok){
+    if(j&&j.ok&&j.scope==='admin'){
       window._spartanPanelAdmin=true;
       s.classList.remove('invisible');
       spartanNotifyPanel(true);
@@ -2264,6 +2412,8 @@ function setButtonsVisibility() {
     spartanApplyOuvinteUi();
     spartanPublishMicMuted();
     spartanEnsurePeerUiTimer();
+    try { spartanNotifyShellMedia(); } catch(e) {}
+    try { spartanNotifyShellRoster(); } catch(e) {}
 }
 
 /**
@@ -2303,6 +2453,7 @@ function setLocalMute(mute, reflect) {
         spartanPaintTalkDot(serverConnection.id);
     }
     spartanPublishMicMuted();
+    try { spartanNotifyShellMedia(); } catch(e) {}
 }
 
 getSelectElement('videoselect').onchange = function(e) {
@@ -2354,7 +2505,7 @@ getInputElement('hqaudiobox').onchange = function(e) {
     replaceCameraStream();
 };
 
-document.getElementById('mutebutton').onclick = async function(e) {
+    document.getElementById('mutebutton').onclick = async function(e) {
     e.preventDefault();
     if(!findUpMedia('camera')) {
         try {
@@ -2370,6 +2521,52 @@ document.getElementById('mutebutton').onclick = async function(e) {
     }
     setLocalMute(!getSettings().localMute, true);
 };
+
+window.addEventListener('message', function(ev) {
+    if(ev.origin !== location.origin) return;
+    let d = ev.data || {};
+    if(d.t !== 'spartan-shell-cmd') return;
+    if(d.cmd === 'settings') {
+        try { openNav(); } catch(e) {}
+        return;
+    }
+    if(d.cmd === 'mic') {
+        let b = document.getElementById('mutebutton');
+        if(b) b.click();
+        return;
+    }
+    if(d.cmd === 'share') {
+        let s = document.getElementById('sharebutton');
+        if(s) s.click();
+        return;
+    }
+    if(d.cmd === 'camera') {
+        let cam = document.getElementById('camerabutton');
+        if(cam) cam.click();
+        return;
+    }
+    if(d.cmd === 'watch' && d.id) {
+        let c = null;
+        if(serverConnection) {
+            c = serverConnection.up[d.id] || serverConnection.down[d.id] || null;
+        }
+        if(c) spartanToggleLive(c);
+        return;
+    }
+    if(d.cmd === 'mute' && d.userId) {
+        spartanToggleUserMute(d.userId);
+        try { spartanNotifyShellRoster(); } catch(e) {}
+        return;
+    }
+    if(d.cmd === 'vol' && d.userId) {
+        let v = Number(d.vol);
+        if(!(v >= 0)) v = 100;
+        if(v > 400) v = 400;
+        spartanUserVol[d.userId] = v;
+        spartanApplyUserVolume(d.userId);
+        try { spartanNotifyShellRoster(); } catch(e) {}
+    }
+});
 
 async function spartanStopCameraKeepMic() {
     let cam = findUpMedia('camera');
@@ -2680,6 +2877,8 @@ function spartanPaintTalkDot(userId) {
     if(!userId)
         return;
     spartanSetTalkMode(userId, spartanPeerTalkMode(userId));
+    try { spartanNotifyShellTalk(); } catch(e) {}
+    try { spartanNotifyShellRoster(); } catch(e) {}
 }
 
 let spartanTalkCtx = null;
@@ -3371,6 +3570,8 @@ function replaceCameraStream() {
  * @param {boolean} [audioOnly]
  */
 async function addLocalMedia(localId, audioOnly) {
+    if(spartanIsAfk())
+        return;
     let settings = getSettings();
 
     /** @type{boolean|MediaTrackConstraints} */
@@ -3466,6 +3667,8 @@ async function addLocalMedia(localId, audioOnly) {
 let safariScreenshareDone = false;
 
 async function addShareMedia() {
+    if(spartanIsAfk())
+        return;
     if(!safariScreenshareDone) {
         if(isSafari()) {
             let ok = confirm(
@@ -3535,6 +3738,14 @@ async function addShareMedia() {
     await setMedia(c);
     setButtonsVisibility();
     spartanRefreshWatchedQuality();
+    try {
+        stream.getVideoTracks().forEach(function(t) {
+            t.addEventListener('ended', function() {
+                try { spartanNotifyShellMedia(); } catch(e) {}
+            });
+        });
+    } catch(e) {}
+    try { spartanNotifyShellMedia(); } catch(e) {}
 }
 
 /**
@@ -3937,7 +4148,7 @@ function showHideMedia(c, elt) {
         display = false;
     } else if(real) {
         if(c.up)
-            display = !spartanHideOwn && !spartanHideOwnStream[c.id];
+            display = !spartanHideOwnStream[c.id];
         else
             display = !!spartanWatch[c.id];
     }
@@ -4791,6 +5002,8 @@ function spartanSaveSoundPrefs() {
             window.localStorage.setItem('spartanSounds:' + nick, json);
         else
             window.localStorage.setItem('spartanSounds', json);
+        if(!p.mensagem)
+            window.localStorage.setItem('spartanTextQuiet', '1');
     } catch(e) {}
     updateSettings({
         soundEntrar: p.entrar,
@@ -5242,7 +5455,7 @@ function displayUsername() {
     else if(ouvinte)
         text = 'Ouvinte';
     else if(present)
-        text = 'Verificado';
+        text = 'Usuário';
     document.getElementById('permspan').textContent = text;
     spartanApplySoundPrefs();
 }
@@ -6947,23 +7160,43 @@ function displayError(message, level) {
         level = "error";
     let position = 'center';
     let gravity = 'top';
+    let duration = 4000;
 
     switch(level) {
     case "info":
         position = 'right';
         gravity = 'bottom';
+        duration = 2200;
         break;
     case "warning":
+        position = 'right';
+        gravity = 'bottom';
+        duration = 2800;
         break;
     case "kicked":
         level = "error";
         break;
     }
 
+    if(level === 'info' || level === 'warning') {
+        let now = Date.now();
+        let key = String(message);
+        if(/qualidade|mic|microfone|resolu|rede|conexão|bitrate|fps|dica/i.test(key)) {
+            if(window._spartanQuietHud && window._spartanQuietHud.k === key && (now - window._spartanQuietHud.t) < 20000)
+                return;
+            window._spartanQuietHud = {k: key, t: now};
+            spartanToast(key);
+            return;
+        }
+        if(window._spartanQuietHud && window._spartanQuietHud.k === key && (now - window._spartanQuietHud.t) < 12000)
+            return;
+        window._spartanQuietHud = {k: key, t: now};
+    }
+
     /** @ts-ignore */
     Toastify({
         text: message,
-        duration: 4000,
+        duration: duration,
         close: true,
         position: position,
         gravity: gravity,
@@ -7209,8 +7442,13 @@ async function serverConnect() {
 
 async function start() {
     try {
-        if(new URLSearchParams(window.location.search).get('shell') === '1')
+        let boot = new URLSearchParams(window.location.search);
+        if(boot.get('shell') === '1')
             document.documentElement.classList.add('spartan-in-shell');
+        if(boot.get('afk') === '1') {
+            window._spartanAfk = true;
+            document.documentElement.classList.add('spartan-afk');
+        }
     } catch(e) {}
     try { spartanInstallShareRembBypass(); } catch(e) {}
     try {
@@ -7308,6 +7546,9 @@ start();
 function spartanOnJoin(){
  try{
   const u=serverConnection&&serverConnection.username; if(!u) return;
+  try { spartanApplyAfk(); } catch(e) {}
+  try { spartanNotifyShellMedia(); } catch(e) {}
+  try { spartanNotifyShellTalk(); } catch(e) {}
   if(!window._spartanLiveTutorial){
    window._spartanLiveTutorial=true;
    spartanToast('Dica: clique em Tela ou Câmera ao lado do nick para ver a live em alta qualidade.');
@@ -7327,35 +7568,63 @@ async function spartanMaybeFirstSetup(u){
   if(!j||!j.must_change) return;
   const modal=document.getElementById('spartan-first-modal');
   if(!modal) return;
+  const isAdmin=!!j.admin;
+  const lead=document.getElementById('spartan-first-lead');
+  const adminFields=document.getElementById('spartan-first-admin-fields');
+  const userFields=document.getElementById('spartan-first-user-fields');
+  if(lead) lead.textContent=isAdmin
+    ? 'Troque a senha do admin e a senha dos convidados da sala. Não use a senha de fábrica.'
+    : 'Troque a senha de fábrica. Não use Mudar@123 de novo.';
+  if(adminFields) adminFields.hidden=!isAdmin;
+  if(userFields) userFields.hidden=isAdmin;
   modal.hidden=false;
   const ok=document.getElementById('spartan-first-ok');
   if(!ok||ok.dataset.bound) return;
   ok.dataset.bound='1';
   ok.onclick=async function(){
    const err=document.getElementById('spartan-first-err');
-   const a=document.getElementById('spartan-first-admin').value;
-   const f=document.getElementById('spartan-first-friends').value;
    err.textContent='';
-   if(!a||a.length<8||!f||f.length<8){ err.textContent='Mínimo 8 caracteres em cada senha.'; return; }
-   if(a==='Mudar@123'||f==='Mudar@123'){ err.textContent='Não use a senha de fábrica.'; return; }
    let old='';
    try{
     const s=JSON.parse(sessionStorage.getItem('spartanSession:'+group)||'null');
     old=(s&&s.pass)||window._spartanCred||'';
    }catch(e){}
    if(!old){ err.textContent='Sessão sem senha. Saia e entre de novo com Mudar@123.'; return; }
+   if(isAdmin){
+    const a=document.getElementById('spartan-first-admin').value;
+    const f=document.getElementById('spartan-first-friends').value;
+    if(!a||a.length<8||!f||f.length<8){ err.textContent='Mínimo 8 caracteres em cada senha.'; return; }
+    if(a==='Mudar@123'||f==='Mudar@123'){ err.textContent='Não use a senha de fábrica.'; return; }
+    try{
+     const rr=await fetch('/spartan-api/first-setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:u,old:old,admin_password:a,friends_password:f})});
+     const jj=await rr.json();
+     if(!rr.ok) throw new Error((jj&&jj.error)||'falhou');
+     try{
+      const hand={user:String(u).toLowerCase(),pass:a};
+      sessionStorage.setItem('spartanSession:'+group,JSON.stringify({user:u,pass:a,group:group}));
+      sessionStorage.setItem('spartanAdmin',JSON.stringify(hand));
+      try { localStorage.removeItem('spartanAdminHandoff'); } catch(e1) {}
+     }catch(e){}
+     modal.hidden=true;
+     spartanToast('Senhas atualizadas. Guarde as novas senhas.');
+    }catch(e){ err.textContent=e.message||String(e); }
+    return;
+   }
+   const n1=(document.getElementById('spartan-first-new')&&document.getElementById('spartan-first-new').value)||'';
+   const n2=(document.getElementById('spartan-first-new2')&&document.getElementById('spartan-first-new2').value)||'';
+   if(!n1||n1.length<8){ err.textContent='Nova senha: mínimo 8 caracteres.'; return; }
+   if(n1!==n2){ err.textContent='As senhas não conferem.'; return; }
+   if(n1==='Mudar@123'){ err.textContent='Não use a senha de fábrica.'; return; }
    try{
-    const rr=await fetch('/spartan-api/first-setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:u,old:old,admin_password:a,friends_password:f})});
+    const rr=await fetch('/spartan-api/first-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:u,old:old,new:n1})});
     const jj=await rr.json();
     if(!rr.ok) throw new Error((jj&&jj.error)||'falhou');
     try{
-     const hand={user:String(u).toLowerCase(),pass:a};
-     sessionStorage.setItem('spartanSession:'+group,JSON.stringify({user:u,pass:a,group:group}));
-     sessionStorage.setItem('spartanAdmin',JSON.stringify(hand));
-     try { localStorage.removeItem('spartanAdminHandoff'); } catch(e1) {}
+     sessionStorage.setItem('spartanSession:'+group,JSON.stringify({user:u,pass:n1,group:group}));
+     window._spartanCred=n1;
     }catch(e){}
     modal.hidden=true;
-    spartanToast('Senhas atualizadas. Guarde as novas senhas.');
+    spartanToast('Senha atualizada. Guarde a nova senha.');
    }catch(e){ err.textContent=e.message||String(e); }
   };
  }catch(e){}
@@ -7390,63 +7659,9 @@ async function spartanCheck(u){
  }catch(e){}
 }
 function spartanSalasRoomBind() {
-    const overlay = document.getElementById('spartan-salas-overlay');
     const btn = document.getElementById('spartan-salas-btn');
-    if(!overlay || !btn)
-        return;
-    if(!spartanInShell()) {
+    if(btn)
         btn.hidden = true;
-        return;
-    }
-    btn.hidden = false;
-
-    overlay.querySelectorAll('.spartan-salas-col-temp, #spartan-salas-temp').forEach(function(el) {
-        el.remove();
-    });
-    overlay.querySelectorAll('.spartan-salas-grid').forEach(function(el) {
-        el.classList.add('spartan-salas-grid-room');
-    });
-
-    function closeSalas() {
-        overlay.hidden = true;
-        if(window._spartanSalasApi)
-            window._spartanSalasApi.stopPoll();
-    }
-
-    function openSalas() {
-        overlay.hidden = false;
-        if(window._spartanSalasApi) {
-            window._spartanSalasApi.load();
-            window._spartanSalasApi.startPoll();
-        }
-    }
-
-    if(!window._spartanSalasBound) {
-        window._spartanSalasBound = true;
-        btn.onclick = openSalas;
-        document.getElementById('spartan-salas-close').onclick = closeSalas;
-        document.getElementById('spartan-salas-back').onclick = closeSalas;
-        overlay.addEventListener('click', function(e) {
-            if(e.target === overlay)
-                closeSalas();
-        });
-        document.addEventListener('keydown', function(e) {
-            if(e.key === 'Escape' && !overlay.hidden)
-                closeSalas();
-        });
-    }
-    if(!window._spartanSalasApi && typeof SpartanSalas !== 'undefined') {
-        window._spartanSalasApi = SpartanSalas.mount({
-            mainId: 'spartan-salas-main',
-            permId: 'spartan-salas-perm',
-            qId: 'spartan-salas-q',
-            hideTemporary: true,
-            sortSelector: '#spartan-salas-overlay .sort-btn',
-            currentGroup: group,
-            onClose: closeSalas,
-            onPick: function(id) { spartanGoRoom(id); },
-        });
-    }
 }
 
 function spartanBind(){
@@ -7772,8 +7987,19 @@ function spartanBindLoginSwitch(){
 
 function spartanToast(m){
  var t=document.getElementById('spartan-toast'); if(!t) return;
- t.textContent=m; t.hidden=false;
- clearTimeout(window._spartanToast); window._spartanToast=setTimeout(function(){t.hidden=true;},3500);
+ var s=String(m||'');
+ if(document.documentElement.classList.contains('spartan-in-shell') && /^Dica:/.test(s))
+  return;
+ var quiet=/qualidade|mic|microfone|resolu|rede|fps|bitrate|modo jogo|modo texto/i.test(s);
+ if(quiet){
+  var now=Date.now();
+  if(window._spartanToastQuiet && window._spartanToastQuiet.k===s && (now-window._spartanToastQuiet.t)<20000)
+   return;
+  window._spartanToastQuiet={k:s,t:now};
+  t.classList.add('spartan-toast-quiet');
+ } else t.classList.remove('spartan-toast-quiet');
+ t.textContent=s; t.hidden=false;
+ clearTimeout(window._spartanToast); window._spartanToast=setTimeout(function(){t.hidden=true;}, quiet?1600:3500);
 }
 function spartanAsk(msg, kind){
  return new Promise(function(resolve){

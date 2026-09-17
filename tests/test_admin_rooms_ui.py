@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ADMIN_HTML = ROOT / "static" / "admin" / "index.html"
 ADMIN_CSS = ROOT / "static" / "admin.css"
+ADMIN_JS = ROOT / "static" / "admin.js"
 
 
 class AdminRoomsUiTests(unittest.TestCase):
@@ -15,6 +16,7 @@ class AdminRoomsUiTests(unittest.TestCase):
     def setUpClass(cls):
         cls.html = ADMIN_HTML.read_text(encoding="utf-8")
         cls.css = ADMIN_CSS.read_text(encoding="utf-8")
+        cls.js = ADMIN_JS.read_text(encoding="utf-8")
 
     def test_two_column_grid_markup(self):
         self.assertIn("rooms-grid", self.html)
@@ -24,6 +26,7 @@ class AdminRoomsUiTests(unittest.TestCase):
         self.assertIn('id="rooms-temp"', self.html)
         self.assertIn("Sala principal", self.html)
         self.assertIn("Temporárias (24h)", self.html)
+        self.assertIn("Canais de voz dos servidores não entram nesta lista", self.html)
         self.assertNotIn("rooms-scroll", self.html)
 
     def test_css_two_columns_full_width(self):
@@ -35,7 +38,15 @@ class AdminRoomsUiTests(unittest.TestCase):
         self.assertIn("background:#000", block)
 
     def test_cache_bust_admin_css(self):
-        self.assertIn("admin.css?v=28", self.html)
+        self.assertIn("admin.css?v=35", self.html)
+        self.assertIn("admin.js?v=50", self.html)
+
+    def test_server_voice_hidden_and_open_uses_shell(self):
+        self.assertIn("server_voice", self.js)
+        self.assertIn("meta[n].server_voice", self.js)
+        self.assertIn("function openRoomHref", self.js)
+        self.assertIn("/#/s/", self.js)
+        self.assertNotIn("open.href='/group/'", self.js)
 
     def test_embed_hides_inner_header(self):
         self.assertIn("html.admin-in-shell .admin-top{display:none!important}", self.css)

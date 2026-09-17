@@ -2,7 +2,7 @@
 <html lang="pt-BR">
   <head>
     <meta http-equiv="Cache-Control" content="no-store"/>
-    <script src="/spartan-boot.js?v=9"></script>
+    <script src="/spartan-boot.js?v=11"></script>
     <title>Spartan</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,7 +16,7 @@
     <link rel="stylesheet" type="text/css" href="/third-party/fontawesome/css/regular.min.css"/>
     <link rel="stylesheet" type="text/css" href="/third-party/toastify/toastify.css"/>
     <link rel="stylesheet" type="text/css" href="/third-party/contextual/contextual.css"/>
-    <link rel="stylesheet" type="text/css" href="/galene-spartan.css?v=99"/>
+    <link rel="stylesheet" type="text/css" href="/galene-spartan.css?v=104"/>
   </head>
 
   <body>
@@ -31,11 +31,19 @@
 </div></div>
 <div id="spartan-first-modal" hidden><div class="spartan-reg-card">
 <h2>Primeiro acesso</h2>
-<p>Troque a senha do admin e a senha dos convidados da sala. Não use a senha de fábrica.</p>
+<p id="spartan-first-lead">Troque a senha de fábrica. Não use Mudar@123 de novo.</p>
+<div id="spartan-first-admin-fields" hidden>
 <label for="spartan-first-admin">Nova senha do admin</label>
 <input id="spartan-first-admin" type="password" minlength="8" autocomplete="new-password"/>
 <label for="spartan-first-friends">Nova senha dos convidados</label>
 <input id="spartan-first-friends" type="password" minlength="8" autocomplete="new-password"/>
+</div>
+<div id="spartan-first-user-fields">
+<label for="spartan-first-new">Nova senha</label>
+<input id="spartan-first-new" type="password" minlength="8" autocomplete="new-password"/>
+<label for="spartan-first-new2">Confirmar senha</label>
+<input id="spartan-first-new2" type="password" minlength="8" autocomplete="new-password"/>
+</div>
 <p id="spartan-first-err"></p>
 <button type="button" id="spartan-first-ok">Salvar e continuar</button>
 </div></div>
@@ -301,6 +309,7 @@
             <input id="soundmensagembox" type="checkbox" checked/>
             <label for="soundmensagembox">Mensagem de texto no chat</label>
           </form>
+          <p class="set-help">Também vale para o aviso do Chat Geral quando o painel estiver fechado (no máximo a cada 15 s).</p>
           <form>
             <input id="soundentrarbox" type="checkbox" checked/>
             <label for="soundentrarbox">Quando alguém entra na sala</label>
@@ -431,7 +440,7 @@
     <script src="/spartan-watch.js?v=1" defer></script>
     <script src="/spartan-net.js?v=1" defer></script>
     <script src="/spartan-quality.js?v=1" defer></script>
-    <script src="/galene.js?v=118" defer></script>
+    <script src="/galene.js?v=126" defer></script>
   <div id="spartan-toast" hidden></div>
 <div id="spartan-drop" hidden>
   <div class="spartan-reg-card">
@@ -475,7 +484,7 @@
 <footer class="signature">
   <span class="foot-left"><a href="https://galene.org">Galene</a> by <a href="https://www.irif.fr/~jch/">Juliusz Chroboczek</a></span>
   <span class="foot-mid">Interface refeita por <a href="https://github.com/wilbresley" target="_blank" rel="noopener">wilbresley</a></span>
-  <span class="foot-right"><a class="btn-salas" href="/#/salas" target="_parent">Outras salas</a></span>
+  <span class="foot-right"></span>
 </footer>
 </body>
 </html>

@@ -7,7 +7,7 @@ function uiPrompt(m){return uiDlg(m,'prompt');}
 const API_BASES=['/spartan-api/gapi','/galene-api/v0'];
 let API=API_BASES[0];
 const REG='/spartan-api';
-let GROUP='spartan', user='', pass='', registry={}, SITE={main:'spartan',home:'spartan'};
+let GROUP='spartan', user='', pass='', PANEL_SCOPE='', registry={}, SITE={main:'spartan',home:'spartan'};
 async function loadSite(){ try{ SITE=await (await fetch(REG+'/site',{cache:'no-store'})).json(); }catch(e){ SITE={main:'spartan',home:'spartan'}; } GROUP=SITE.main||'spartan'; bindBackToRoom(); }
 function roomGid(){
  var gid=SITE.home||SITE.main||'spartan';
@@ -69,7 +69,7 @@ async function reg(path,body){
  return data;
 }
 function $(id){return document.getElementById(id);}
-function permLabel(p){return ({op:'Admin',admin:'Admin',present:'Verificado',ouvinte:'Ouvinte',message:'Ouvinte',observe:'Ouvinte'})[p]||p;}
+function permLabel(p){return ({op:'Admin',admin:'Admin',present:'Usuário',ouvinte:'Usuário',mod:'Moderador',message:'Usuário',observe:'Usuário'})[p]||p;}
 function roleFromPerm(p){
  if(p==='op'||p==='admin') return 'op';
  if(Array.isArray(p)){
@@ -95,8 +95,8 @@ function fmtQuando(iso){
 }
 function fmtSeen(name,gid,rec){rec=rec||{}; var bits=[]; if(gid) bits.push("sala "+gid); if(rec.ip) bits.push("IP "+rec.ip); var v=rec.last||rec.first||rec.at; if(v) bits.push("visto "+fmtQuando(v)); return bits.join(" · ");}
 function tipoLabel(t){return ({cadastrado:"Cadastrado",convidado:"Convidado",temporario:"Temporário",pedido_cadastro:"Pedido de cadastro",conta_aprovada:"Conta aprovada",conta_criada:"Conta criada",painel_admin:"Admin (painel)"})[t]||t||"—";}
-var PERM_OPTS=[{v:"op",l:"Admin"},{v:"present",l:"Verificado"},{v:"ouvinte",l:"Ouvinte"}];
-function permLabelBtn(p){for(var i=0;i<PERM_OPTS.length;i++){if(PERM_OPTS[i].v===p)return PERM_OPTS[i].l;}return "Verificado";}
+var PERM_OPTS=[{v:"op",l:"Admin"},{v:"present",l:"Usuário"}];
+function permLabelBtn(p){for(var i=0;i<PERM_OPTS.length;i++){if(PERM_OPTS[i].v===p)return PERM_OPTS[i].l;}return "Usuário";}
 function closeAllRoleMenus(){document.querySelectorAll(".role-menu.open").forEach(function(m){m.classList.remove("open");});document.querySelectorAll(".role-btn.open").forEach(function(b){b.classList.remove("open");});}
 document.addEventListener("click",function(e){if(!e.target.closest||!e.target.closest(".role-wrap"))closeAllRoleMenus();});
 var LOG_CACHE=[];
@@ -148,7 +148,7 @@ async function loadUsers(){
   rows.push({name, perm:roleFromPerm((info&&info.permissions)||'present'), rec:(b.seen||{})[name]||{}, id:uid});
  }
  sortItems(rows,'users');
- const uk='u:'+SORT.users+':'+rows.map(r=>r.id+':'+r.name+':'+r.perm+':'+(r.rec.ip||'')+':'+(r.rec.last||'')).join('|');
+ const uk='u:'+SORT.users+':'+rows.map(r=>r.id+':'+r.name+':'+r.perm+':'+(r.rec.ip||'')).join('|');
  if(uk===loadUsers._k) return; loadUsers._k=uk;
  if(boxOps) boxOps.innerHTML='';
  box.innerHTML='';
@@ -161,7 +161,7 @@ async function loadUsers(){
    const name=item.name, perm=item.perm, uid=item.id;
    const card=document.createElement('div'); card.className='user-card';
    const row=document.createElement('div'); row.className='user-row';
-   row.innerHTML='<div class="who"><b></b></div><div class="user-tools"><button type="button" class="det">Detalhes</button><div class="role-wrap"><button type="button" class="role-btn"></button><div class="role-menu"></div></div><div class="user-acts"><button type="button" class="ren">Renomear</button><button type="button" class="rst">Redefinir senha</button></div><div class="user-acts"><button type="button" class="del">Excluir</button><button type="button" class="blk">Bloquear</button></div></div>';
+   row.innerHTML='<div class="who"><b></b></div><div class="user-tools"><button type="button" class="det">Detalhes</button><button type="button" class="srvs">Servidores</button><div class="role-wrap"><button type="button" class="role-btn"></button><div class="role-menu"></div></div><div class="user-acts"><button type="button" class="ren">Renomear</button><button type="button" class="rst">Redefinir senha</button></div><div class="user-acts"><button type="button" class="del">Excluir</button><button type="button" class="blk">Bloquear</button></div></div>';
    const title=(uid!=null?('ID '+uid+' · '):'')+name;
    row.querySelector('b').textContent=title;
    const curPerm=['op','present','ouvinte'].indexOf(perm)>=0?perm:'present';
@@ -204,12 +204,8 @@ async function loadUsers(){
     }catch(e){uiMsg(e.message);}
    };
    row.querySelector('.rst').onclick=async()=>{
-    const inp=$('ui-dlg-input'); if(inp) inp.type='password';
-    const np=await uiPrompt('Nova senha para '+name+':');
-    if(np==null) return;
-    if(!np){uiMsg('Digite a nova senha');return;}
-    if(!await uiConfirm('Confirmar nova senha para '+name+'?')) return;
-    try{await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name)+'/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:np}); uiMsg('Senha de '+name+' atualizada');}
+    if(!await uiConfirm('Resetar senha de '+name+' para Mudar@123? No próximo login ela troca.')) return;
+    try{await reg('/reset-factory-password',{nick:name}); uiMsg('Senha de '+name+' voltou para Mudar@123');}
     catch(e){uiMsg(e.message);}
    };
    row.querySelector('.del').onclick=async()=>{
@@ -223,6 +219,7 @@ async function loadUsers(){
     catch(e){uiMsg(e.message);}
    };
    row.querySelector('.det').onclick=function(){ card.classList.toggle('open'); };
+   row.querySelector('.srvs').onclick=function(){ openUserServers(name); };
    const det=document.createElement('div'); det.className='user-details';
    const rec=item.rec||{};
    const ip=document.createElement('div'); ip.className='ip'; ip.textContent=rec.ip?('IP '+rec.ip):'IP —';
@@ -245,15 +242,28 @@ async function loadRooms(){
  let meta={};
  try{ (await reg('/rooms?all=1')).forEach(r=>meta[r.id]=r); }catch(e){}
  const main=SITE.main||'spartan', home=SITE.home||main;
- const rest=names.filter(n=>n!==main);
+ const rest=names.filter(n=>n!==main && !(meta[n]&&meta[n].server_voice));
  const permanent=rest.filter(n=>!(meta[n]&&meta[n].ttl)).sort((x,y)=>x.localeCompare(y,'pt',{sensitivity:'base'}));
  const temporary=rest.filter(n=>meta[n]&&meta[n].ttl).sort((a,b)=>{
   const ra=(meta[a]&&meta[a].remaining_s)|0, rb=(meta[b]&&meta[b].remaining_s)|0;
   if(ra!==rb) return ra-rb;
   return a.localeCompare(b,'pt',{sensitivity:'base'});
  });
- const key='r2:'+main+':'+home+':'+names.join('|')+JSON.stringify(meta);
- if(key===loadRooms._k) return; loadRooms._k=key;
+ var slim={};
+ Object.keys(meta||{}).forEach(function(id){
+  var m=meta[id]||{};
+  slim[id]={t:m.title||'',ttl:!!m.ttl,open:!!m.open,host:m.host||'',sv:!!m.server_voice};
+ });
+ const key='r2:'+main+':'+home+':'+names.join('|')+JSON.stringify(slim);
+ if(key===loadRooms._k){
+  document.querySelectorAll('[data-room-remain]').forEach(function(el){
+   var info=meta[el.getAttribute('data-room-remain')]||{};
+   var rem=fmtRoomRemaining(info);
+   el.textContent=rem?('⏱ '+rem):'';
+  });
+  return;
+ }
+ loadRooms._k=key;
  boxMain.innerHTML=''; boxPerm.innerHTML=''; boxTemp.innerHTML='';
  const cntP=$('rooms-perm-count'), cntT=$('rooms-temp-count');
  if(cntP) cntP.textContent='('+permanent.length+')';
@@ -279,6 +289,10 @@ function roomTagText(info, isMain){
  return tag;
 }
 function shellRoomLink(id){ return location.origin+'/#/group/'+encodeURIComponent(id); }
+function openRoomHref(id, isMain){
+ if(isMain) return location.origin+'/#/s/'+encodeURIComponent(id)+'/voz-1';
+ return location.origin+'/#/group/'+encodeURIComponent(id);
+}
 function copyTextToClipboard(text){
  if(navigator.clipboard&&navigator.clipboard.writeText){
   return navigator.clipboard.writeText(text).then(function(){ uiMsg('Link copiado'); }).catch(function(){ fallbackCopy(text); });
@@ -326,7 +340,7 @@ function paintRoomMain(n, info, home){
  head.querySelector('.room-card-sub').textContent=n+' · '+roomTagText(info, true);
  head.querySelector('.sala-tag').textContent=info.open?'Pública':'Convite';
  const acts=document.createElement('div'); acts.className='room-card-actions';
- const open=document.createElement('a'); open.className='btn-open'; open.textContent='Abrir sala'; open.href='/group/'+encodeURIComponent(n)+'/'; open.target='_blank'; open.rel='noopener';
+ const open=document.createElement('a'); open.className='btn-open'; open.textContent='Abrir sala'; open.href=openRoomHref(n, true); open.target='_blank'; open.rel='noopener';
  acts.appendChild(open);
  head.appendChild(acts);
  wrap.appendChild(head);
@@ -340,7 +354,7 @@ function paintRoomMain(n, info, home){
   if(!id){ uiMsg('URL inválida'); return; }
   try{
    SITE=await reg('/rename-main',{id:id,title:title||id});
-   loadRooms._k=null; uiMsg('Sala principal atualizada: /group/'+id+'/');
+   loadRooms._k=null; uiMsg('Sala principal atualizada: /#/s/'+id+'/voz-1');
    await loadSite(); await loadRooms();
   }catch(e){ uiMsg(e.message); }
  };
@@ -377,7 +391,7 @@ function paintRoomPermanent(n, info, home){
  }
  wrap.appendChild(head);
  const acts=document.createElement('div'); acts.className='room-card-actions';
- const open=document.createElement('a'); open.className='btn-open'; open.textContent='Abrir'; open.href='/group/'+encodeURIComponent(n)+'/'; open.target='_blank'; open.rel='noopener';
+ const open=document.createElement('a'); open.className='btn-open'; open.textContent='Abrir'; open.href=openRoomHref(n, false); open.target='_blank'; open.rel='noopener';
  acts.appendChild(open);
  if(n!==home){
   const sh=document.createElement('button'); sh.type='button'; sh.className='okbtn sethome'; sh.textContent='Definir como entrada';
@@ -405,14 +419,16 @@ function paintRoomTemporary(n, info){
  head.querySelector('b').textContent=n;
  head.querySelector('.sala-tag').textContent=roomTagText(info, false);
  const rem=fmtRoomRemaining(info);
- head.querySelector('.room-ttl').textContent=rem?('⏱ '+rem):'';
+ var ttlEl=head.querySelector('.room-ttl');
+ ttlEl.setAttribute('data-room-remain', n);
+ ttlEl.textContent=rem?('⏱ '+rem):'';
  wrap.appendChild(head);
  const acts=document.createElement('div'); acts.className='room-card-actions';
  const copy=document.createElement('button'); copy.type='button'; copy.className='okbtn copy-link'; copy.textContent='Copiar link';
  const link=shellRoomLink(n);
  copy.onclick=function(){ copyTextToClipboard(link); };
  acts.appendChild(copy);
- const open=document.createElement('a'); open.className='btn-open'; open.textContent='Abrir'; open.href='/group/'+encodeURIComponent(n)+'/'; open.target='_blank'; open.rel='noopener';
+ const open=document.createElement('a'); open.className='btn-open'; open.textContent='Abrir'; open.href=openRoomHref(n, false); open.target='_blank'; open.rel='noopener';
  acts.appendChild(open);
  const del=document.createElement('button'); del.type='button'; del.className='del'; del.textContent='Apagar';
  del.onclick=function(){ deleteRoom(n); };
@@ -475,8 +491,8 @@ async function loadGuests(){
   function add(cls,label,fn){const bt=document.createElement('button'); bt.type='button'; bt.className=cls; bt.textContent=label; bt.onclick=fn; acts.appendChild(bt);}
   async function go(path){try{await reg(path,{group:GROUP,user:name}); loadUsers._k=null; loadGuests._k=null; if(loadBlocked) loadBlocked._k=null; await loadUsers(); await loadGuests(); await loadBlocked();}catch(e){uiMsg(e.message);}}
   if(st==='guest'||st==='pending') add('reg','Cadastrar', async()=>{
-   const pw=await uiPrompt('Senha para '+name+' (mínimo 8):'); if(!pw||pw.length<8){uiMsg('Senha curta');return;}
-   try{await reg('/quick',{group:GROUP,user:name,password:pw,permissions:'present'}); loadUsers._k=null; loadGuests._k=null; if(loadBlocked) loadBlocked._k=null; await loadUsers(); await loadGuests(); await loadBlocked();}catch(e){uiMsg(e.message);}
+   if(!await uiConfirm('Cadastrar '+name+' com senha Mudar@123? No primeiro login ela troca.')) return;
+   try{await reg('/quick',{group:GROUP,user:name,permissions:'present'}); loadUsers._k=null; loadGuests._k=null; if(loadBlocked) loadBlocked._k=null; await loadUsers(); await loadGuests(); await loadBlocked();}catch(e){uiMsg(e.message);}
   });
   if(st==='pending'){ add('okbtn','Aprovar',()=>go('/approve')); add('deny','Negar',async()=>{if(await uiConfirm('Negar e bloquear o nick '+name+'?')) go('/deny');}); }
   if(st==='guest') add('blk','Bloquear',async()=>{if(await uiConfirm('Bloquear '+name+'? Ele não entra mais até desbloquear. A conta não é apagada.')) go('/block');});
@@ -592,18 +608,43 @@ async function loadNetLogs(){
   if(!box.dataset.ok) box.textContent='Não deu para ler as oscilações.';
  }
 }
+function applyPanelScope(){
+ document.documentElement.classList.toggle('panel-mod', PANEL_SCOPE==='mod');
+ document.querySelectorAll('.tab').forEach(function(b){
+  if(PANEL_SCOPE==='mod'){
+   b.hidden=b.dataset.tab!=='servers';
+   b.classList.toggle('on', b.dataset.tab==='servers');
+  } else b.hidden=false;
+ });
+ ['tab-users','tab-guests','tab-blocked','tab-temps','tab-logs','tab-net','tab-rooms','tab-servers'].forEach(function(id){
+  var el=$(id); if(!el) return;
+  if(PANEL_SCOPE==='mod') el.hidden=id!=='tab-servers';
+ });
+ if(PANEL_SCOPE==='mod' && $('tab-servers')) $('tab-servers').hidden=false;
+}
 async function afterLogin(){
+ if(!PANEL_SCOPE){
+  try{
+   var j=await reg('/can-panel',{user:user,password:pass});
+   PANEL_SCOPE=j.scope||(j.ok?'admin':'');
+  }catch(e){ PANEL_SCOPE=''; }
+ }
+ if(!PANEL_SCOPE) throw new Error('Usuário ou senha inválidos');
+ applyPanelScope();
  await loadSite();
  document.documentElement.classList.remove('admin-gate');
  $('login-box').hidden=true; $('panel').hidden=false;
- $('who').textContent='Logado: '+user;
- try{ await loadUsers(); }catch(e){ uiMsg(e.message); }
- try{ await loadRooms(); }catch(e){}
- try{ await loadGuests(); }catch(e){}
- try{ await loadBlocked(); }catch(e){}
- try{ await loadTemps(); }catch(e){}
- try{ await loadLogs(); }catch(e){}
- try{ await loadNetLogs(); }catch(e){}
+ $('who').textContent='Logado: '+user+(PANEL_SCOPE==='mod'?' (moderador)':'');
+ if(PANEL_SCOPE==='admin'){
+  try{ await loadUsers(); }catch(e){ uiMsg(e.message); }
+  try{ await loadRooms(); }catch(e){}
+  try{ await loadGuests(); }catch(e){}
+  try{ await loadBlocked(); }catch(e){}
+  try{ await loadTemps(); }catch(e){}
+  try{ await loadLogs(); }catch(e){}
+  try{ await loadNetLogs(); }catch(e){}
+ }
+ try{ await loadServers(); }catch(e){}
 }
 $('btn-login').onclick=async()=>{
  user=($('u').value||'').trim().toLowerCase(); $('u').value=user; pass=$('p').value; $('login-err').textContent='';
@@ -611,6 +652,7 @@ $('btn-login').onclick=async()=>{
   const r=await fetch(REG+'/panel-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:user,password:pass})});
   let data=null; try{data=await r.json();}catch(e){data={};}
   if(!r.ok) throw new Error((data&&data.error)||'Usuário ou senha inválidos');
+  PANEL_SCOPE=(data&&data.scope)||'admin';
   sessionStorage.setItem('spartanAdmin',JSON.stringify({user:user,pass:pass}));
   try{localStorage.removeItem('spartanAdminHandoff');}catch(e){}
   await afterLogin();
@@ -622,12 +664,12 @@ if(adminIsEmbed()){ document.documentElement.classList.add('admin-embed'); docum
 if(adminInShell()) document.documentElement.classList.add('admin-in-shell');
 document.addEventListener('keydown', function(e){ if(e.key==='Escape' && adminInShell()) adminCloseShell(); });
 $('btn-create').onclick=async()=>{
- const n=($('nu').value||'').trim().toLowerCase(), p=$('np').value, perm=$('nperm').value; $('nu').value=n; $('create-msg').textContent='';
- if(!n||!p){$('create-msg').textContent='Nome e senha obrigatórios';return;}
+ const n=($('nu').value||'').trim().toLowerCase(), perm=$('nperm').value; $('nu').value=n; $('create-msg').textContent='';
+ if(!n){$('create-msg').textContent='Informe o nick';return;}
  try{
-  await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(n),{method:'PUT',headers:{'Content-Type':'application/json','If-None-Match':'*'},body:JSON.stringify({permissions:permToApi(perm)})});
-  await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(n)+'/.password',{method:'POST',headers:{'Content-Type':'text/plain'},body:p});
-  $('nu').value=''; $('np').value=''; $('create-msg').textContent='Usuário '+n+' criado'; await loadUsers();
+  await reg('/quick',{group:GROUP,user:n,permissions:perm});
+  $('nu').value=''; $('create-msg').textContent='Usuário '+n+' criado. Senha inicial Mudar@123 — avise o nick; no 1º login ela troca.';
+  await loadUsers();
  }catch(e){$('create-msg').textContent=e.message;}
 };
 function syncRoomForm(){
@@ -735,6 +777,407 @@ $('btn-room').onclick=async()=>{
   showRoomCreated(createdId, title||createdId, typeMsg);
  }catch(e){ if($('room-msg')) $('room-msg').textContent=e.message; }
 };
+function reloadServers(){ loadServers._k=null; return loadServers(); }
+function roleLabelServer(r){
+ if(r==='admin') return 'Admin';
+ if(r==='mod') return 'Moderador';
+ return 'Membro';
+}
+function filterNickList(list, q){
+ q=String(q||'').trim().toLowerCase();
+ if(!q) return list;
+ return list.filter(function(item){
+  var n=typeof item==='string'?item:(item.nick||'');
+  return String(n).toLowerCase().indexOf(q)>=0;
+ });
+}
+var memDlg={sid:'', title:''};
+var userSrvDlg={nick:''};
+function closeMemDlgs(){
+ if($('mem-dlg')) $('mem-dlg').hidden=true;
+ if($('mem-add-dlg')) $('mem-add-dlg').hidden=true;
+ if($('user-srv-dlg')) $('user-srv-dlg').hidden=true;
+}
+function paintMemList(){
+ var box=$('mem-dlg-list'); if(!box) return;
+ var q=$('mem-dlg-q')&&$('mem-dlg-q').value;
+ var rows=[];
+ var seen={};
+ (memDlg.members||[]).forEach(function(m){
+  if(!m||!m.nick) return;
+  seen[m.nick]=true;
+  rows.push({nick:m.nick, role:m.role||'member', has:true});
+ });
+ (memDlg.addable||[]).forEach(function(nick){
+  nick=String(nick||'').toLowerCase();
+  if(!nick || seen[nick]) return;
+  rows.push({nick:nick, role:'', has:false});
+ });
+ rows=filterNickList(rows, q);
+ rows.sort(function(a,c){
+  if(a.has!==c.has) return a.has? -1:1;
+  return String(a.nick).localeCompare(String(c.nick),'pt',{sensitivity:'base'});
+ });
+ box.innerHTML='';
+ if(!rows.length){
+  var p=document.createElement('p'); p.className='hint';
+  p.textContent=q?'Nenhum cadastrado com esse nome.':'Nenhum usuário cadastrado além dos que já estão neste servidor.';
+  box.appendChild(p); return;
+ }
+ rows.forEach(function(m){
+  var row=document.createElement('div'); row.className='mem-row';
+  var lab=document.createElement('span');
+  lab.textContent=m.has? (m.nick+' · '+roleLabelServer(m.role)) : (m.nick+' · sem acesso');
+  var btn=document.createElement('button'); btn.type='button';
+  if(m.has){
+   btn.className='ghost'; btn.textContent='Remover';
+   btn.onclick=function(){
+    uiConfirm('Tirar '+m.nick+' deste servidor? Se estiver na call, cai na hora.').then(function(ok2){
+     if(!ok2) return;
+     reg('/server-member-remove',{user:user,password:pass,server:memDlg.sid,nick:m.nick}).then(function(){
+      uiMsg('Removeu '+m.nick+'.'); reloadServers(); refreshMemDlg();
+     }).catch(function(e){ uiMsg(e.message); });
+    });
+   };
+  } else {
+   btn.className='okbtn'; btn.textContent='Adicionar';
+   btn.onclick=function(){
+    reg('/server-member-add',{user:user,password:pass,server:memDlg.sid,nick:m.nick}).then(function(){
+     uiMsg('Adicionou '+m.nick+'.'); reloadServers(); refreshMemDlg();
+    }).catch(function(e){ uiMsg(e.message); });
+   };
+  }
+  row.appendChild(lab); row.appendChild(btn); box.appendChild(row);
+ });
+}
+function refreshMemDlg(){
+ if(!memDlg.sid) return;
+ return Promise.all([
+  reg('/server-view',{user:user,password:pass,server:memDlg.sid}),
+  reg('/server-addable',{user:user,password:pass,server:memDlg.sid})
+ ]).then(function(pair){
+  var d=pair[0]||{};
+  memDlg.members=d.members||[];
+  memDlg.addable=(pair[1]&&pair[1].users)||[];
+  if($('mem-dlg-title')) $('mem-dlg-title').textContent='Usuários · '+(d.title||d.id);
+  paintMemList();
+ }).catch(function(e){ uiMsg(e.message); });
+}
+function openMemDlg(d){
+ memDlg={sid:d.id, title:d.title||d.id};
+ if($('mem-dlg-q')) $('mem-dlg-q').value='';
+ if($('mem-dlg')) $('mem-dlg').hidden=false;
+ refreshMemDlg();
+}
+function paintAddList(users){
+ var box=$('mem-add-list'); if(!box) return;
+ var q=$('mem-add-q')&&$('mem-add-q').value;
+ var rows=filterNickList(users||[], q);
+ box.innerHTML='';
+ if(!rows.length){
+  var p=document.createElement('p'); p.className='hint'; p.textContent='Ninguém para adicionar.'; box.appendChild(p); return;
+ }
+ rows.forEach(function(nick){
+  var row=document.createElement('div'); row.className='mem-row';
+  var lab=document.createElement('span'); lab.textContent=nick;
+  var add=document.createElement('button'); add.type='button'; add.textContent='Adicionar';
+  add.onclick=function(){
+   reg('/server-member-add',{user:user,password:pass,server:memDlg.sid,nick:nick}).then(function(){
+    uiMsg('Adicionou '+nick+'.'); reloadServers(); refreshAddDlg(); refreshMemDlg();
+   }).catch(function(e){ uiMsg(e.message); });
+  };
+  row.appendChild(lab); row.appendChild(add); box.appendChild(row);
+ });
+}
+function refreshAddDlg(){
+ if(!memDlg.sid) return;
+ return reg('/server-addable',{user:user,password:pass,server:memDlg.sid}).then(function(j){
+  memDlg.addable=j.users||[];
+  paintAddList(memDlg.addable);
+ }).catch(function(e){ uiMsg(e.message); });
+}
+function openAddDlg(){
+ if($('mem-add-q')) $('mem-add-q').value='';
+ if($('mem-add-title')) $('mem-add-title').textContent='Adicionar · '+(memDlg.title||memDlg.sid);
+ if($('mem-add-dlg')) $('mem-add-dlg').hidden=false;
+ refreshAddDlg();
+}
+function paintUserSrvList(rows){
+ var box=$('user-srv-list'); if(!box) return;
+ var q=$('user-srv-q')&&$('user-srv-q').value;
+ var list=rows||[];
+ if(q){
+  var qq=String(q).toLowerCase();
+  list=list.filter(function(s){ return ((s.title||'')+' '+(s.id||'')).toLowerCase().indexOf(qq)>=0; });
+ }
+ box.innerHTML='';
+ if(!list.length){
+  var p=document.createElement('p'); p.className='hint'; p.textContent='Nenhum servidor.'; box.appendChild(p); return;
+ }
+ list.forEach(function(s){
+  var row=document.createElement('div'); row.className='mem-row';
+  var lab=document.createElement('span');
+  lab.textContent=(s.title||s.id)+(s.has?(' · '+roleLabelServer(s.role)):' · sem acesso');
+  var btn=document.createElement('button'); btn.type='button';
+  if(s.has){
+   btn.className='ghost'; btn.textContent='Remover';
+   btn.onclick=function(){
+    uiConfirm('Tirar '+userSrvDlg.nick+' de '+(s.title||s.id)+'?').then(function(ok2){
+     if(!ok2) return;
+     reg('/server-member-remove',{user:user,password:pass,server:s.id,nick:userSrvDlg.nick}).then(function(){
+      uiMsg('Removeu o acesso.'); reloadServers(); refreshUserSrvDlg();
+     }).catch(function(e){ uiMsg(e.message); });
+    });
+   };
+  } else {
+   btn.textContent='Adicionar';
+   btn.onclick=function(){
+    reg('/server-member-add',{user:user,password:pass,server:s.id,nick:userSrvDlg.nick}).then(function(){
+     uiMsg('Adicionou o acesso.'); reloadServers(); refreshUserSrvDlg();
+    }).catch(function(e){ uiMsg(e.message); });
+   };
+  }
+  row.appendChild(lab); row.appendChild(btn); box.appendChild(row);
+ });
+}
+function refreshUserSrvDlg(){
+ if(!userSrvDlg.nick) return;
+ return reg('/user-servers',{user:user,password:pass,nick:userSrvDlg.nick}).then(function(j){
+  userSrvDlg.servers=j.servers||[];
+  paintUserSrvList(userSrvDlg.servers);
+ }).catch(function(e){ uiMsg(e.message); });
+}
+function openUserServers(nick){
+ userSrvDlg={nick:nick};
+ if($('user-srv-q')) $('user-srv-q').value='';
+ if($('user-srv-title')) $('user-srv-title').textContent='Servidores · '+nick;
+ if($('user-srv-dlg')) $('user-srv-dlg').hidden=false;
+ refreshUserSrvDlg();
+}
+function bindMemDlgs(){
+ if(bindMemDlgs._ok) return; bindMemDlgs._ok=true;
+ [['mem-dlg','mem-dlg-close'],['mem-add-dlg','mem-add-close'],['user-srv-dlg','user-srv-close']].forEach(function(pair){
+  var dlg=$(pair[0]), close=$(pair[1]);
+  if(dlg && !dlg.dataset.bound){
+   dlg.dataset.bound='1';
+   dlg.addEventListener('click', function(ev){ if(ev.target===dlg) dlg.hidden=true; });
+  }
+  if(close) close.onclick=function(){ if(dlg) dlg.hidden=true; };
+ });
+ if($('mem-dlg-q')) $('mem-dlg-q').addEventListener('input', function(){ paintMemList(); });
+ if($('mem-add-q')) $('mem-add-q').addEventListener('input', function(){ paintAddList(memDlg.addable||[]); });
+ if($('user-srv-q')) $('user-srv-q').addEventListener('input', function(){ paintUserSrvList(userSrvDlg.servers||[]); });
+ if($('mem-dlg-add')) $('mem-dlg-add').hidden=true;
+}
+function serverViewKey(d){
+ return JSON.stringify({
+  id:d.id, title:d.title, official:!!d.official, my_role:d.my_role||'',
+  member_count:d.member_count||0, invite:d.invite||'',
+  pending:(d.pending||[]).map(function(p){ return p.nick; }).sort(),
+  members:(d.members||[]).map(function(m){ return [m.nick,m.role]; }).sort(),
+  channels:(d.channels||[]).map(function(c){ return [c.id,c.title,c.kind,c.category||'',c.group||'',!!c.locked]; })
+ });
+}
+function reorderServerChans(d, fromId, toId){
+ var kindOf=function(id){
+  var ch=(d.channels||[]).filter(function(c){ return c.id===id; })[0];
+  return ch && ch.kind==='text' ? 'text' : 'voice';
+ };
+ if(kindOf(fromId)!==kindOf(toId)) return;
+ var order=(d.channels||[]).map(function(c){ return c.id; });
+ var i=order.indexOf(fromId), j=order.indexOf(toId);
+ if(i<0 || j<0 || i===j) return;
+ var item=order.splice(i,1)[0];
+ if(i<j) j--;
+ order.splice(j, 0, item);
+ loadServers._k=null;
+ reg('/server-channel-reorder',{user:user,password:pass,server:d.id,order:order}).then(function(){ reloadServers(); }).catch(function(e){ uiMsg(e.message); });
+}
+function paintServerChanRow(d, ch){
+ var row=document.createElement('div');
+ row.className='server-chan-row';
+ var grip=document.createElement('span');
+ grip.className='server-chan-grip';
+ grip.title='Arrastar para reordenar';
+ grip.textContent='⋮⋮';
+ grip.draggable=true;
+ grip.addEventListener('dragstart', function(ev){
+  ev.dataTransfer.setData('text/plain', ch.id);
+  ev.dataTransfer.effectAllowed='move';
+  row.classList.add('dragging');
+ });
+ grip.addEventListener('dragend', function(){ row.classList.remove('dragging'); });
+ row.addEventListener('dragover', function(ev){ ev.preventDefault(); row.classList.add('drop'); });
+ row.addEventListener('dragleave', function(){ row.classList.remove('drop'); });
+ row.addEventListener('drop', function(ev){
+  ev.preventDefault(); row.classList.remove('drop');
+  var from=ev.dataTransfer.getData('text/plain');
+  if(from) reorderServerChans(d, from, ch.id);
+ });
+ var lab=document.createElement('span');
+ lab.textContent=ch.title||ch.id;
+ var acts=document.createElement('div');
+ acts.className='server-chan-acts';
+ var ren=document.createElement('button');
+ ren.type='button';
+ ren.textContent='Renomear';
+ ren.onclick=function(){
+  uiPrompt('Novo nome de '+(ch.title||ch.id)+':').then(function(t){
+   t=(t||'').trim(); if(!t) return;
+   reg('/server-channel-rename',{user:user,password:pass,server:d.id,channel:ch.id,title:t}).then(function(){ reloadServers(); }).catch(function(e){ uiMsg(e.message); });
+  });
+ };
+ acts.appendChild(ren);
+ if(!ch.locked){
+  var del=document.createElement('button');
+  del.type='button';
+  del.className='ghost';
+  del.textContent='Apagar';
+  del.onclick=function(){
+   uiConfirm('Apagar a sala '+(ch.title||ch.id)+'?').then(function(ok2){
+    if(!ok2) return;
+    reg('/server-channel-delete',{user:user,password:pass,server:d.id,channel:ch.id}).then(function(){ reloadServers(); }).catch(function(e){ uiMsg(e.message); });
+   });
+  };
+  acts.appendChild(del);
+ }
+ row.appendChild(grip); row.appendChild(lab); row.appendChild(acts);
+ return row;
+}
+async function loadServers(){
+ var box=$('servers-list'); if(!box) return;
+ try{
+  var list=await (await fetch(REG+'/servers?user='+encodeURIComponent(user),{cache:'no-store',headers:{'Authorization':authHeader(),'X-Spartan-Auth':authHeader()}})).json();
+  var servers=(list&&list.servers)||[];
+  var views=[], i;
+  for(i=0;i<servers.length;i++){
+   try{ views.push(await reg('/server-view',{user:user,password:pass,server:servers[i].id})); }
+   catch(e){ views.push(Object.assign({}, servers[i], {channels:[], pending:[]})); }
+  }
+  var key=views.map(serverViewKey).join('\n');
+  if(key===loadServers._k) return;
+  loadServers._k=key;
+  box.innerHTML='';
+  views.forEach(function(d){
+    var card=document.createElement('div');
+    card.className='server-card';
+    var head=document.createElement('div');
+    head.className='server-card-head';
+    var h=document.createElement('h3');
+    h.textContent=d.title||d.id;
+    head.appendChild(h);
+    if(d.official){
+     var badge=document.createElement('span');
+     badge.className='server-badge';
+     badge.textContent='oficial';
+     head.appendChild(badge);
+    }
+    card.appendChild(head);
+    var meta=document.createElement('p');
+    meta.className='server-meta';
+    var n=d.member_count||0;
+    meta.textContent='Papel seu: '+(d.my_role||'—')+' · '+n+' membro'+(n===1?'':'s');
+    card.appendChild(meta);
+    if(d.invite){
+     var inv=document.createElement('div');
+     inv.className='server-invite';
+     var inp=document.createElement('input');
+     inp.type='text'; inp.readOnly=true; inp.className='server-invite-url';
+     inp.value=location.origin+'/#/i/'+encodeURIComponent(d.invite);
+     var copy=document.createElement('button'); copy.type='button'; copy.textContent='Copiar link';
+     copy.onclick=function(){
+      var v=inp.value;
+      function ok(){ copy.textContent='Copiado'; setTimeout(function(){ copy.textContent='Copiar link'; }, 1200); }
+      if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(ok).catch(function(){ inp.select(); document.execCommand('copy'); ok(); });
+      else { inp.select(); document.execCommand('copy'); ok(); }
+     };
+     var rot=document.createElement('button'); rot.type='button'; rot.textContent='Trocar link';
+     rot.onclick=function(){ reg('/server-invite-rotate',{user:user,password:pass,server:d.id}).then(function(){ reloadServers(); }).catch(function(e){ uiMsg(e.message); }); };
+     inv.appendChild(inp); inv.appendChild(copy); inv.appendChild(rot);
+     card.appendChild(inv);
+    }
+    var pendBox=document.createElement('div');
+    pendBox.className='server-pending';
+    (d.pending||[]).forEach(function(p){
+     var row=document.createElement('div'); row.className='server-pend-row';
+     var who=document.createElement('span'); who.textContent=p.nick+' pediu entrada';
+     var ok=document.createElement('button'); ok.type='button'; ok.textContent='Aprovar';
+     ok.onclick=function(){ reg('/server-approve',{user:user,password:pass,server:d.id,nick:p.nick}).then(function(){ reloadServers(); }).catch(function(e){ uiMsg(e.message); }); };
+     var no=document.createElement('button'); no.type='button'; no.className='ghost'; no.textContent='Recusar';
+     no.onclick=function(){ reg('/server-deny',{user:user,password:pass,server:d.id,nick:p.nick}).then(function(){ reloadServers(); }).catch(function(e){ uiMsg(e.message); }); };
+     row.appendChild(who); row.appendChild(ok); row.appendChild(no); pendBox.appendChild(row);
+    });
+    if(pendBox.children.length) card.appendChild(pendBox);
+    var cols=document.createElement('div');
+    cols.className='server-cols';
+    var textCol=document.createElement('div'); textCol.className='server-col';
+    var th=document.createElement('h4'); th.textContent='Salas de texto'; textCol.appendChild(th);
+    var voiceCol=document.createElement('div'); voiceCol.className='server-col';
+    var vh=document.createElement('h4'); vh.textContent='Salas de voz'; voiceCol.appendChild(vh);
+    var texts=(d.channels||[]).filter(function(c){ return c.kind==='text'; });
+    var voices=(d.channels||[]).filter(function(c){ return c.kind!=='text'; });
+    if(!texts.length){ var e1=document.createElement('p'); e1.className='server-col-empty'; e1.textContent='Nenhuma sala de texto.'; textCol.appendChild(e1); }
+    else texts.forEach(function(ch){ textCol.appendChild(paintServerChanRow(d, ch)); });
+    if(!voices.length){ var e2=document.createElement('p'); e2.className='server-col-empty'; e2.textContent='Nenhuma sala de voz.'; voiceCol.appendChild(e2); }
+    else voices.forEach(function(ch){ voiceCol.appendChild(paintServerChanRow(d, ch)); });
+    cols.appendChild(textCol); cols.appendChild(voiceCol);
+    card.appendChild(cols);
+    var tools=document.createElement('div');
+    tools.className='server-tools';
+    var usersBtn=document.createElement('button'); usersBtn.type='button'; usersBtn.className='okbtn'; usersBtn.textContent='Adicionar e remover usuários';
+    usersBtn.onclick=function(){ openMemDlg(d); };
+    tools.appendChild(usersBtn);
+    var row1=document.createElement('div'); row1.className='server-tool-row';
+    var chTitle=document.createElement('input'); chTitle.type='text'; chTitle.placeholder='Nome da nova sala';
+    var chKind=document.createElement('select');
+    chKind.innerHTML='<option value="text">Texto</option><option value="voice">Voz</option>';
+    var chBtn=document.createElement('button'); chBtn.type='button'; chBtn.textContent='Criar sala';
+    chBtn.onclick=function(){
+     var t=(chTitle.value||'').trim(); if(!t) return;
+     var kind=chKind.value, cat=kind==='voice'?'voz':'texto';
+     reg('/server-channel',{user:user,password:pass,server:d.id,title:t,kind:kind,category:cat}).then(function(){ reloadServers(); }).catch(function(e){ uiMsg(e.message); });
+    };
+    row1.appendChild(chTitle); row1.appendChild(chKind); row1.appendChild(chBtn);
+    tools.appendChild(row1);
+    if(PANEL_SCOPE==='admin'){
+     var row2=document.createElement('div'); row2.className='server-tool-row';
+     var nickIn=document.createElement('select');
+     var opt0=document.createElement('option'); opt0.value=''; opt0.textContent='Nick do moderador'; nickIn.appendChild(opt0);
+     (d.members||[]).forEach(function(m){
+      if(!m.nick || m.role==='admin') return;
+      var o=document.createElement('option'); o.value=m.nick;
+      o.textContent=m.nick+(m.role==='mod'?' (já é moderador)':'');
+      nickIn.appendChild(o);
+     });
+     var modBtn=document.createElement('button'); modBtn.type='button'; modBtn.textContent='Tornar moderador';
+     modBtn.onclick=function(){
+      var nick=(nickIn.value||'').trim().toLowerCase(); if(!nick) return;
+      reg('/server-mod',{user:user,password:pass,server:d.id,nick:nick,on:true}).then(function(){ uiMsg('Moderador no sidecar (na call continua Usuário).'); reloadServers(); }).catch(function(e){ uiMsg(e.message); });
+     };
+     row2.appendChild(nickIn); row2.appendChild(modBtn);
+     tools.appendChild(row2);
+    }
+    if(!d.official && (PANEL_SCOPE==='admin' || d.my_role==='admin')){
+     var delSrv=document.createElement('button'); delSrv.type='button'; delSrv.className='ghost'; delSrv.textContent='Apagar servidor';
+     delSrv.onclick=function(){ uiConfirm('Apagar este servidor? As calls Galene não somem sozinhas.').then(function(ok2){ if(!ok2) return; reg('/server-delete',{user:user,password:pass,server:d.id}).then(function(){ reloadServers(); }).catch(function(e){ uiMsg(e.message); }); }); };
+     tools.appendChild(delSrv);
+    }
+    card.appendChild(tools);
+    box.appendChild(card);
+  });
+  bindMemDlgs();
+ }catch(e){ if($('server-msg')) $('server-msg').textContent=e.message||'Não carregou.'; }
+}
+if($('btn-server-create')) $('btn-server-create').onclick=async function(){
+ var title=($('server-title')&&$('server-title').value||'').trim();
+ if(!title){ if($('server-msg')) $('server-msg').textContent='Dê um nome ao servidor.'; return; }
+ try{
+  await reg('/server-create',{user:user,password:pass,title:title});
+  if($('server-title')) $('server-title').value='';
+  if($('server-msg')) $('server-msg').textContent='';
+  reloadServers();
+ }catch(e){ if($('server-msg')) $('server-msg').textContent=e.message; }
+};
 document.querySelectorAll('.tab').forEach(b=>{
  b.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
@@ -745,7 +1188,9 @@ document.querySelectorAll('.tab').forEach(b=>{
   if($('tab-logs')) $('tab-logs').hidden=b.dataset.tab!=='logs';
   if($('tab-net')) $('tab-net').hidden=b.dataset.tab!=='net';
   $('tab-rooms').hidden=b.dataset.tab!=='rooms';
+  if($('tab-servers')) $('tab-servers').hidden=b.dataset.tab!=='servers';
   if(b.dataset.tab==='rooms'){ loadRooms._k=null; loadRooms(); }
+  if(b.dataset.tab==='servers') loadServers();
   if(b.dataset.tab==='logs'){ loadLogs._k=null; loadLogs(); }
   if(b.dataset.tab==='net'){ loadNetLogs._k=null; loadNetLogs(); }
  };
@@ -772,7 +1217,7 @@ try{
 }catch(e){}
 
 document.querySelectorAll('.list-tools').forEach(function(bar){bar.addEventListener('click',function(e){var btn=e.target.closest('[data-sort]'); if(!btn) return; var tab=bar.getAttribute('data-tab'); SORT[tab]=btn.getAttribute('data-sort'); bar.querySelectorAll('[data-sort]').forEach(function(x){x.classList.toggle('on',x===btn);}); loadUsers._k=loadGuests._k=loadBlocked._k=loadTemps._k=null; if(tab==='users') loadUsers(); else if(tab==='guests') loadGuests(); else if(tab==='blocked') loadBlocked(); else if(tab==='temps') loadTemps();});});
-setInterval(function(){ try{ if($('panel') && !$('panel').hidden){ loadUsers().catch(function(){}); loadGuests().catch(function(){}); loadBlocked().catch(function(){}); loadTemps().catch(function(){}); if($('tab-logs') && !$('tab-logs').hidden) loadLogs().catch(function(){}); if($('tab-net') && !$('tab-net').hidden) loadNetLogs().catch(function(){}); if($('tab-rooms') && !$('tab-rooms').hidden) loadRooms().catch(function(){}); } }catch(e){} }, 8000);
+setInterval(function(){ try{ if($('panel') && !$('panel').hidden){ if(PANEL_SCOPE==='admin'){ loadUsers().catch(function(){}); loadGuests().catch(function(){}); loadBlocked().catch(function(){}); loadTemps().catch(function(){}); if($('tab-logs') && !$('tab-logs').hidden) loadLogs().catch(function(){}); if($('tab-net') && !$('tab-net').hidden) loadNetLogs().catch(function(){}); if($('tab-rooms') && !$('tab-rooms').hidden) loadRooms().catch(function(){}); } if($('tab-servers') && !$('tab-servers').hidden) loadServers(); } }catch(e){} }, 8000);
 ['log-tipo','log-nick','log-ip'].forEach(function(id){
  var el=$(id); if(!el) return;
  el.addEventListener(id==='log-tipo'?'change':'input', function(){ loadLogs._k=null; paintLogs(); });

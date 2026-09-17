@@ -21,6 +21,8 @@ data/*.log
 data/accounts.json
 data/config.json
 data/registry.json
+data/servers.json
+data/chat-files/
 data/sidecar.auth
 data/site.json
 groups/abiguinhos.json

@@ -54,6 +54,33 @@ class LiveButtonsTests(unittest.TestCase):
             r"addLocalMedia\(undefined,\s*false\)",
         )
 
+    def test_own_live_hides_per_stream(self):
+        m = re.search(
+            r"function showHideMedia\(c, elt\) \{.*?^}",
+            self.js,
+            re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(m)
+        body = m.group(0)
+        self.assertIn("spartanHideOwnStream[c.id]", body)
+        self.assertNotIn("spartanHideOwn &&", body)
+        tog = re.search(
+            r"function spartanToggleLive\(c\) \{.*?^}",
+            self.js,
+            re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(tog)
+        self.assertIn("spartanHideOwnStream[c.id]", tog.group(0))
+
+    def test_shell_peers_keep_grid(self):
+        css = (ROOT / "static" / "galene-spartan.css").read_text(encoding="utf-8")
+        mark = "html.spartan-in-shell #peers{"
+        self.assertIn(mark, css)
+        chunk = css[css.find(mark): css.find(mark) + 220]
+        self.assertIn("display:grid!important", chunk)
+        grouped = css.split("html.spartan-in-shell #expand-video{")[1].split("html.spartan-in-shell #peers{")[0]
+        self.assertNotIn("#peers", grouped)
+
 
 class ReconnectMediaTests(unittest.TestCase):
     @classmethod
@@ -174,7 +201,7 @@ class QualityHudAndMicTests(unittest.TestCase):
         self.assertIn("spartan-quality.js?v=1", self.html)
         self.assertIn("spartan-net.js?v=1", self.html)
         self.assertIn("spartan-watch.js?v=1", self.html)
-        self.assertIn("galene.js?v=118", self.html)
+        self.assertIn("galene.js?v=126", self.html)
         self.assertIn("protocol.js?v=4", self.html)
         self.assertIn('id="filterform" hidden', self.html)
 
