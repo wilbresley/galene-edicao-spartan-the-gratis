@@ -144,6 +144,19 @@ function ServerConnection() {
      */
     this.userdata = {};
     /**
+     * Capabilities announced by the server at handshake.
+     *
+     * @type {Array<string>}
+     */
+    this.capabilities = [];
+    /**
+     * Called immediately before streams are closed on socket teardown.
+     * Return true to keep MediaStreamTracks alive (reconnection).
+     *
+     * @type {(this: ServerConnection, code: number, reason: string) => boolean}
+     */
+    this.onbeforeclose = null;
+    /**
      * The time at which we last received a message from the server.
      *
      * @type {number}
@@ -313,70 +326,140 @@ ServerConnection.prototype.send = function(m) {
  * @param {string} url - The URL to connect to.
  * @function
  */
+ServerConnection.prototype.hasCapability = function(name) {
+    return Array.isArray(this.capabilities) && this.capabilities.indexOf(name) >= 0;
+};
+
+/**
+ * requestStreamById asks the server for one upstream by publisher + stream id.
+ * Uses `dest` (not `source`) for the publisher — Galene rejects any message
+ * whose `source` is not our own client id ("spoofed client id").
+ * An empty request cancels only that subscription.
+ *
+ * @param {string} publisherId
+ * @param {string} id
+ * @param {Array<string>} request
+ */
+ServerConnection.prototype.requestStreamById = function(publisherId, id, request) {
+    if(!this.hasCapability('spartan-request-by-id-v1'))
+        throw new Error('Servidor desatualizado: atualize o Galene para ver lives.');
+    if(!publisherId || !id)
+        return;
+    this.send({
+        type: 'requestStreamById',
+        dest: publisherId,
+        id: id,
+        request: request || [],
+    });
+};
+
+/**
+ * connect connects to the server.
+ *
+ * @param {string} url - The URL to connect to.
+ * @returns {Promise<void>}
+ */
 ServerConnection.prototype.connect = function(url) {
     let sc = this;
     if(sc.socket)
         throw new Error("Attempting to connect stale connection");
 
-    sc.socket = new WebSocket(url);
-
-    this.pingHandler = setInterval(() => {
-        if(!sc.lastServerMessage) {
-            sc.error(new Error('Timeout'));
-            return;
+    return new Promise(function(resolve, reject) {
+        let settled = false;
+        function ok() {
+            if(settled)
+                return;
+            settled = true;
+            resolve();
         }
-        let d = new Date().valueOf() - sc.lastServerMessage;
-        if(d > 65000) {
-            sc.error(new Error('Timeout'));
-            return;
+        function fail(err) {
+            if(settled)
+                return;
+            settled = true;
+            reject(err || new Error('Ligação fechada'));
         }
-        if(sc.version && d >= 15000)
-            sc.send({type: 'ping'});
-    }, 10000);
+        sc._connectResolve = ok;
+        sc._connectReject = fail;
 
-    this.socket.onerror = function(e) {
-        if(sc.onerror)
-            sc.onerror.call(sc, new Error('Socket error'));
-    };
-    this.socket.onopen = function(e) {
         try {
-            sc.send({
-                type: 'handshake',
-                version: ['2'],
-                id: sc.id,
-            });
+            sc.socket = new WebSocket(url);
         } catch(e) {
-            sc.error(e);
+            fail(e);
             return;
         }
-    };
-    this.socket.onclose = function(e) {
-        sc.permissions = [];
-        for(let id in sc.up) {
-            let c = sc.up[id];
-            c.close();
-        }
-        for(let id in sc.down) {
-            let c = sc.down[id];
-            c.close();
-        }
-        for(let id in sc.users) {
-            delete(sc.users[id]);
-            if(sc.onuser)
-                sc.onuser.call(sc, id, 'delete');
-        }
-        if(sc.group && sc.onjoined)
-            sc.onjoined.call(sc, 'leave', sc.group, [], {}, {}, '', '');
-        sc.group = null;
-        sc.username = null;
-        if(sc.pingHandler) {
-            clearInterval(sc.pingHandler);
-            sc.pingHandler = null;
-        }
-        if(sc.onclose)
-            sc.onclose.call(sc, e.code, e.reason);
-    };
-    this.socket.onmessage = function(e) {
+
+        sc.pingHandler = setInterval(() => {
+            if(!sc.lastServerMessage) {
+                sc.error(new Error('Timeout'));
+                return;
+            }
+            let d = new Date().valueOf() - sc.lastServerMessage;
+            if(d > 65000) {
+                sc.error(new Error('Timeout'));
+                return;
+            }
+            if(sc.version && d >= 15000) {
+                try { sc.send({type: 'ping'}); } catch(e) {}
+            }
+        }, 10000);
+
+        sc.socket.onerror = function(e) {
+            if(sc.onerror)
+                sc.onerror.call(sc, new Error('Socket error'));
+        };
+        sc.socket.onopen = function(e) {
+            try {
+                sc.send({
+                    type: 'handshake',
+                    version: ['2'],
+                    id: sc.id,
+                    capabilities: ['spartan-request-by-id-v1'],
+                });
+            } catch(e) {
+                fail(e);
+                sc.error(e);
+                return;
+            }
+        };
+        sc.socket.onclose = function(e) {
+            let preserve = false;
+            if(sc.onbeforeclose) {
+                try { preserve = !!sc.onbeforeclose.call(sc, e.code, e.reason); } catch(err) {}
+            }
+            sc.permissions = [];
+            let upIds = Object.keys(sc.up);
+            for(let i = 0; i < upIds.length; i++) {
+                let c = sc.up[upIds[i]];
+                if(c)
+                    c.close(false, preserve);
+            }
+            let downIds = Object.keys(sc.down);
+            for(let i = 0; i < downIds.length; i++) {
+                let c = sc.down[downIds[i]];
+                if(c)
+                    c.close(false, preserve);
+            }
+            for(let id in sc.users) {
+                delete(sc.users[id]);
+                if(sc.onuser)
+                    sc.onuser.call(sc, id, 'delete');
+            }
+            if(sc.group && sc.onjoined)
+                sc.onjoined.call(sc, 'leave', sc.group, [], {}, {}, '', '');
+            sc.group = null;
+            sc.username = null;
+            if(sc.pingHandler) {
+                clearInterval(sc.pingHandler);
+                sc.pingHandler = null;
+            }
+            if(!sc.version)
+                fail(new Error('Ligação fechada'));
+            if(sc._joinReject && !sc._joinSettled)
+                try { sc._joinReject(new Error('Ligação fechada')); } catch(err) {}
+            if(sc.onclose)
+                sc.onclose.call(sc, e.code, e.reason);
+        };
+        sc.socket.onmessage = function(e) {
         let m;
         try {
             m = JSON.parse(e.data);
@@ -396,10 +479,13 @@ ServerConnection.prototype.connect = function(url) {
             } else {
                 sc.version = null;
                 sc.error(new Error(`Unknown protocol version ${m.version}`));
+                fail(new Error(`Unknown protocol version ${m.version}`));
                 return;
             }
+            sc.capabilities = (m.capabilities instanceof Array) ? m.capabilities.slice() : [];
             if(sc.onconnected)
                 sc.onconnected.call(sc);
+            ok();
             break;
         }
         case 'offer':
@@ -442,6 +528,10 @@ ServerConnection.prototype.connect = function(url) {
                 sc.username = m.username;
                 sc.permissions = m.permissions || [];
                 sc.rtcConfiguration = m.rtcConfiguration || null;
+            }
+            if((m.kind === 'fail' || m.kind === 'leave') && sc._joinReject && !sc._joinSettled) {
+                sc._joinSettled = true;
+                try { sc._joinReject(new Error(m.value || m.error || 'join falhou')); } catch(err) {}
             }
             if(sc.onjoined)
                 sc.onjoined.call(sc, m.kind, m.group,
@@ -524,6 +614,7 @@ ServerConnection.prototype.connect = function(url) {
             return;
         }
     };
+    });
 };
 
 /**
@@ -841,6 +932,14 @@ ServerConnection.prototype.groupAction = function(kind, data) {
 ServerConnection.prototype.gotOffer = async function(id, label, source, username, sdp, replace) {
     let sc = this;
 
+    // Live que o usuário acabou de fechar: aborta offer atrasado.
+    if(typeof spartanIsCanceledStream === 'function' && spartanIsCanceledStream(id)) {
+        try {
+            sc.send({ type: 'abort', id: id });
+        } catch(e) {}
+        return;
+    }
+
     if(sc.up[id]) {
         console.error("Duplicate connection id");
         sc.send({
@@ -891,13 +990,17 @@ ServerConnection.prototype.gotOffer = async function(id, label, source, username
         };
 
         pc.oniceconnectionstatechange = e => {
+            if(c._closed || !c.sc)
+                return;
             if(c.onstatus)
                 c.onstatus.call(c, pc.iceConnectionState);
             if(pc.iceConnectionState === 'failed') {
-                sc.send({
-                    type: 'renegotiate',
-                    id: id,
-                });
+                try {
+                    sc.send({
+                        type: 'renegotiate',
+                        id: id,
+                    });
+                } catch(err) {}
             }
         };
 
@@ -930,23 +1033,34 @@ ServerConnection.prototype.gotOffer = async function(id, label, source, username
             sdp: sdp,
         });
 
+        if(c._closed || !c.sc || sc.down[id] !== c)
+            return;
+
         await c.flushRemoteIceCandidates();
+
+        if(c._closed || !c.sc || sc.down[id] !== c)
+            return;
 
         let answer = await c.pc.createAnswer();
         if(!answer)
             throw new Error("Didn't create answer");
         await c.pc.setLocalDescription(answer);
+        if(c._closed || !c.sc || sc.down[id] !== c)
+            return;
         this.send({
             type: 'answer',
             id: id,
             sdp: c.pc.localDescription.sdp,
         });
     } catch(e) {
+        // Cancel da live fecha a PC no meio do offer — não aborta no servidor.
+        if(c._closed || !c.sc || sc.down[id] !== c)
+            return;
         try {
             if(c.onerror)
                 c.onerror.call(c, e);
         } finally {
-            c.abort();
+            try { c.abort(); } catch(err) {}
         }
         return;
     }
@@ -1042,8 +1156,9 @@ ServerConnection.prototype.gotRemoteIce = async function(id, candidate) {
     let c = this.up[id];
     if(!c)
         c = this.down[id];
-    if(!c)
-        throw new Error('unknown stream');
+    // ICE atrasado após cancel da live — ignora (não derruba a sala).
+    if(!c || c._closed || !c.pc)
+        return;
     if(c.pc.remoteDescription)
         await c.pc.addIceCandidate(candidate).catch(console.warn);
     else
@@ -1241,8 +1356,10 @@ Stream.prototype.setStream = function(stream) {
  *
  * @param {boolean} [replace]
  *    - true if the stream is being replaced by another one with the same id
+ * @param {boolean} [preserveTracks]
+ *    - true to keep MediaStreamTracks (reconnection); skips onclose
  */
-Stream.prototype.close = function(replace) {
+Stream.prototype.close = function(replace, preserveTracks) {
     let c = this;
 
     if(!c.sc) {
@@ -1250,14 +1367,26 @@ Stream.prototype.close = function(replace) {
         return;
     }
 
+    // Marca fechamento ANTES de pc.close(): senão ice=failed manda
+    // renegotiate/request numa id que o cancel da live já apagou no servidor
+    // e derruba o WebSocket (sua live some para os outros).
+    c._closed = true;
+
     if(c.statsHandler) {
         clearInterval(c.statsHandler);
         c.statsHandler = null;
     }
 
-    c.pc.close();
+    try {
+        if(c.pc) {
+            try { c.pc.oniceconnectionstatechange = null; } catch(e) {}
+            try { c.pc.onicecandidate = null; } catch(e) {}
+            try { c.pc.ontrack = null; } catch(e) {}
+            c.pc.close();
+        }
+    } catch(e) {}
 
-    if(c.up && !replace && c.localDescriptionSent) {
+    if(c.up && !replace && !preserveTracks && c.localDescriptionSent) {
         try {
             c.sc.send({
                 type: 'close',
@@ -1281,12 +1410,16 @@ Stream.prototype.close = function(replace) {
         else
             console.warn('Closing unknown stream');
     }
-    let changed = recomputeUserStreams(c.sc, userid);
-    if(changed && c.sc.onuser)
-        c.sc.onuser.call(c.sc, userid, "change");
+    if(!preserveTracks) {
+        let changed = recomputeUserStreams(c.sc, userid);
+        if(changed && c.sc.onuser)
+            c.sc.onuser.call(c.sc, userid, "change");
+    }
 
-    if(c.onclose)
+    if(c.onclose && !preserveTracks)
         c.onclose.call(c, replace);
+    else
+        c.onclose = null;
 
     c.sc = null;
 };
@@ -1330,6 +1463,8 @@ Stream.prototype.abort = function() {
     let c = this;
     if(c.up)
         throw new Error("Abort called on an up stream");
+    if(!c.sc || c._closed)
+        return;
     c.sc.send({
         type: 'abort',
         id: c.id,
@@ -1344,6 +1479,8 @@ Stream.prototype.abort = function() {
  */
 Stream.prototype.gotLocalIce = function(candidate) {
     let c = this;
+    if(!c.sc || !c.sc.socket || c._closed)
+        return;
     if(c.localDescriptionSent)
         c.sc.send({type: 'ice',
                    id: c.id,
@@ -1471,6 +1608,10 @@ Stream.prototype.restartIce = function () {
  */
 Stream.prototype.request = function(what) {
     let c = this;
+    // Stream já fechada (cancel de live): NÃO manda requestStream — no
+    // servidor a id some e ErrUnknownId derrubava o WS do espectador.
+    if(!c.sc || c._closed)
+        return;
     c.sc.send({
         type: 'requestStream',
         id: c.id,

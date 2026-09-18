@@ -579,13 +579,15 @@ html:not(.spartan-in-room) #spartan-server-people {
 }
 
 .spartan-chan-tools button {
-  background: #dc2626;
+  background: #16a34a;
   color: #fff;
   border: 0;
   border-radius: 6px;
   padding: 0.35rem 0.5rem;
   cursor: pointer;
+  font-weight: 700;
 }
+.spartan-chan-tools button.okbtn { background: #16a34a; }
 
 .spartan-invite-copy {
   margin: 0.3rem 0 0;
@@ -825,16 +827,20 @@ html.spartan-settings-up #spartan-text-pane {
   align-items: center;
   gap: 0.4rem;
   flex: 1 1 100%;
-  width: calc(100% - 0.55rem);
+  box-sizing: border-box;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
   margin: 0.12rem 0 0.12rem 0.55rem;
   text-align: left;
   border: 0;
   background: transparent;
   color: #dbdee1;
   font-size: 0.82rem;
-  cursor: grab;
-  padding: 0.15rem 0.2rem;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem 0.15rem 0.2rem;
   border-radius: 4px;
+  overflow: visible;
 }
 .spartan-user-lives {
   display: flex;
@@ -842,7 +848,10 @@ html.spartan-settings-up #spartan-text-pane {
   gap: 6px;
   flex: 1 1 100%;
   width: 100%;
-  margin: 0.2rem 0 0 1.7rem;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0.2rem 0 0 0;
+  padding-left: 1.7rem;
   box-sizing: border-box;
 }
 .spartan-user-lives[hidden] { display: none !important; }
@@ -852,12 +861,19 @@ html.spartan-settings-up #spartan-text-pane {
 }
 .spartan-user-audio {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 2px;
   flex: 1 1 100%;
   width: 100%;
-  margin: 0.12rem 0 0 1.7rem;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0.12rem 0 0 0;
+  padding: 0 0.05rem 0.1rem 1.7rem;
   box-sizing: border-box;
+  min-height: 1.35rem;
+  overflow: visible;
 }
 .spartan-chan-ident .user-mute-btn,
 .spartan-user-audio .user-mute-btn {
@@ -890,8 +906,37 @@ html.spartan-settings-up #spartan-text-pane {
   text-shadow: 0 0 2px #fff;
 }
 .spartan-user-audio .user-vol-slider {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
+  width: 100%;
   min-width: 0;
+  height: 1.1rem;
+  margin: 0;
+  padding: 0;
+  accent-color: #dc2626;
+  cursor: pointer;
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+.spartan-user-audio .user-vol-lab {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  display: block;
+  align-self: center;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #dbdee1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: visible;
+  position: relative;
+  top: 0;
+  transform: none;
 }
 .spartan-chan-user:hover { background: #35373c; }
 .spartan-chan-ident {

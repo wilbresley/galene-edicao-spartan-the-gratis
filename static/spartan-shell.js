@@ -182,6 +182,7 @@
     var d = ev.data || {};
     if(d.t === 'spartan-admin-close') closeAdmin();
     if(d.t === 'spartan-open-admin') openAdmin();
+    if(d.t === 'spartan-go-home') navigate({ view: 'home' });
   });
 
   var closeBtn = document.getElementById('spartan-admin-close');

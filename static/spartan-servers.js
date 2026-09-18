@@ -316,11 +316,8 @@
 
   function openSettings() {
     hideTextPane();
-    if(frameAlive()) {
-      document.documentElement.classList.add('spartan-settings-up');
-      cmdFrame('settings');
-      return;
-    }
+    // Sempre a telinha minimalista do shell — nunca o painel antigo da sala no iframe.
+    try { document.documentElement.classList.remove('spartan-settings-up'); } catch(e) {}
     openShellSettings();
   }
 
@@ -365,7 +362,10 @@
     var c = cred();
     if(!c.user || !c.pass) return;
     apiPost('/can-panel', { user: c.user, password: c.pass }).then(function(j) {
-      admin.hidden = !(j && j.ok && j.scope === 'admin');
+      var ok = !!(j && j.ok && (j.scope === 'admin' || j.scope === 'mod'));
+      admin.hidden = !ok;
+      if(ok)
+        admin.textContent = j.scope === 'mod' ? 'Painel (moderador)' : 'Painel Admin';
     }).catch(function() { admin.hidden = true; });
   }
 
@@ -542,45 +542,71 @@
       box.className = 'spartan-user-lives';
       who.appendChild(box);
     }
-    box.innerHTML = '';
-    lives.forEach(function(lv, i) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'user-live-btn' + (lv.on ? ' on' : '');
-      b.textContent = liveCaption(lives, i);
-      b.addEventListener('click', function(ev) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        if(lv.id) cmdFrame('watch', { id: lv.id });
+    var wantIds = lives.map(function(lv) { return String(lv.id || ''); }).join(',');
+    if(box.dataset.liveIds === wantIds && box.children.length === lives.length) {
+      lives.forEach(function(lv, i) {
+        var b = box.children[i];
+        if(!b) return;
+        if(lv.on) b.classList.add('on');
+        else b.classList.remove('on');
+        b.textContent = liveCaption(lives, i);
+        b.setAttribute('data-live-id', lv.id || '');
       });
-      box.appendChild(b);
-    });
+    } else {
+      box.dataset.liveIds = wantIds;
+      box.innerHTML = '';
+      lives.forEach(function(lv, i) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'user-live-btn' + (lv.on ? ' on' : '');
+        b.textContent = liveCaption(lives, i);
+        b.setAttribute('data-live-id', lv.id || '');
+        b.addEventListener('click', function(ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          var id = b.getAttribute('data-live-id');
+          if(id) cmdFrame('watch', {
+            id: id,
+            userId: st.id || '',
+            liveKey: lv.liveKey || '',
+          });
+        });
+        box.appendChild(b);
+      });
+    }
     box.hidden = !lives.length;
-    if(ident) ident.querySelectorAll('.user-mute-btn').forEach(function(b) { b.remove(); });
     var aud = who.querySelector('.spartan-user-audio');
     if(st.me) {
+      if(ident) {
+        var selfMute = ident.querySelector('.user-mute-btn');
+        if(selfMute) selfMute.remove();
+      }
       if(aud) aud.remove();
       who.classList.remove('vol-open');
       return;
     }
     if(ident) {
-      var mute = document.createElement('button');
-      mute.type = 'button';
-      mute.className = 'user-mute-btn';
+      var mute = ident.querySelector('.user-mute-btn');
+      if(!mute) {
+        mute = document.createElement('button');
+        mute.type = 'button';
+        mute.className = 'user-mute-btn';
+        mute.textContent = 'Mudo';
+        mute.addEventListener('click', function(ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          var now = liveByNick[nick] || st;
+          if(now.id) cmdFrame('mute', { userId: now.id });
+        });
+        ident.appendChild(mute);
+      }
+      mute.classList.remove('mute-local', 'mute-remote', 'mute-both');
       if(st.muteLocal && st.muteRemote) mute.classList.add('mute-both');
       else if(st.muteLocal) mute.classList.add('mute-local');
       else if(st.muteRemote) mute.classList.add('mute-remote');
       mute.title = st.muteRemote
         ? (st.muteLocal ? 'Você não ouve (amarelo) e o microfone dele está desligado (vermelho)' : 'Microfone desligado (ele ou um admin)')
         : 'Mudo só no seu fone';
-      mute.textContent = 'Mudo';
-      mute.addEventListener('click', function(ev) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        var now = liveByNick[nick] || st;
-        if(now.id) cmdFrame('mute', { userId: now.id });
-      });
-      ident.appendChild(mute);
     }
     if(volOpenNick === nick) {
       who.classList.add('vol-open');
@@ -589,20 +615,58 @@
         aud.className = 'spartan-user-audio';
         who.appendChild(aud);
       }
-      aud.innerHTML = '';
-      var sl = document.createElement('input');
-      sl.type = 'range';
-      sl.min = '0';
-      sl.max = '200';
-      sl.value = String(st.vol == null ? 100 : st.vol);
-      sl.className = 'user-vol-slider';
-      sl.title = 'Volume';
-      sl.addEventListener('input', function() {
-        var now = liveByNick[nick] || st;
-        if(now.id) cmdFrame('vol', { userId: now.id, vol: Number(sl.value) });
-      });
-      sl.addEventListener('click', function(ev) { ev.stopPropagation(); });
-      aud.appendChild(sl);
+      var vol = st.vol == null ? 100 : Number(st.vol);
+      if(!(vol >= 0)) vol = 100;
+      vol = Math.max(0, Math.min(400, Math.round(vol / 5) * 5));
+      var sl = aud.querySelector('.user-vol-slider');
+      var lab = aud.querySelector('.user-vol-lab');
+      if(!sl) {
+        aud.innerHTML = '';
+        sl = document.createElement('input');
+        sl.type = 'range';
+        sl.min = '0';
+        sl.max = '400';
+        sl.step = '5';
+        sl.className = 'user-vol-slider';
+        sl.title = 'Volume (seu fone)';
+        lab = document.createElement('span');
+        lab.className = 'user-vol-lab';
+        function sendVol() {
+          var v = parseInt(sl.value, 10) || 0;
+          v = Math.max(0, Math.min(400, Math.round(v / 5) * 5));
+          sl.value = String(v);
+          lab.textContent = v + '%';
+          var now = liveByNick[nick] || st;
+          if(now.id) cmdFrame('vol', { userId: now.id, vol: v });
+        }
+        sl.addEventListener('input', function(ev) {
+          ev.stopPropagation();
+          sendVol();
+        });
+        sl.addEventListener('change', function(ev) {
+          ev.stopPropagation();
+          sendVol();
+        });
+        sl.addEventListener('click', function(ev) { ev.stopPropagation(); });
+        sl.addEventListener('mousedown', function(ev) { ev.stopPropagation(); });
+        sl.addEventListener('wheel', function(ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          var cur = parseInt(sl.value, 10) || 0;
+          var next = cur + (ev.deltaY < 0 ? 5 : -5);
+          next = Math.max(0, Math.min(400, next));
+          sl.value = String(next);
+          sendVol();
+        }, { passive: false });
+        aud.appendChild(sl);
+        aud.appendChild(lab);
+      }
+      if(document.activeElement !== sl) {
+        sl.value = String(vol);
+        lab.textContent = vol + '%';
+      } else {
+        lab.textContent = (parseInt(sl.value, 10) || 0) + '%';
+      }
     } else {
       who.classList.remove('vol-open');
       if(aud) aud.remove();
@@ -712,12 +776,9 @@
             ident.appendChild(dot);
             ident.appendChild(nm);
             who.appendChild(ident);
-            who.draggable = canManage();
-            who.addEventListener('dragstart', function(ev) {
-              ev.dataTransfer.setData('text/plain', nick);
-            });
+            who.draggable = false;
             who.addEventListener('click', function(ev) {
-              if(ev.target.closest && ev.target.closest('.user-live-btn, .user-mute-btn, .user-vol-slider')) return;
+              if(ev.target.closest && ev.target.closest('.user-live-btn, .user-mute-btn, .user-vol-slider, .user-vol-lab, .spartan-user-audio')) return;
               var key = nick.toLowerCase();
               var st = liveByNick[key] || {};
               if(st.me) return;
@@ -732,42 +793,6 @@
       });
       if(wrap.children.length > 1) box.appendChild(wrap);
     });
-  }
-
-  function paintModTools(box) {
-    var tools = document.createElement('div');
-    tools.className = 'spartan-chan-tools';
-    var tin = document.createElement('input');
-    tin.type = 'text';
-    tin.placeholder = 'Novo canal';
-    var kind = document.createElement('select');
-    kind.innerHTML = '<option value="text">Texto</option><option value="voice">Voz</option>';
-    var add = document.createElement('button');
-    add.type = 'button';
-    add.textContent = 'Criar canal';
-    add.addEventListener('click', function() {
-      var cr = cred();
-      var t = (tin.value || '').trim();
-      if(!t) return;
-      var cat = kind.value === 'voice' ? 'voz' : 'texto';
-      apiPost('/server-channel', {
-        user: cr.user, password: cr.pass, server: detail.id,
-        title: t, kind: kind.value, category: cat,
-      }).then(function() { openServer(detail.id, current.channel); }).catch(function(err) {
-        var hint = $('spartan-channel-hint');
-        if(hint) { hint.hidden = false; hint.textContent = err.message || 'Não criou o canal.'; }
-      });
-    });
-    tools.appendChild(tin);
-    tools.appendChild(kind);
-    tools.appendChild(add);
-    if(detail.invite) {
-      var inv = document.createElement('p');
-      inv.className = 'spartan-invite-copy';
-      inv.textContent = 'Link: ' + location.origin + '/#/i/' + encodeURIComponent(detail.invite);
-      tools.appendChild(inv);
-    }
-    box.appendChild(tools);
   }
 
   function paintPeople() {
@@ -793,10 +818,7 @@
     function row(p, online) {
       var el = document.createElement('div');
       el.className = 'spartan-people-card' + (online ? '' : ' off');
-      el.draggable = canManage() && online;
-      el.addEventListener('dragstart', function(ev) {
-        ev.dataTransfer.setData('text/plain', p.nick || '');
-      });
+      el.draggable = false;
       var av = document.createElement('span');
       av.className = 'spartan-people-av';
       av.textContent = ((p.nick || '?').charAt(0) || '?').toUpperCase();

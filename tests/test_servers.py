@@ -508,6 +508,18 @@ class ServersModelTests(unittest.TestCase):
         kept = reg.find_channel(reg.ensure_servers()["servers"]["spartan"], "ausentes")
         self.assertEqual(kept["title"], "Descanso")
 
+    def test_ensure_recreates_missing_ausentes(self):
+        s = reg.ensure_servers()["servers"]["spartan"]
+        s["channels"] = [c for c in s["channels"] if c.get("key") != "ausentes"]
+        reg.save_servers_unlocked({"servers": {"spartan": s}})
+        again = reg.ensure_servers()["servers"]["spartan"]
+        afk = reg.find_channel(again, "ausentes")
+        self.assertIsNotNone(afk)
+        self.assertTrue(afk.get("afk"))
+        self.assertTrue(afk.get("locked"))
+        self.assertTrue(afk.get("group"))
+        self.assertTrue((reg.GROUPS / f"{afk['group']}.json").exists())
+
     def test_reorder_voice_channels(self):
         s = reg.ensure_servers()["servers"]["spartan"]
         ids = [c["id"] for c in s["channels"] if c.get("kind") == "voice"]
@@ -585,9 +597,9 @@ class ServersUiTests(unittest.TestCase):
         self.assertIn('id="spartan-text-pane"', self.index)
         self.assertIn("#/s/", self.shell)
         self.assertIn("goServer", self.shell)
-        self.assertIn("spartan-servers.js?v=19", self.index)
-        self.assertIn("spartan-shell.js?v=8", self.index)
-        self.assertIn("spartan-shell.css?v=26", self.index)
+        self.assertIn("spartan-servers.js?v=24", self.index)
+        self.assertIn("spartan-shell.js?v=9", self.index)
+        self.assertIn("spartan-shell.css?v=32", self.index)
         self.assertIn('id="spartan-login-form"', self.index)
         self.assertIn("#/convidado", self.index)
         self.assertIn("#/i/", self.shell)
@@ -626,9 +638,10 @@ class ServersUiTests(unittest.TestCase):
 
     def test_user_bar_and_no_create_channel_in_rail(self):
         js = (ROOT / "static" / "spartan-servers.js").read_text(encoding="utf-8")
-        paint = js.split("function paintChannels()", 1)[1].split("function paintModTools", 1)[0]
-        self.assertNotIn("paintModTools", paint)
-        self.assertNotIn("Criar canal", paint)
+        paint = js.split("function paintChannels()", 1)[1].split("function paintPeople", 1)[0]
+        self.assertNotIn("paintModTools", js)
+        self.assertNotIn("Criar canal", js)
+        self.assertNotIn("Novo canal", paint)
         self.assertIn('id="spartan-user-bar"', self.index)
         self.assertIn('id="spartan-user-mic"', self.index)
         self.assertIn('id="spartan-user-share"', self.index)
@@ -667,6 +680,18 @@ class ServersUiTests(unittest.TestCase):
         self.assertIn("volOpenNick", js)
         self.assertIn("scrollTextToLatest", js)
         self.assertIn("mute-both", js)
+        extras = js.split("function paintUserExtras(who)", 1)[1].split("function applyRoster", 1)[0]
+        self.assertIn("user-vol-lab", extras)
+        self.assertIn("wheel", extras)
+        vol_css = self.css.split(".spartan-user-audio {", 1)[1].split(".spartan-chan-ident .user-mute-btn", 1)[0]
+        self.assertIn("flex-direction: column", vol_css)
+        self.assertIn("padding: 0 0.05rem 0.1rem 1.7rem", vol_css)
+        self.assertIn("overflow: visible", vol_css)
+        self.assertIn("width: 100%", vol_css)
+        self.assertNotIn("margin: 0.12rem 0 0 1.7rem", vol_css)
+        lab_css = self.css.split(".spartan-user-audio .user-vol-lab {", 1)[1].split(".spartan-chan-user:hover", 1)[0]
+        self.assertIn("text-align: center", lab_css)
+        self.assertIn("white-space: nowrap", lab_css)
         extras = js.split("function paintUserExtras(who)", 1)[1].split("function applyRoster", 1)[0]
         self.assertIn("volOpenNick === nick", extras)
         self.assertIn("mute-local", extras)

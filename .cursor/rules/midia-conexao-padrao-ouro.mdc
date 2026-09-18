@@ -1,0 +1,29 @@
+---
+description: Padrão ouro de lives (zero mídia até o clique) e reconexão silenciosa
+alwaysApply: true
+---
+
+# Padrão ouro — lives e conexão
+
+Não mude isto sem **pedido explícito neste chat** e testes de regressão (Go + Python + runtime JS).
+
+## Lives
+
+- Indicador Tela/Câmera vem do catálogo `spartanLivesV1` em `user.data`. **Não** depende de downstream.
+- Pedido padrão: `{'': ['audio'], screenshare: []}`. Antes do clique: zero downstream de tela, zero `RTCPeerConnection` receptor, zero RTP de vídeo.
+- No clique: câmera `audio + video`; tela `video` (ou `audio + video` se o espectador ligar o som). **Nunca** `video-low`.
+- Assinatura Galene direcionada: `requestStreamById` com `dest` (publisher) + `id` (streamId). **Não** usar o campo `source` (o Galene fecha com "spoofed client id"). Pedido vazio cancela só aquela live. Capacidade `spartan-request-by-id-v1` no handshake.
+- Intenção de assistir: `nick + liveKey`. Várias telas do mesmo nick. Fechar cancela a assinatura; o botão fica enquanto a origem transmite.
+
+## Reconexão
+
+- Snapshot **antes** de `protocol.js` fechar PC/streams (`onbeforeclose`). Tracks locais sobrevivem à queda não intencional. Parar tracks só em logout, rejeição ou fim da graça de 60 s.
+- Fechar PC, timers e callbacks sem `sc.up = {}` órfão.
+- Geração monotônica por tentativa: callback antigo não autentica nem dá join na conexão nova. Tentativa só termina após `gotJoined('join')`, republicação e restauração.
+- Queda curta: invisível. Depois de 60 s: overlay e encerra mídia.
+- Snapshot imutável no ciclo; não sobrescrever com vazio; reassinar só lives que o usuário já assistia.
+
+## Não mexer
+
+- `resizePeers`, `showHideMedia`, `gotDownStream` (além dos ganchos de sinalização/reconexão), CSS do grid.
+- Volume 0–400% passo 5% com `%` e rodinha; sem arrastar usuário na lista do canal.

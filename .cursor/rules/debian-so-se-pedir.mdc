@@ -1,0 +1,21 @@
+---
+description: Debian/pacote estático só quando o usuário pedir explicitamente
+alwaysApply: true
+---
+
+# Debian e pacote estático — só se eu pedir
+
+Trabalho padrão deste projeto é o **lab local** (WSL / `127.0.0.1` / `compose` / `galene:local`).
+
+## Proibido sem pedido explícito nesta mensagem
+
+- Montar, zerar ou copiar `S:\Downloads\galene-sala-static`
+- Dar comando SSH/`cp` para o Debian
+- Falar em “manda pro Debian”, “pacote”, LEIA-ME de deploy remoto
+- Rebuild/deploy pensado no host Debian
+
+## Quando pode
+
+Só se o usuário **pedir** nesta mensagem (ex.: “monta o pacote”, “manda pro Debian”, “SSH”).
+
+Até lá: conserta e valida **aqui** (lab local). A regra `pacote-galene-sala-static.mdc` só vale quando ele pedir o pacote.

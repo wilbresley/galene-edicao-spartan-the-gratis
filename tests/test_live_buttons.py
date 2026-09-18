@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Botões Câmera/Tela: só com vídeo/tela real; mic = bolinha."""
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ class LiveButtonsTests(unittest.TestCase):
             re.MULTILINE | re.DOTALL,
         )
         self.assertIsNotNone(tog)
-        self.assertIn("spartanHideOwnStream[c.id]", tog.group(0))
+        self.assertIn("spartanHideOwnStream[hid]", tog.group(0))
 
     def test_shell_peers_keep_grid(self):
         css = (ROOT / "static" / "galene-spartan.css").read_text(encoding="utf-8")
@@ -144,11 +144,24 @@ class ScreenShareSoundTests(unittest.TestCase):
         self.assertNotIn("this.request({'': ['audio', 'video']})", self.js)
         self.assertIn("function spartanReleaseUnwatchedVideo(c)", self.js)
         self.assertIn("let spartanLiveSound = {}", self.js)
-        self.assertIn("window._spartanSoundSnap = spartanSnapshotLiveSound()", self.js)
+        self.assertIn("spartanFreezeSnap('_spartanSoundSnap', spartanSnapshotLiveSound())", self.js)
         self.assertIn("spartanMaybeRestoreLiveSound(c)", self.js)
         self.assertIn("media.muted = true", self.js)
         self.assertIn("spartanReapplyAllLiveSound", self.js)
         self.assertIn("visibilitychange", self.js)
+        self.assertIn("spartanLivesV1", self.js)
+        self.assertIn("requestStreamById", self.js)
+        self.assertIn("spartan-request-by-id-v1", self.js)
+        self.assertIn("function spartanCatalogLives", self.js)
+        self.assertIn("spartanWatchIntent", self.js)
+        self.assertIn("spartanSweepOrphanPeers", self.js)
+        self.assertIn("_spartanDownHooked", self.js)
+        cancel = self.js.split("function spartanSendLiveRequest", 1)[1].split("function spartanToggleLive", 1)[0]
+        self.assertIn("requestStreamById(userId, sid, cancelReq)", cancel)
+        self.assertIn("spartanMarkCanceledStream", self.js)
+        self.assertIn("NÃO fecha a PC local", self.js)
+        self.assertIn("NÃO manda requestStream([])", self.js)
+        self.assertIn("spartanIsWatching(spartanLiveRefFrom(c))", self.js)
 
     def test_volume_click_uses_closest_not_classlist_on_target(self):
         m = re.search(
@@ -201,8 +214,8 @@ class QualityHudAndMicTests(unittest.TestCase):
         self.assertIn("spartan-quality.js?v=1", self.html)
         self.assertIn("spartan-net.js?v=1", self.html)
         self.assertIn("spartan-watch.js?v=1", self.html)
-        self.assertIn("galene.js?v=126", self.html)
-        self.assertIn("protocol.js?v=4", self.html)
+        self.assertIn("galene.js?v=134", self.html)
+        self.assertIn("protocol.js?v=9", self.html)
         self.assertIn('id="filterform" hidden', self.html)
 
 

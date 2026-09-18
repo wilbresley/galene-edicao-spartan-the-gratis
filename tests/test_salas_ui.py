@@ -59,7 +59,7 @@ class SalasUiTests(unittest.TestCase):
         block = self.css.split("spartan-v95", 1)[1][:1200]
         self.assertIn("align-items:center!important", block)
         self.assertIn("align-self:center!important", block)
-        self.assertIn("spartan-shell.css?v=26", self.index)
+        self.assertIn("spartan-shell.css?v=31", self.index)
         shell = (ROOT / "static" / "spartan-shell.css").read_text(encoding="utf-8")
         self.assertIn("align-self: center !important", shell)
 

@@ -1014,12 +1014,17 @@ function paintServerChanRow(d, ch){
   var from=ev.dataTransfer.getData('text/plain');
   if(from) reorderServerChans(d, from, ch.id);
  });
+ var nameBox=document.createElement('div');
+ nameBox.className='server-chan-namebox';
  var lab=document.createElement('span');
+ lab.className='server-chan-name';
  lab.textContent=ch.title||ch.id;
+ nameBox.appendChild(lab);
  var acts=document.createElement('div');
  acts.className='server-chan-acts';
  var ren=document.createElement('button');
  ren.type='button';
+ ren.className='btn-blue';
  ren.textContent='Renomear';
  ren.onclick=function(){
   uiPrompt('Novo nome de '+(ch.title||ch.id)+':').then(function(t){
@@ -1028,20 +1033,24 @@ function paintServerChanRow(d, ch){
   });
  };
  acts.appendChild(ren);
- if(!ch.locked){
-  var del=document.createElement('button');
-  del.type='button';
-  del.className='ghost';
-  del.textContent='Apagar';
+ var del=document.createElement('button');
+ del.type='button';
+ del.className='del';
+ del.textContent='Apagar';
+ if(ch.locked){
+  del.disabled=true;
+  del.classList.add('is-locked');
+  del.title='Sala fixa — não pode apagar';
+ } else {
   del.onclick=function(){
    uiConfirm('Apagar a sala '+(ch.title||ch.id)+'?').then(function(ok2){
     if(!ok2) return;
     reg('/server-channel-delete',{user:user,password:pass,server:d.id,channel:ch.id}).then(function(){ reloadServers(); }).catch(function(e){ uiMsg(e.message); });
    });
   };
-  acts.appendChild(del);
  }
- row.appendChild(grip); row.appendChild(lab); row.appendChild(acts);
+ acts.appendChild(del);
+ row.appendChild(grip); row.appendChild(nameBox); row.appendChild(acts);
  return row;
 }
 async function loadServers(){
@@ -1084,14 +1093,14 @@ async function loadServers(){
      var inp=document.createElement('input');
      inp.type='text'; inp.readOnly=true; inp.className='server-invite-url';
      inp.value=location.origin+'/#/i/'+encodeURIComponent(d.invite);
-     var copy=document.createElement('button'); copy.type='button'; copy.textContent='Copiar link';
+     var copy=document.createElement('button'); copy.type='button'; copy.className='btn-blue'; copy.textContent='Copiar link';
      copy.onclick=function(){
       var v=inp.value;
       function ok(){ copy.textContent='Copiado'; setTimeout(function(){ copy.textContent='Copiar link'; }, 1200); }
       if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(ok).catch(function(){ inp.select(); document.execCommand('copy'); ok(); });
       else { inp.select(); document.execCommand('copy'); ok(); }
      };
-     var rot=document.createElement('button'); rot.type='button'; rot.textContent='Trocar link';
+     var rot=document.createElement('button'); rot.type='button'; rot.className='btn-amber'; rot.textContent='Trocar link';
      rot.onclick=function(){ reg('/server-invite-rotate',{user:user,password:pass,server:d.id}).then(function(){ reloadServers(); }).catch(function(e){ uiMsg(e.message); }); };
      inv.appendChild(inp); inv.appendChild(copy); inv.appendChild(rot);
      card.appendChild(inv);
@@ -1101,9 +1110,9 @@ async function loadServers(){
     (d.pending||[]).forEach(function(p){
      var row=document.createElement('div'); row.className='server-pend-row';
      var who=document.createElement('span'); who.textContent=p.nick+' pediu entrada';
-     var ok=document.createElement('button'); ok.type='button'; ok.textContent='Aprovar';
+     var ok=document.createElement('button'); ok.type='button'; ok.className='okbtn'; ok.textContent='Aprovar';
      ok.onclick=function(){ reg('/server-approve',{user:user,password:pass,server:d.id,nick:p.nick}).then(function(){ reloadServers(); }).catch(function(e){ uiMsg(e.message); }); };
-     var no=document.createElement('button'); no.type='button'; no.className='ghost'; no.textContent='Recusar';
+     var no=document.createElement('button'); no.type='button'; no.className='del'; no.textContent='Recusar';
      no.onclick=function(){ reg('/server-deny',{user:user,password:pass,server:d.id,nick:p.nick}).then(function(){ reloadServers(); }).catch(function(e){ uiMsg(e.message); }); };
      row.appendChild(who); row.appendChild(ok); row.appendChild(no); pendBox.appendChild(row);
     });
@@ -1131,25 +1140,79 @@ async function loadServers(){
     var chTitle=document.createElement('input'); chTitle.type='text'; chTitle.placeholder='Nome da nova sala';
     var chKind=document.createElement('select');
     chKind.innerHTML='<option value="text">Texto</option><option value="voice">Voz</option>';
-    var chBtn=document.createElement('button'); chBtn.type='button'; chBtn.textContent='Criar sala';
+    try{
+     var lastKind=sessionStorage.getItem('spartanAdminChanKind')||'text';
+     if(lastKind==='voice'||lastKind==='text') chKind.value=lastKind;
+    }catch(e){}
+    var chBtn=document.createElement('button'); chBtn.type='button'; chBtn.className='okbtn'; chBtn.textContent='Criar sala';
     chBtn.onclick=function(){
      var t=(chTitle.value||'').trim(); if(!t) return;
-     var kind=chKind.value, cat=kind==='voice'?'voz':'texto';
-     reg('/server-channel',{user:user,password:pass,server:d.id,title:t,kind:kind,category:cat}).then(function(){ reloadServers(); }).catch(function(e){ uiMsg(e.message); });
+     var kind=chKind.value||'text', cat=kind==='voice'?'voz':'texto';
+     try{ sessionStorage.setItem('spartanAdminChanKind', kind); }catch(e){}
+     reg('/server-channel',{user:user,password:pass,server:d.id,title:t,kind:kind,category:cat}).then(function(){
+      chTitle.value='';
+      reloadServers();
+     }).catch(function(e){ uiMsg(e.message); });
     };
     row1.appendChild(chTitle); row1.appendChild(chKind); row1.appendChild(chBtn);
     tools.appendChild(row1);
     if(PANEL_SCOPE==='admin'){
+     var mods=[];
+     var seenMod={};
+     (d.mods||[]).forEach(function(n){
+      n=String(n||'').trim().toLowerCase();
+      if(n && !seenMod[n]){ seenMod[n]=true; mods.push(n); }
+     });
+     (d.members||[]).forEach(function(m){
+      if(!m || !m.nick || m.role!=='mod') return;
+      var n=String(m.nick).trim().toLowerCase();
+      if(n && !seenMod[n]){ seenMod[n]=true; mods.push(n); }
+     });
+     mods.sort(function(a,b){ return a.localeCompare(b,'pt',{sensitivity:'base'}); });
+     var modList=document.createElement('div');
+     modList.className='server-mod-list';
+     var modHead=document.createElement('h4');
+     modHead.className='server-mod-title';
+     modHead.textContent='Moderadores';
+     modList.appendChild(modHead);
+     if(!mods.length){
+      var empty=document.createElement('p');
+      empty.className='server-col-empty';
+      empty.textContent='Nenhum moderador neste servidor.';
+      modList.appendChild(empty);
+     } else {
+      mods.forEach(function(nick){
+       var mrow=document.createElement('div');
+       mrow.className='server-mod-row';
+       var lab=document.createElement('span');
+       lab.textContent=nick;
+       var rem=document.createElement('button');
+       rem.type='button';
+       rem.className='del';
+       rem.textContent='Remover';
+       rem.onclick=function(){
+        uiConfirm('Remover o moderador '+nick+'?').then(function(ok2){
+         if(!ok2) return;
+         reg('/server-mod',{user:user,password:pass,server:d.id,nick:nick,on:false}).then(function(){
+          uiMsg('Moderador removido.');
+          reloadServers();
+         }).catch(function(e){ uiMsg(e.message); });
+        });
+       };
+       mrow.appendChild(lab); mrow.appendChild(rem); modList.appendChild(mrow);
+      });
+     }
+     tools.appendChild(modList);
      var row2=document.createElement('div'); row2.className='server-tool-row';
      var nickIn=document.createElement('select');
      var opt0=document.createElement('option'); opt0.value=''; opt0.textContent='Nick do moderador'; nickIn.appendChild(opt0);
      (d.members||[]).forEach(function(m){
-      if(!m.nick || m.role==='admin') return;
+      if(!m.nick || m.role==='admin' || m.role==='mod') return;
       var o=document.createElement('option'); o.value=m.nick;
-      o.textContent=m.nick+(m.role==='mod'?' (já é moderador)':'');
+      o.textContent=m.nick;
       nickIn.appendChild(o);
      });
-     var modBtn=document.createElement('button'); modBtn.type='button'; modBtn.textContent='Tornar moderador';
+     var modBtn=document.createElement('button'); modBtn.type='button'; modBtn.className='btn-blue'; modBtn.textContent='Tornar moderador';
      modBtn.onclick=function(){
       var nick=(nickIn.value||'').trim().toLowerCase(); if(!nick) return;
       reg('/server-mod',{user:user,password:pass,server:d.id,nick:nick,on:true}).then(function(){ uiMsg('Moderador no sidecar (na call continua Usuário).'); reloadServers(); }).catch(function(e){ uiMsg(e.message); });
@@ -1158,7 +1221,7 @@ async function loadServers(){
      tools.appendChild(row2);
     }
     if(!d.official && (PANEL_SCOPE==='admin' || d.my_role==='admin')){
-     var delSrv=document.createElement('button'); delSrv.type='button'; delSrv.className='ghost'; delSrv.textContent='Apagar servidor';
+     var delSrv=document.createElement('button'); delSrv.type='button'; delSrv.className='del'; delSrv.textContent='Apagar servidor';
      delSrv.onclick=function(){ uiConfirm('Apagar este servidor? As calls Galene não somem sozinhas.').then(function(ok2){ if(!ok2) return; reg('/server-delete',{user:user,password:pass,server:d.id}).then(function(){ reloadServers(); }).catch(function(e){ uiMsg(e.message); }); }); };
      tools.appendChild(delSrv);
     }

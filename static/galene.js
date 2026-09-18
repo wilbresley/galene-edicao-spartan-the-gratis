@@ -280,6 +280,11 @@ function isFirefox() {
 const SPARTAN_GRID_MAX = 50;
 /** @type {Record<string, boolean>} */
 let spartanWatch = {};
+/** Intenção de assistir por nick + liveKey (sobrevive a troca de streamId). */
+/** @type {Record<string, boolean>} */
+let spartanWatchIntent = {};
+let spartanConnGen = 0;
+let spartanLastLivesJson = '';
 /** @type {Record<string, boolean>} */
 let spartanHasVideo = {};
 /** @type {Record<string, boolean>} */
@@ -429,16 +434,23 @@ function spartanApplyDownRequest(c) {
         spartanBoostWatchedReceivers(c);
         return;
     }
-    // Fechou / não clicou: para o vídeo neste cliente (a transmissão da pessoa segue).
-    if(c.label === 'screenshare')
-        c.request([]);
-    else
-        c.request(['audio']);
+    // Fechou / não clicou: encerra a assinatura desta live. O indicador
+    // continua vindo do catálogo spartanLivesV1, sem mídia de fundo.
+    // Tela: NÃO manda requestStream([]) aqui. O cancel vai por
+    // requestStreamById; se o ById já apagou a down no servidor, um
+    // requestStream na mesma id devolve ErrUnknownId e derruba o WS
+    // (sua live some para os outros).
+    if(c.label === 'screenshare') {
+        spartanReleaseUnwatchedVideo(c);
+        return;
+    }
+    c.request(['audio']);
     spartanReleaseUnwatchedVideo(c);
 }
 
 /**
  * Padrão da sala: voz sim, imagem só das lives que você clicou.
+ * A existência das telas vem por metadados; nenhuma tela é baixada aqui.
  */
 function spartanDefaultDownRequest() {
     return {'': ['audio'], screenshare: []};
@@ -580,10 +592,11 @@ function spartanNotifyShellRosterNow() {
         let list = spartanUserLives(id);
         for(let i = 0; i < list.length; i++) {
             let c = list[i];
-            let on = c.up ? !spartanHideOwnStream[c.id] : !!spartanWatch[c.id];
+            let on = c.up ? !spartanHideOwnStream[c.id || c.streamId] : spartanIsWatching(c);
             lives.push({
-                id: c.id,
-                label: c.label === 'screenshare' ? 'screenshare' : 'camera',
+                id: c.streamId || c.id,
+                liveKey: c.liveKey || '',
+                label: c.type === 'screenshare' || c.label === 'screenshare' ? 'screenshare' : 'camera',
                 on: !!on,
                 up: !!c.up,
             });
@@ -600,6 +613,30 @@ function spartanNotifyShellRosterNow() {
         });
     }
     spartanPostToParent({t: 'spartan-roster', users: users});
+}
+
+/** @type {Record<string, number>} ids de live canceladas (anti offer atrasado) */
+let spartanCanceledStreams = {};
+
+function spartanMarkCanceledStream(sid) {
+    if(!sid)
+        return;
+    spartanCanceledStreams[sid] = Date.now();
+    let now = Date.now();
+    for(let id in spartanCanceledStreams) {
+        if(now - spartanCanceledStreams[id] > 15000)
+            delete spartanCanceledStreams[id];
+    }
+}
+
+function spartanIsCanceledStream(sid) {
+    if(!sid || !spartanCanceledStreams[sid])
+        return false;
+    if(Date.now() - spartanCanceledStreams[sid] > 15000) {
+        delete spartanCanceledStreams[sid];
+        return false;
+    }
+    return true;
 }
 
 function spartanIsAfk() {
@@ -753,48 +790,235 @@ function spartanFindByLocalId(localId) {
  * @param {string} userId
  * @returns {Stream[]}
  */
+function spartanLiveKind(c) {
+    if(!c)
+        return 'camera';
+    let t = c.type || c.label;
+    return t === 'screenshare' ? 'screenshare' : 'camera';
+}
+
+function spartanAssignLiveKey(c) {
+    if(!c || !c.up)
+        return;
+    if(!c.userdata)
+        c.userdata = {};
+    if(c.userdata.liveKey)
+        return;
+    let kind = spartanLiveKind(c);
+    let used = {};
+    if(serverConnection) {
+        for(let id in serverConnection.up) {
+            let o = serverConnection.up[id];
+            if(o && o !== c && o.userdata && o.userdata.liveKey && o.label === c.label)
+                used[o.userdata.liveKey] = true;
+        }
+    }
+    let n = 1;
+    while(used[kind + ':' + n])
+        n++;
+    c.userdata.liveKey = kind + ':' + n;
+}
+
+function spartanBuildLivesCatalog() {
+    let lives = [];
+    if(!serverConnection)
+        return lives;
+    for(let id in serverConnection.up) {
+        let c = serverConnection.up[id];
+        if(!spartanStreamShowsLiveBtn(c))
+            continue;
+        spartanAssignLiveKey(c);
+        lives.push({
+            liveKey: c.userdata.liveKey,
+            type: spartanLiveKind(c),
+            streamId: c.id,
+            state: 'live',
+        });
+    }
+    return lives;
+}
+
+function spartanIntentKey(userId, liveKey) {
+    let nick = '';
+    try {
+        let u = serverConnection && serverConnection.users[userId];
+        nick = (u && u.username) || '';
+    } catch(e) {}
+    if(!nick)
+        nick = userId || '';
+    return nick + '\t' + (liveKey || '');
+}
+
+function spartanLiveRefFrom(c) {
+    if(!c)
+        return null;
+    if(c.liveKey && (c.streamId || c.id) && c.userId != null && !c.pc) {
+        c.id = c.streamId || c.id;
+        c.label = c.label || (c.type === 'screenshare' ? 'screenshare' : 'camera');
+        c.type = c.type || (c.label === 'screenshare' ? 'screenshare' : 'camera');
+        return c;
+    }
+    let up = !!c.up;
+    let userId = up ? (serverConnection && serverConnection.id) : c.source;
+    let type = spartanLiveKind(c);
+    if(c.up)
+        spartanAssignLiveKey(c);
+    let liveKey = (c.userdata && c.userdata.liveKey) || '';
+    if(!liveKey && !up && userId && serverConnection) {
+        let cat = spartanCatalogLives(userId);
+        for(let i = 0; i < cat.length; i++) {
+            if(cat[i].streamId === c.id) {
+                liveKey = cat[i].liveKey || '';
+                break;
+            }
+        }
+    }
+    if(!liveKey)
+        liveKey = type + ':' + c.id;
+    if(!c.userdata)
+        c.userdata = {};
+    if(!c.userdata.liveKey)
+        c.userdata.liveKey = liveKey;
+    return {
+        liveKey: liveKey,
+        type: type,
+        streamId: c.id,
+        userId: userId,
+        up: up,
+        stream: c,
+        label: c.label || type,
+        id: c.id,
+    };
+}
+
+function spartanIsWatching(ref) {
+    if(!ref)
+        return false;
+    let sid = ref.streamId || ref.id;
+    if(sid && spartanWatch[sid])
+        return true;
+    let key = spartanIntentKey(ref.userId || ref.source, ref.liveKey);
+    return !!(key && spartanWatchIntent[key]);
+}
+
+/**
+ * Limpa intenção de assistir desta live (sid + liveKey do catálogo).
+ * Evita botão Tela/Câmera ficar .on depois do X do grid.
+ * @param {Stream|object} ref
+ */
+function spartanClearWatching(ref) {
+    if(!ref)
+        return;
+    let sid = ref.streamId || ref.id || '';
+    let userId = ref.userId || ref.source || '';
+    if(sid)
+        delete spartanWatch[sid];
+    function dropIntent(liveKey) {
+        let k = spartanIntentKey(userId, liveKey);
+        if(k)
+            delete spartanWatchIntent[k];
+    }
+    dropIntent(ref.liveKey);
+    if(sid)
+        dropIntent(spartanLiveKind(ref) + ':' + sid);
+    if(!userId || !serverConnection)
+        return;
+    let lives = spartanUserLives(userId);
+    for(let i = 0; i < lives.length; i++) {
+        let lv = lives[i];
+        let lvSid = lv.streamId || lv.id;
+        if((sid && lvSid === sid) || (ref.liveKey && lv.liveKey === ref.liveKey)) {
+            dropIntent(lv.liveKey);
+            if(lvSid)
+                delete spartanWatch[lvSid];
+        }
+    }
+}
+
+function spartanCatalogLives(userId) {
+    if(!serverConnection || !userId)
+        return [];
+    let u = serverConnection.users[userId];
+    let data = (u && u.data) || {};
+    let list = data.spartanLivesV1;
+    if(!Array.isArray(list))
+        return [];
+    let out = [];
+    for(let i = 0; i < list.length; i++) {
+        let item = list[i];
+        if(!item || !item.streamId)
+            continue;
+        let type = item.type === 'screenshare' ? 'screenshare' : 'camera';
+        let stream = serverConnection.down[item.streamId] || null;
+        if(userId === serverConnection.id)
+            stream = serverConnection.up[item.streamId] || stream;
+        out.push({
+            liveKey: item.liveKey || (type + ':' + item.streamId),
+            type: type,
+            streamId: item.streamId,
+            userId: userId,
+            up: userId === serverConnection.id,
+            stream: stream,
+            label: type,
+            id: item.streamId,
+            state: item.state || 'live',
+        });
+    }
+    return out;
+}
+
+/**
+ * Lives do usuário: catálogo em user.data, não a existência de downstream.
+ * @param {string} userId
+ * @returns {Array}
+ */
 function spartanUserLives(userId) {
     if(!serverConnection || !userId)
         return [];
-    let map = (userId === serverConnection.id) ?
-        serverConnection.up : serverConnection.down;
-    /** @type {Stream[]} */
-    let lives = [];
-    for(let id in map) {
-        let c = map[id];
-        if(userId !== serverConnection.id && c.source !== userId)
-            continue;
-        if(!spartanStreamShowsLiveBtn(c))
-            continue;
-        lives.push(c);
+    if(userId === serverConnection.id) {
+        /** @type {Array} */
+        let lives = [];
+        for(let id in serverConnection.up) {
+            let c = serverConnection.up[id];
+            if(!spartanStreamShowsLiveBtn(c))
+                continue;
+            lives.push(spartanLiveRefFrom(c));
+        }
+        lives.sort(function(a, b) {
+            if(a.type === b.type)
+                return String(a.liveKey).localeCompare(String(b.liveKey));
+            if(a.type === 'camera')
+                return -1;
+            if(b.type === 'camera')
+                return 1;
+            return String(a.type || '').localeCompare(String(b.type || ''));
+        });
+        return lives;
     }
-    lives.sort(function(a, b) {
-        if(a.label === b.label)
-            return String(a.id).localeCompare(String(b.id));
-        if(a.label === 'camera')
-            return -1;
-        if(b.label === 'camera')
-            return 1;
-        return String(a.label || '').localeCompare(String(b.label || ''));
-    });
-    return lives;
+    let catalog = spartanCatalogLives(userId);
+    if(catalog.length)
+        return catalog;
+    return [];
 }
 
 /**
  * Lives do mesmo tipo (tela/câmera) do mesmo usuário, ordenadas.
- * @param {Stream} c
- * @returns {Stream[]}
+ * @param {Stream|object} c
+ * @returns {Array}
  */
 function spartanSameKindLives(c) {
     if(!c || !serverConnection)
         return [];
-    let userId = c.up ? serverConnection.id : c.source;
-    let wantTela = c.label === 'screenshare';
+    let ref = spartanLiveRefFrom(c);
+    if(!ref)
+        return [];
+    let userId = ref.userId;
+    let wantTela = ref.type === 'screenshare';
     let lives = spartanUserLives(userId);
-    /** @type {Stream[]} */
+    /** @type {Array} */
     let out = [];
     for(let i = 0; i < lives.length; i++) {
-        if((lives[i].label === 'screenshare') === wantTela)
+        if((lives[i].type === 'screenshare') === wantTela)
             out.push(lives[i]);
     }
     return out;
@@ -818,7 +1042,7 @@ function spartanLiveKindCaption(c) {
         total = 1;
     if(idx < 1)
         idx = 1;
-    if(c.label === 'screenshare')
+    if(c.label === 'screenshare' || c.type === 'screenshare')
         return total <= 1 ? 'Tela' : ('Tela ' + idx);
     return total <= 1 ? 'Câmera' : ('Câmera ' + idx);
 }
@@ -879,6 +1103,7 @@ function spartanRefreshAllMedia() {
     }
     walk(serverConnection.down);
     walk(serverConnection.up);
+    spartanSweepOrphanPeers();
     spartanRefreshHideOwnButton();
     if(serverConnection.users) {
         for(let uid in serverConnection.users) {
@@ -892,6 +1117,39 @@ function spartanRefreshAllMedia() {
     resizePeers();
     try { spartanNotifyShellMedia(); } catch(e) {}
     try { spartanNotifyShellRoster(); } catch(e) {}
+}
+
+/**
+ * Remove quadrados órfãos (PC fechada / replace malfeito) que ficam pretos no grid.
+ */
+function spartanSweepOrphanPeers() {
+    let peers = document.getElementById('peers');
+    if(!peers || !serverConnection)
+        return;
+    let live = {};
+    function mark(map) {
+        for(let id in map) {
+            let c = map[id];
+            if(c && c.localId != null)
+                live[String(c.localId)] = true;
+        }
+    }
+    mark(serverConnection.down);
+    mark(serverConnection.up);
+    let nodes = Array.prototype.slice.call(peers.children);
+    for(let i = 0; i < nodes.length; i++) {
+        let p = nodes[i];
+        if(!p || !p.id || p.id.indexOf('peer-') !== 0)
+            continue;
+        let lid = p.id.slice('peer-'.length);
+        if(live[lid])
+            continue;
+        let media = document.getElementById('media-' + lid);
+        if(media)
+            media.srcObject = null;
+        if(p.parentNode)
+            p.parentNode.removeChild(p);
+    }
 }
 
 /**
@@ -925,7 +1183,7 @@ function spartanFillUserLives(userId, elt) {
     let telaTotal = 0;
     let camTotal = 0;
     for(let i = 0; i < lives.length; i++) {
-        if(lives[i].label === 'screenshare')
+        if(lives[i].label === 'screenshare' || lives[i].type === 'screenshare')
             telaTotal++;
         else
             camTotal++;
@@ -937,7 +1195,7 @@ function spartanFillUserLives(userId, elt) {
         let b = document.createElement('button');
         b.type = 'button';
         b.className = 'user-live-btn';
-        if(c.label === 'screenshare') {
+        if(c.label === 'screenshare' || c.type === 'screenshare') {
             telaIdx++;
             b.textContent = telaTotal <= 1 ? 'Tela' : ('Tela ' + telaIdx);
         } else {
@@ -945,9 +1203,9 @@ function spartanFillUserLives(userId, elt) {
             b.textContent = camTotal <= 1 ? 'Câmera' : ('Câmera ' + camIdx);
         }
         if(c.up) {
-            if(!spartanHideOwnStream[c.id])
+            if(!spartanHideOwnStream[c.id || c.streamId])
                 b.classList.add('on');
-        } else if(spartanWatch[c.id]) {
+        } else if(spartanIsWatching(c)) {
             b.classList.add('on');
         }
         b.addEventListener('click', (function(stream) {
@@ -964,23 +1222,108 @@ function spartanFillUserLives(userId, elt) {
         spartanPaintMuteBtn(muteBtn, userId);
 }
 
+function spartanSubscribeRequest(ref, watching) {
+    let type = spartanLiveKind(ref);
+    if(!watching)
+        return type === 'screenshare' ? [] : ['audio'];
+    if(type === 'screenshare') {
+        let stream = ref.stream || (serverConnection && serverConnection.down[ref.streamId || ref.id]);
+        let key = stream ? spartanLiveSoundKey(stream) : spartanIntentKey(ref.userId, ref.liveKey);
+        let wantSound = !!(key && spartanLiveSound[key]);
+        if(ref.userId && spartanUserMuted[ref.userId])
+            wantSound = false;
+        return wantSound ? ['audio', 'video'] : ['video'];
+    }
+    return ['audio', 'video'];
+}
+
+function spartanSendLiveRequest(ref, watching) {
+    if(!ref || !serverConnection)
+        return;
+    let req = spartanSubscribeRequest(ref, watching);
+    let sid = ref.streamId || ref.id;
+    let stream = ref.stream;
+    if(!stream && sid)
+        stream = serverConnection.down[sid] || null;
+    let userId = ref.userId || (stream && stream.source) || '';
+    // Cancelar: limpa o override direcionado no servidor.
+    // Tela: ById([]) fecha a down no servidor (padrão screenshare:[]).
+    //   NÃO fecha a PC local aqui — pc.close() no cliente faz o servidor
+    //   ver ICE failed → negotiate erro → derruba o WS (sua live some).
+    // Câmera: ById(['audio']) mantém a voz sem matar a down.
+    if(!watching) {
+        let kind = spartanLiveKind(ref);
+        if(sid)
+            spartanMarkCanceledStream(sid);
+        if(userId && sid && serverConnection.hasCapability &&
+           serverConnection.hasCapability('spartan-request-by-id-v1')) {
+            try {
+                let cancelReq = kind === 'screenshare' ? [] : ['audio'];
+                serverConnection.requestStreamById(userId, sid, cancelReq);
+            } catch(e) {
+                displayError(e);
+            }
+        } else if(stream && !stream.up && typeof stream.request === 'function') {
+            stream.request(kind === 'screenshare' ? [] : ['audio']);
+        }
+        if(stream && !stream.up) {
+            try {
+                stream._closed = true;
+                if(stream.pc) {
+                    try { stream.pc.oniceconnectionstatechange = null; } catch(e) {}
+                    try { stream.pc.onicecandidate = null; } catch(e) {}
+                }
+            } catch(e) {}
+            spartanReleaseUnwatchedVideo(stream);
+        }
+        return;
+    }
+    if(stream && !stream.up && typeof stream.request === 'function') {
+        stream.request(req);
+        spartanBoostWatchedReceivers(stream);
+        return;
+    }
+    if(!userId || !sid) {
+        displayError('Não deu para pedir a live (id ausente).');
+        return;
+    }
+    if(!serverConnection.hasCapability || !serverConnection.hasCapability('spartan-request-by-id-v1')) {
+        displayError('Servidor desatualizado: atualize o Galene para ver lives.');
+        return;
+    }
+    try {
+        serverConnection.requestStreamById(userId, sid, req);
+    } catch(e) {
+        displayError(e);
+    }
+}
+
 /**
- * @param {Stream} c
+ * @param {Stream|object} c
  */
 function spartanToggleLive(c) {
     if(!c)
         return;
-    if(c.up) {
-        spartanHideOwnStream[c.id] = !spartanHideOwnStream[c.id];
+    let ref = spartanLiveRefFrom(c);
+    if(!ref)
+        return;
+    if(ref.up) {
+        let hid = ref.id || ref.streamId;
+        spartanHideOwnStream[hid] = !spartanHideOwnStream[hid];
         spartanRefreshAllMedia();
         return;
     }
     if(spartanIsOuvinte())
         return;
-    if(spartanWatch[c.id]) {
-        delete spartanWatch[c.id];
-        spartanApplyDownRequest(c);
-        let div = document.getElementById('peer-' + c.localId);
+    let sid = ref.streamId || ref.id;
+    let ikey = spartanIntentKey(ref.userId, ref.liveKey);
+    if(spartanIsWatching(ref)) {
+        spartanClearWatching(ref);
+        if(ikey)
+            delete spartanWatchIntent[ikey];
+        spartanSendLiveRequest(ref, false);
+        let stream = ref.stream || (serverConnection && serverConnection.down[sid]);
+        let div = stream && document.getElementById('peer-' + stream.localId);
         if(div) {
             div.classList.remove('peer-focus');
             div.classList.remove('peer-fs');
@@ -996,9 +1339,43 @@ function spartanToggleLive(c) {
         displayMessage('Limite de 50 lives nesta tela.');
         return;
     }
-    spartanWatch[c.id] = true;
-    spartanApplyDownRequest(c);
+    if(sid) {
+        spartanWatch[sid] = true;
+        delete spartanCanceledStreams[sid];
+    }
+    if(ikey)
+        spartanWatchIntent[ikey] = true;
+    spartanSendLiveRequest(ref, true);
     spartanRefreshAllMedia();
+}
+
+function spartanToggleLiveFromShell(d) {
+    d = d || {};
+    if(d.userId && d.liveKey) {
+        let lives = spartanUserLives(d.userId);
+        for(let i = 0; i < lives.length; i++) {
+            if(lives[i].liveKey === d.liveKey) {
+                spartanToggleLive(lives[i]);
+                return;
+            }
+        }
+    }
+    if(d.id && serverConnection) {
+        let c = serverConnection.up[d.id] || serverConnection.down[d.id] || null;
+        if(c) {
+            spartanToggleLive(c);
+            return;
+        }
+        for(let uid in serverConnection.users) {
+            let lives = spartanUserLives(uid);
+            for(let i = 0; i < lives.length; i++) {
+                if(lives[i].streamId === d.id || lives[i].id === d.id) {
+                    spartanToggleLive(lives[i]);
+                    return;
+                }
+            }
+        }
+    }
 }
 
 /**
@@ -1077,11 +1454,14 @@ function spartanPublishMicMuted() {
         state = 'on';
     else if(spartanMicArmed && hasCam && localMute)
         state = 'muted';
+    let lives = spartanBuildLivesCatalog();
+    let livesJson = JSON.stringify(lives);
     let now = Date.now();
-    if(state === spartanLastMicstate && camlive === spartanLastCamlive && now - spartanLastMicPublishAt < 2500)
+    if(state === spartanLastMicstate && camlive === spartanLastCamlive && livesJson === spartanLastLivesJson && now - spartanLastMicPublishAt < 2500)
         return;
     spartanLastMicstate = state;
     spartanLastCamlive = camlive;
+    spartanLastLivesJson = livesJson;
     spartanLastMicPublishAt = now;
     spartanMicSeq++;
     try {
@@ -1093,6 +1473,7 @@ function spartanPublishMicMuted() {
                 muted: state === 'muted',
                 mic: state === 'on',
                 camlive: camlive,
+                spartanLivesV1: lives,
             },
         );
     } catch(e) {}
@@ -1505,6 +1886,12 @@ function spartanSnapshotMediaState() {
 
 function spartanSnapshotWatch() {
     let out = [];
+    for(let k in spartanWatchIntent) {
+        if(spartanWatchIntent[k])
+            out.push(k);
+    }
+    if(out.length)
+        return out;
     if(!serverConnection)
         return out;
     for(let id in spartanWatch) {
@@ -1527,15 +1914,64 @@ function spartanMaybeRestoreWatch(c) {
     let snap = window._spartanWatchSnap;
     if(!snap || !snap.length)
         return;
+    let ref = spartanLiveRefFrom(c);
+    if(!ref)
+        return;
     let uname = '';
     try {
-        let u = serverConnection && serverConnection.users[c.source];
+        let u = serverConnection && serverConnection.users[c.source || ref.userId];
         uname = (u && u.username) || '';
     } catch(e) {}
     if(!uname)
+        uname = c.source || ref.userId || '';
+    if(!uname)
         return;
-    if(snap.indexOf(uname + '\t' + (c.label || '')) >= 0)
-        spartanWatch[c.id] = true;
+    let keys = [uname + '\t' + ref.liveKey, uname + '\t' + (c.label || ref.type || '')];
+    for(let i = 0; i < keys.length; i++) {
+        if(snap.indexOf(keys[i]) >= 0) {
+            spartanWatch[c.id] = true;
+            spartanWatchIntent[uname + '\t' + ref.liveKey] = true;
+            return;
+        }
+    }
+}
+
+function spartanRestoreDirectedWatches() {
+    let snap = window._spartanWatchSnap;
+    if(!snap || !snap.length || !serverConnection)
+        return;
+    for(let uid in serverConnection.users) {
+        if(uid === serverConnection.id)
+            continue;
+        let lives = spartanUserLives(uid);
+        let nick = (serverConnection.users[uid] || {}).username || '';
+        for(let i = 0; i < lives.length; i++) {
+            let ref = lives[i];
+            let keys = [
+                nick + '\t' + ref.liveKey,
+                nick + '\t' + (ref.type || ''),
+                nick + '\t' + (ref.label || ''),
+            ];
+            let hit = false;
+            for(let k = 0; k < keys.length; k++) {
+                if(snap.indexOf(keys[k]) >= 0) {
+                    hit = true;
+                    break;
+                }
+            }
+            if(!hit)
+                continue;
+            if(ref.liveKey)
+                spartanWatchIntent[nick + '\t' + ref.liveKey] = true;
+            if(ref.streamId)
+                spartanWatch[ref.streamId] = true;
+            if(ref.up)
+                continue;
+            if(ref.streamId && serverConnection.down[ref.streamId])
+                continue;
+            spartanSendLiveRequest(ref, true);
+        }
+    }
 }
 
 function spartanLiveSoundKey(c) {
@@ -1626,7 +2062,12 @@ function spartanSnapshotUps(sc) {
     for(let id in sc.up) {
         let c = sc.up[id];
         if(c && c.stream && c.label)
-            keep.push({label: c.label, stream: c.stream, localId: c.localId});
+            keep.push({
+                label: c.label,
+                stream: c.stream,
+                localId: c.localId,
+                liveKey: c.userdata && c.userdata.liveKey,
+            });
     }
     return keep;
 }
@@ -1653,6 +2094,11 @@ async function spartanRepublishUps(keep) {
         try {
             let c = newUpStream(item.localId);
             c.label = item.label;
+            if(item.liveKey) {
+                if(!c.userdata)
+                    c.userdata = {};
+                c.userdata.liveKey = item.liveKey;
+            }
             await setUpStream(c, item.stream);
             await setMedia(c, item.label === 'camera' ? getSettings().mirrorView : false);
         } catch(e) {
@@ -1796,6 +2242,7 @@ async function spartanSilentReconnect() {
         return;
     spartanReconnecting = true;
     window._spartanRecoveringMedia = true;
+    let gen = 0;
     try {
         let s = spartanLoadStoredSession(group);
         if(s && s.user)
@@ -1811,8 +2258,15 @@ async function spartanSilentReconnect() {
     } catch(e) {}
     try {
         await serverConnect();
+        gen = spartanConnGen;
+        if(serverConnection && serverConnection._joinDone)
+            await serverConnection._joinDone;
+        if(gen !== spartanConnGen)
+            return;
         spartanReconnecting = false;
     } catch(e) {
+        if(gen && gen !== spartanConnGen)
+            return;
         spartanFailReconnect();
     }
 }
@@ -2019,12 +2473,18 @@ function setConnected(connected) {
  * @this {ServerConnection}
  */
 async function gotConnected() {
+    if(this !== serverConnection)
+        return;
+    if(this._gen && this._gen !== spartanConnGen)
+        return;
     if(spartanDidJoin || spartanDropSince)
         setConnected(true);
     let u = getInputElement('username').value.trim().toLowerCase();
     let pw = window._spartanCred || '';
     if(u && pw)
         await spartanEnsureNamedJoin(u, pw);
+    if(this !== serverConnection || (this._gen && this._gen !== spartanConnGen))
+        return;
     await join();
 }
 
@@ -2166,6 +2626,8 @@ function onPeerConnection() {
 function gotClose(code, reason) {
     if(this !== serverConnection)
         return;
+    if(this._gen && this._gen !== spartanConnGen)
+        return;
     if(spartanJoinRejected) {
         spartanJoinRejected = false;
         spartanIntentionalLeave = false;
@@ -2200,28 +2662,7 @@ function gotClose(code, reason) {
         spartanPrevPeerId = serverConnection.id;
     if(!spartanDropSince) {
         spartanDropSince = Date.now();
-        try { window._spartanWatchSnap = spartanSnapshotWatch(); } catch(e) {}
-        try { window._spartanSoundSnap = spartanSnapshotLiveSound(); } catch(e) {}
         spartanNetEvent({phase: 'drop', code: code, reason: String(reason || '')});
-    }
-    if(!spartanGraceTimer) {
-        spartanGraceTimer = setTimeout(function() {
-            spartanGraceTimer = 0;
-            if(!spartanDropSince)
-                return;
-            try { closeUpMedia(); } catch(e) {}
-            try { closeSafariStream(); } catch(e) {}
-            window._spartanRecoveringMedia = false;
-            window._spartanMediaSnap = null;
-            spartanResetRoomState();
-            spartanShowDropOverlay();
-            spartanNetEvent({
-                phase: 'gone',
-                duration_ms: Date.now() - spartanDropSince,
-                code: spartanLastWs.code,
-                reason: spartanLastWs.reason,
-            });
-        }, SPARTAN_GRACE_MS);
     }
     spartanSilentReconnect();
 }
@@ -2231,64 +2672,80 @@ function gotClose(code, reason) {
  * @param {Stream} c
  */
 function gotDownStream(c) {
-    c.onclose = function(replace) {
-        delete spartanWatch[c.id];
-        delete spartanHasVideo[c.id];
-        delete spartanHideOwnStream[c.id];
-        spartanDropBoost(c.id);
-        spartanDropDownTalk(c.id);
-        if(!replace)
+    if(!c.userdata)
+        c.userdata = {};
+    let rehook = !!c.userdata._spartanDownHooked;
+    c.userdata._spartanDownHooked = true;
+    if(!rehook) {
+        c.onclose = function(replace) {
+            if(replace) {
+                // Troca de id: mantém intenção; o novo gotDownStream religa spartanWatch.
+                return;
+            }
+            delete spartanWatch[c.id];
+            delete spartanHasVideo[c.id];
+            delete spartanHideOwnStream[c.id];
+            spartanDropBoost(c.id);
+            spartanDropDownTalk(c.id);
             delMedia(c.localId);
-        if(c.source)
-            spartanRefreshAllMedia();
-    };
-    c.onerror = function(e) {
-        console.error(e);
-        displayError(e);
-    };
-    c.ondowntrack = function(track, transceiver, stream) {
-        spartanApplyUserMute(c);
-        if(c.source)
-            spartanApplyUserVolume(c.source);
-        if(c.label === 'screenshare')
-            spartanHasVideo[c.id] = true;
-        if(track && track.kind === 'video' && streamHasRealVideo(c.stream))
-            spartanHasVideo[c.id] = true;
-        setMedia(c);
-        if(track && track.kind === 'video')
-            spartanBoostWatchedReceivers(c);
-        if(track && track.kind === 'audio' && c.source) {
-            track.onmute = function() {
+            if(c.source)
+                spartanRefreshAllMedia();
+        };
+        c.onerror = function(e) {
+            console.error(e);
+            displayError(e);
+        };
+        c.ondowntrack = function(track, transceiver, stream) {
+            spartanApplyUserMute(c);
+            if(c.source)
+                spartanApplyUserVolume(c.source);
+            if(c.label === 'screenshare')
+                spartanHasVideo[c.id] = true;
+            if(track && track.kind === 'video' && streamHasRealVideo(c.stream))
+                spartanHasVideo[c.id] = true;
+            setMedia(c);
+            if(track && track.kind === 'video')
+                spartanBoostWatchedReceivers(c);
+            if(track && track.kind === 'audio' && c.source) {
+                track.onmute = function() {
+                    spartanPaintTalkDot(c.source);
+                    spartanRefreshMuteButtons(c.source);
+                };
+                track.onunmute = function() {
+                    spartanPaintTalkDot(c.source);
+                    spartanRefreshMuteButtons(c.source);
+                };
                 spartanPaintTalkDot(c.source);
                 spartanRefreshMuteButtons(c.source);
-            };
-            track.onunmute = function() {
-                spartanPaintTalkDot(c.source);
-                spartanRefreshMuteButtons(c.source);
-            };
-            spartanPaintTalkDot(c.source);
-            spartanRefreshMuteButtons(c.source);
-            spartanHookDownTalk(c);
+                spartanHookDownTalk(c);
+            }
+            if(c.source)
+                spartanRefreshAllMedia();
+        };
+        c.onnegotiationcompleted = function() {
+            resetMedia(c);
         }
-        if(c.source)
-            spartanRefreshAllMedia();
-    };
-    c.onnegotiationcompleted = function() {
-        resetMedia(c);
+        c.onstatus = function(status) {
+            setMediaStatus(c);
+        };
+        c.onstats = gotDownStats;
+        c.setStatsInterval(activityDetectionInterval);
     }
-    c.onstatus = function(status) {
-        setMediaStatus(c);
-    };
-    c.onstats = gotDownStats;
-    c.setStatsInterval(activityDetectionInterval);
 
     if(c.label === 'screenshare')
         spartanHasVideo[c.id] = true;
     setMedia(c);
     spartanMaybeRestoreWatch(c);
+    let liveRef = spartanLiveRefFrom(c);
+    if(liveRef && spartanIsWatching(liveRef))
+        spartanWatch[c.id] = true;
     spartanMaybeRestoreLiveSound(c);
-    spartanApplyDownRequest(c);
+    // Na 1ª oferta o push já veio com as faixas pedidas. Reaplicar request
+    // em toda renegociação reabre PC e gera slot preto/duplicata.
+    if(!rehook)
+        spartanApplyDownRequest(c);
     spartanApplyLiveSound(c);
+    try { spartanNotifyShellRoster(); } catch(e) {}
 }
 
 // Store current browser viewport height in css variable
@@ -2545,12 +3002,8 @@ window.addEventListener('message', function(ev) {
         if(cam) cam.click();
         return;
     }
-    if(d.cmd === 'watch' && d.id) {
-        let c = null;
-        if(serverConnection) {
-            c = serverConnection.up[d.id] || serverConnection.down[d.id] || null;
-        }
-        if(c) spartanToggleLive(c);
+    if(d.cmd === 'watch') {
+        spartanToggleLiveFromShell(d);
         return;
     }
     if(d.cmd === 'mute' && d.userId) {
@@ -3378,6 +3831,8 @@ async function setUpStream(c, stream) {
             if(c.userdata.onclose)
                 c.userdata.onclose.call(c);
             delMedia(c.localId);
+            try { spartanPublishMicMuted(); } catch(e) {}
+            try { spartanNotifyShellRoster(); } catch(e) {}
         }
     }
 
@@ -3738,6 +4193,7 @@ async function addShareMedia() {
     await setMedia(c);
     setButtonsVisibility();
     spartanRefreshWatchedQuality();
+    try { spartanPublishMicMuted(); } catch(e) {}
     try {
         stream.getVideoTracks().forEach(function(t) {
             t.addEventListener('ended', function() {
@@ -3862,9 +4318,9 @@ function muteLocalTracks(mute) {
  * @param {boolean} [value]
  */
 function forceDownRate(id, force, value) {
-    let c = serverConnection.down[id];
+    let c = serverConnection && serverConnection.down[id];
     if(!c)
-        throw new Error("Unknown down stream");
+        return;
     if('requested' in c.userdata) {
         if(force)
             c.userdata.requested.force = !!value;
@@ -4150,7 +4606,7 @@ function showHideMedia(c, elt) {
         if(c.up)
             display = !spartanHideOwnStream[c.id];
         else
-            display = !!spartanWatch[c.id];
+            display = spartanIsWatching(spartanLiveRefFrom(c));
     }
     if(display)
         elt.classList.remove('peer-hidden');
@@ -4277,18 +4733,25 @@ function registerControlHandlers(localId, media, container) {
             if(vc)
                 vc.classList.remove('peer-focus-mode');
             try {
+                // X: própria live = parar tela/câmera; live dos outros = parar de assistir.
                 let c = spartanFindByLocalId(localId);
-                if(c && c.up && c.label === 'camera' && streamHasRealVideo(c.stream)) {
-                    spartanStopCameraKeepMic();
-                } else if(c && c.up) {
-                    c.close();
-                    setButtonsVisibility();
-                    setLocalMute(getSettings().localMute, true);
-                    spartanRefreshAllMedia();
-                } else if(c)
+                if(c && c.up) {
+                    let hid = c.id;
+                    if(hid)
+                        delete spartanHideOwnStream[hid];
+                    if(c.label === 'camera' && streamHasRealVideo(c.stream)) {
+                        spartanStopCameraKeepMic();
+                    } else {
+                        c.close();
+                        setButtonsVisibility();
+                        setLocalMute(getSettings().localMute, true);
+                        spartanRefreshAllMedia();
+                    }
+                } else if(c) {
                     spartanToggleLive(c);
-                else
+                } else {
                     container.classList.add('peer-hidden');
+                }
             } catch(e) {
                 console.error(e);
                 displayError(e);
@@ -4411,7 +4874,7 @@ function delMedia(localId) {
     let mediadiv = document.getElementById('peers');
     let peer = document.getElementById('peer-' + localId);
     if(!peer)
-        throw new Error('Removing unknown media');
+        return;
 
     let media = /** @type{HTMLVideoElement} */
         (document.getElementById('media-' + localId));
@@ -4424,8 +4887,13 @@ function delMedia(localId) {
     peer.classList.remove('peer-fs');
     document.body.classList.remove('spartan-peer-fs');
 
-    media.srcObject = null;
-    mediadiv.removeChild(peer);
+    if(media) {
+        try { media.srcObject = null; } catch(e) {}
+    }
+    if(peer.parentNode === mediadiv)
+        mediadiv.removeChild(peer);
+    else if(peer.parentNode)
+        peer.parentNode.removeChild(peer);
 
     setButtonsVisibility();
     spartanSyncLiveFocus();
@@ -4918,12 +5386,23 @@ function spartanBindVolumeMenu(userId) {
     sl.addEventListener('input', function(e) {
         e.stopPropagation();
         let v = parseInt(this.value, 10) || 0;
-        v = Math.round(v / 5) * 5;
+        v = Math.max(0, Math.min(400, Math.round(v / 5) * 5));
         this.value = String(v);
         spartanUserVol[userId] = v;
         lab.textContent = v + '%';
         spartanApplyUserVolume(userId);
     });
+    sl.addEventListener('wheel', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        let cur = parseInt(this.value, 10) || 0;
+        let next = cur + (e.deltaY < 0 ? 5 : -5);
+        next = Math.max(0, Math.min(400, next));
+        this.value = String(next);
+        spartanUserVol[userId] = next;
+        lab.textContent = next + '%';
+        spartanApplyUserVolume(userId);
+    }, {passive: false});
 }
 
 let spartanSoundsArmed = false;
@@ -5139,6 +5618,7 @@ function spartanResetRoomState() {
         vc.classList.remove('peer-focus-mode');
     document.body.classList.remove('spartan-peer-fs');
     spartanWatch = {};
+    spartanWatchIntent = {};
     spartanHasVideo = {};
     spartanUserMuted = {};
     spartanUserVol = {};
@@ -5152,9 +5632,49 @@ function spartanResetRoomState() {
     try { hideVideo(true); } catch(e) {}
 }
 
+function spartanFreezeSnap(name, value) {
+    if(window[name] && !(Array.isArray(window[name]) && window[name].length === 0))
+        return;
+    window[name] = value;
+}
+
+function spartanCaptureBeforeClose(sc) {
+    if(!window._spartanMediaSnap)
+        window._spartanMediaSnap = spartanSnapshotMediaState();
+    spartanFreezeSnap('_spartanKeepUp', spartanSnapshotUps(sc));
+    spartanFreezeSnap('_spartanWatchSnap', spartanSnapshotWatch());
+    spartanFreezeSnap('_spartanSoundSnap', spartanSnapshotLiveSound());
+    if(!spartanDropSince)
+        spartanDropSince = Date.now();
+    if(!spartanGraceTimer) {
+        spartanGraceTimer = setTimeout(function() {
+            spartanGraceTimer = 0;
+            if(!spartanDropSince)
+                return;
+            try { closeUpMedia(); } catch(e) {}
+            try { closeSafariStream(); } catch(e) {}
+            window._spartanRecoveringMedia = false;
+            window._spartanMediaSnap = null;
+            window._spartanKeepUp = [];
+            window._spartanWatchSnap = null;
+            window._spartanSoundSnap = null;
+            spartanResetRoomState();
+            spartanShowDropOverlay();
+            spartanNetEvent({
+                phase: 'gone',
+                duration_ms: Date.now() - spartanDropSince,
+                code: spartanLastWs.code,
+                reason: spartanLastWs.reason,
+            });
+        }, SPARTAN_GRACE_MS);
+    }
+}
+
 function spartanAbandonConnection(sc, silent) {
     if(!sc)
         return;
+    sc._deadGen = true;
+    sc.onbeforeclose = null;
     sc.onclose = null;
     sc.onuser = null;
     sc.onjoined = null;
@@ -5165,27 +5685,37 @@ function spartanAbandonConnection(sc, silent) {
     sc.onchat = null;
     sc.onfiletransfer = null;
     sc.onpeerconnection = null;
+    sc._joinResolve = null;
+    sc._joinReject = null;
     try {
-        if(silent) {
-            for(let id in sc.up) {
-                try { sc.up[id].onclose = null; } catch(e) {}
-            }
-            sc.up = {};
-        } else {
-            for(let id in sc.up) {
-                try { sc.up[id].close(false); } catch(e) {}
-            }
+        let upIds = Object.keys(sc.up || {});
+        for(let i = 0; i < upIds.length; i++) {
+            try {
+                let c = sc.up[upIds[i]];
+                if(!c)
+                    continue;
+                c.onclose = null;
+                c.close(false, !!silent);
+            } catch(e) {}
         }
     } catch(e) {}
     try {
-        for(let id in sc.down) {
+        let downIds = Object.keys(sc.down || {});
+        for(let i = 0; i < downIds.length; i++) {
             try {
-                if(silent) {
-                    sc.down[id].onclose = null;
-                    sc.down[id].ondowntrack = null;
-                }
-                sc.down[id].close(!!silent);
+                let c = sc.down[downIds[i]];
+                if(!c)
+                    continue;
+                c.onclose = null;
+                c.ondowntrack = null;
+                c.close(!!silent, !!silent);
             } catch(e) {}
+        }
+    } catch(e) {}
+    try {
+        if(sc.pingHandler) {
+            clearInterval(sc.pingHandler);
+            sc.pingHandler = null;
         }
     } catch(e) {}
     try {
@@ -5378,6 +5908,7 @@ function setUserStatus(id, elt, userinfo) {
     elt.classList.remove('user-status-camera');
     spartanFillUserLives(id, elt);
     spartanPaintTalkDot(id);
+    try { spartanNotifyShellRoster(); } catch(e) {}
 }
 
 /**
@@ -5533,6 +6064,8 @@ async function closeSafariStream() {
 async function gotJoined(kind, group, perms, status, data, error, message) {
     if(this !== serverConnection)
         return;
+    if(this._gen && this._gen !== spartanConnGen)
+        return;
     let present = presentRequested;
     presentRequested = null;
 
@@ -5557,6 +6090,8 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
         document.location.href = message;
         return;
     case 'leave':
+        if(spartanDropSince && !spartanDropShown && !spartanIntentionalLeave)
+            return;
         spartanSoundsArmed = false;
         if(spartanIntentionalLeave)
             spartanDidJoin = false;
@@ -5648,6 +6183,19 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
     } else {
         setLocalMute(true, true);
     }
+    try { spartanRestoreDirectedWatches(); } catch(e) {}
+    try { spartanPublishMicMuted(); } catch(e) {}
+    if(this._joinResolve && !this._joinSettled) {
+        this._joinSettled = true;
+        try { this._joinResolve('join'); } catch(e) {}
+    }
+    let doneGen = this._gen;
+    setTimeout(function() {
+        if(doneGen !== spartanConnGen)
+            return;
+        window._spartanWatchSnap = null;
+        window._spartanSoundSnap = null;
+    }, 4000);
     spartanArmRoomSounds();
     spartanPurgeStaleSelf();
     spartanRefreshWatchedQuality();
@@ -7283,6 +7831,10 @@ if(_dropBtn)
         e.preventDefault();
         spartanReconnect();
     };
+window.addEventListener('offline', function() {
+    if(document.body.classList.contains('spartan-in') || spartanDidJoin)
+        spartanNetEvent({phase: 'offline', code: 0, reason: 'offline'});
+});
 window.addEventListener('online', function() {
     if(spartanDropShown) {
         spartanDropAttempt++;
@@ -7394,9 +7946,10 @@ document.getElementById('show-chat').onclick = function(e) {
 async function serverConnect() {
     let old = serverConnection;
     let silent = !!spartanDropSince && !spartanDropShown;
+    let gen = ++spartanConnGen;
     if(old) {
         if(silent) {
-            window._spartanKeepUp = spartanSnapshotUps(old);
+            spartanFreezeSnap('_spartanKeepUp', spartanSnapshotUps(old));
             if(!window._spartanMediaSnap)
                 window._spartanMediaSnap = spartanSnapshotMediaState();
         }
@@ -7405,8 +7958,42 @@ async function serverConnect() {
     if(spartanDropShown)
         spartanResetRoomState();
     serverConnection = new ServerConnection();
+    serverConnection._gen = gen;
+    serverConnection._joinSettled = false;
+    serverConnection._joinDone = new Promise(function(resolve, reject) {
+        serverConnection._joinResolve = resolve;
+        serverConnection._joinReject = reject;
+    });
+    serverConnection.onbeforeclose = function(code, reason) {
+        if(this._gen !== spartanConnGen)
+            return false;
+        if(spartanJoinRejected || spartanIntentionalLeave)
+            return false;
+        let loggedOut = false;
+        try { loggedOut = !!sessionStorage.getItem('spartanLoggedOut'); } catch(e) {}
+        if(loggedOut)
+            return false;
+        // Erro de protocolo (ex.: spoofed) NÃO é queda de rede — não reconecta em loop.
+        let why = String(reason || '');
+        if(code === 1002 || /spoofed|protocol/i.test(why)) {
+            spartanJoinRejected = true;
+            return false;
+        }
+        let wasIn = document.body.classList.contains('spartan-in') || spartanDidJoin;
+        if(!wasIn)
+            return false;
+        if(this.id)
+            spartanPrevPeerId = this.id;
+        spartanLastWs = {code: code, reason: why};
+        if(!spartanDropSince)
+            spartanNetEvent({phase: 'drop', code: code, reason: why});
+        spartanCaptureBeforeClose(this);
+        return true;
+    };
     serverConnection.onconnected = gotConnected;
     serverConnection.onerror = function(e) {
+        if(this._gen !== spartanConnGen)
+            return;
         console.error(e);
         if(document.body.classList.contains('spartan-in') || spartanDidJoin)
             return;
@@ -7431,6 +8018,8 @@ async function serverConnect() {
         await serverConnection.connect(url);
     } catch(e) {
         console.error(e);
+        if(gen !== spartanConnGen)
+            return;
         if(spartanDropShown || spartanDropSince) {
             spartanFailReconnect();
             return;
@@ -7476,8 +8065,16 @@ async function start() {
         getSelectElement('simulcastselect').value = 'off';
 
     let parms = new URLSearchParams(window.location.search);
-    if(window.location.search)
-        window.history.replaceState(null, '', window.location.pathname);
+    if(window.location.search) {
+        // Mantém shell=1 na URL — sem isso um reload no iframe perde
+        // spartan-in-shell e a home cai dentro da sala.
+        let keep = window.location.pathname;
+        if(parms.get('shell') === '1')
+            keep += '?shell=1';
+        if(parms.get('afk') === '1')
+            keep += (keep.indexOf('?') >= 0 ? '&' : '?') + 'afk=1';
+        window.history.replaceState(null, '', keep);
+    }
     setTitle(groupStatus.displayName || capitalise(group));
     spartanTtlRestore();
     spartanLoadTtl();

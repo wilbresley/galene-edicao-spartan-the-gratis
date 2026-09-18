@@ -15,8 +15,27 @@
     <div class="logo"><i class="fas fa-frown" aria-hidden="true"></i></div>
     <h1>Página não encontrada</h1>
     <p>Esse endereço não existe na Spartan.</p>
-    <a href="/" class="home-link">Voltar para a home</a>
+    <a href="/" class="home-link" id="spartan-404-home">Voltar para a home</a>
   </div>
 </div>
+<script>
+(function() {
+  var a = document.getElementById('spartan-404-home');
+  if(!a) return;
+  a.addEventListener('click', function(e) {
+    try {
+      if(window.parent && window.parent !== window) {
+        e.preventDefault();
+        if(window.parent.SpartanApp && typeof window.parent.SpartanApp.goHome === 'function') {
+          window.parent.SpartanApp.goHome();
+          return;
+        }
+        window.parent.postMessage({ t: 'spartan-go-home' }, location.origin);
+        return;
+      }
+    } catch(err) {}
+  });
+})();
+</script>
 </body>
 </html>

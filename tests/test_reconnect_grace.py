@@ -28,9 +28,9 @@ class ReconnectGraceTests(unittest.TestCase):
         )
         self.assertIsNotNone(m)
         body = m.group(0)
-        self.assertIn("if(silent)", body)
-        self.assertIn("sc.up = {};", body)
-        self.assertNotIn("sc.up[id].close(!!silent)", body)
+        self.assertIn("!!silent", body)
+        self.assertIn("c.close(false, !!silent)", body)
+        self.assertNotIn("sc.up = {};", body)
 
     def test_join_restores_media_before_forcing_mute(self):
         m = re.search(
@@ -48,7 +48,7 @@ class ReconnectGraceTests(unittest.TestCase):
         self.assertGreater(force_mute, restore)
 
     def test_galene_js_cache_bust_v106(self):
-        self.assertIn("galene.js?v=126", self.html)
+        self.assertIn("galene.js?v=134", self.html)
 
 
 if __name__ == "__main__":

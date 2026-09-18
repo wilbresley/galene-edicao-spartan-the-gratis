@@ -740,7 +740,8 @@ def add_preset_channels(s, voz1_group, create=True):
         if cid in by:
             stamp_channel_flags(by[cid], sid, voz1_group)
             continue
-        if not create:
+        # Voz 2/3 só na instalação nova; Ausentes (fixo) sempre que faltar.
+        if not create and cid not in LOCKED_CHANNEL_KEYS:
             continue
         slug=None
         want=(sid+"-"+cid).replace("_","-")[:32]
@@ -753,6 +754,7 @@ def add_preset_channels(s, voz1_group, create=True):
         ch={"id":channel_uid(sid,cid),"key":cid,"title":title,"kind":"voice","category":"voz","group":slug,"public":True,"locked": cid in LOCKED_CHANNEL_KEYS}
         if afk: ch["afk"]=True
         chans.append(ch)
+        by[cid]=ch
     s.setdefault("reloc", {})
     bind_server_channel_ids(s)
     s["channels"]=channels_text_then_voice(s.get("channels"))
@@ -989,10 +991,21 @@ def put_open_voice_group(slug, title):
     if ia:
         qg=quote(slug, safe="")
         code,err=galene("PUT", f"/galene-api/v0/.groups/{qg}/", ia, json.dumps(desc), "application/json", {"If-None-Match":"*"})
-        if code>=400:
-            return False, (err or "nao criou o canal")[:220]
-        galene("PUT", f"/galene-api/v0/.groups/{qg}/.wildcard-user", ia, json.dumps({"permissions":["present"]}))
-        galene("PUT", f"/galene-api/v0/.groups/{qg}/.wildcard-user/.password", ia, json.dumps({"type":"wildcard"}))
+        if code>=400 and code!=412:
+            # API falhou: ainda grava o JSON local para o canal existir no lab.
+            try:
+                GROUPS.mkdir(parents=True, exist_ok=True)
+                body=dict(desc)
+                body["wildcard-user"]={"permissions":["present"],"password":{"type":"wildcard"}}
+                (GROUPS/f"{slug}.json").write_text(json.dumps(body, indent=2, ensure_ascii=False)+chr(10), encoding="utf-8")
+                try: harden_group(slug)
+                except Exception: pass
+                return True, None
+            except Exception:
+                return False, (err or "nao criou o canal")[:220]
+        if code < 400:
+            galene("PUT", f"/galene-api/v0/.groups/{qg}/.wildcard-user", ia, json.dumps({"permissions":["present"]}))
+            galene("PUT", f"/galene-api/v0/.groups/{qg}/.wildcard-user/.password", ia, json.dumps({"type":"wildcard"}))
         try: harden_group(slug)
         except Exception: pass
         return True, None

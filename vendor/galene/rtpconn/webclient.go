@@ -76,6 +76,9 @@ type webClient struct {
 	mu   sync.Mutex
 	down map[string]*rtpDownConnection
 	up   map[string]*rtpUpConnection
+	// streamRequested holds per-stream overrides keyed by stream id
+	// and by "sourceId/streamId". Empty request removes that override.
+	streamRequested map[string][]string
 }
 
 func (c *webClient) Group() *group.Group {
@@ -139,6 +142,7 @@ type clientMessage struct {
 	Label            string                   `json:"label,omitempty"`
 	Request          interface{}              `json:"request,omitempty"`
 	RTCConfiguration *webrtc.Configuration    `json:"rtcConfiguration,omitempty"`
+	Capabilities     []string                 `json:"capabilities,omitempty"`
 }
 
 type closeMessage struct {
@@ -735,12 +739,129 @@ func (c *webClient) setRequested(requested map[string][]string) error {
 
 func (c *webClient) setRequestedStream(down *rtpDownConnection, requested []string) error {
 	var remoteClient group.Client
+	var remoteID string
+	var sourceId string
 	remote, ok := down.remote.(*rtpUpConnection)
-	if ok {
+	if ok && remote != nil {
 		remoteClient = remote.client
+		remoteID = remote.id
+		sourceId, _ = remote.User()
 	}
-	down.requested = requested
-	return remoteClient.RequestConns(c, c.group, remote.id)
+	down.requested = copyStringSlice(requested)
+	if len(requested) == 0 {
+		// Cancela a assinatura e limpa o override direcionado; senão a live
+		// reabre sozinha no próximo RequestConns do publisher.
+		c.mu.Lock()
+		c.streamRequested = setDirectedRequest(c.streamRequested, sourceId, down.id, nil)
+		c.mu.Unlock()
+		closeDownConn(c, down.id, "")
+		return nil
+	}
+	if remoteClient == nil || remoteID == "" {
+		return nil
+	}
+	return remoteClient.RequestConns(c, c.group, remoteID)
+}
+
+func directedStreamKey(sourceId, streamId string) string {
+	return sourceId + "/" + streamId
+}
+
+func copyStringSlice(in []string) []string {
+	if in == nil {
+		return nil
+	}
+	out := make([]string, len(in))
+	copy(out, in)
+	return out
+}
+
+func setDirectedRequest(m map[string][]string, sourceId, streamId string, requested []string) map[string][]string {
+	if m == nil {
+		m = make(map[string][]string)
+	}
+	key := directedStreamKey(sourceId, streamId)
+	if len(requested) == 0 {
+		delete(m, key)
+		delete(m, streamId)
+		return m
+	}
+	cp := copyStringSlice(requested)
+	m[key] = cp
+	m[streamId] = cp
+	return m
+}
+
+func lookupDirectedRequest(m map[string][]string, sourceId, streamId, replace string) []string {
+	if m == nil {
+		return nil
+	}
+	if replace != "" {
+		if req := m[replace]; req != nil {
+			return copyStringSlice(req)
+		}
+		if sourceId != "" {
+			if req := m[directedStreamKey(sourceId, replace)]; req != nil {
+				return copyStringSlice(req)
+			}
+		}
+	}
+	if req := m[streamId]; req != nil {
+		return copyStringSlice(req)
+	}
+	if sourceId != "" {
+		return copyStringSlice(m[directedStreamKey(sourceId, streamId)])
+	}
+	return nil
+}
+
+func migrateDirectedRequest(m map[string][]string, sourceId, oldId, newId string) {
+	if m == nil || oldId == "" || newId == "" || oldId == newId {
+		return
+	}
+	if req := m[oldId]; req != nil {
+		m[newId] = req
+		delete(m, oldId)
+	}
+	oldKey := directedStreamKey(sourceId, oldId)
+	newKey := directedStreamKey(sourceId, newId)
+	if req := m[oldKey]; req != nil {
+		m[newKey] = req
+		delete(m, oldKey)
+	}
+}
+
+func (c *webClient) setRequestedById(sourceId, streamId string, requested []string) error {
+	if c.group == nil {
+		return errors.New("attempted to request with no group joined")
+	}
+	// Id vazio / publisher ausente / stream já trocada: NÃO derruba o WS.
+	// ErrUnknownId / ProtocolError fecham a conexão do espectador e bugam o grid.
+	if sourceId == "" || streamId == "" {
+		return nil
+	}
+
+	c.mu.Lock()
+	c.streamRequested = setDirectedRequest(c.streamRequested, sourceId, streamId, requested)
+	c.mu.Unlock()
+
+	if len(requested) == 0 {
+		closeDownConn(c, streamId, "")
+		return nil
+	}
+
+	source := c.group.GetClient(sourceId)
+	if source == nil {
+		log.Printf("requestStreamById: publisher %s ausente", sourceId)
+		return nil
+	}
+	if wc, ok := source.(*webClient); ok {
+		if getUpConn(wc, streamId) == nil {
+			log.Printf("requestStreamById: stream %s/%s ausente", sourceId, streamId)
+			return nil
+		}
+	}
+	return source.RequestConns(c, c.group, streamId)
 }
 
 func (c *webClient) RequestConns(target group.Client, g *group.Group, id string) error {
@@ -832,6 +953,7 @@ func readMessage(conn *websocket.Conn, m *clientMessage) error {
 
 const maxWSMessageSize = 1024 * 1024
 const protocolVersion = "2"
+const capRequestByIdV1 = "spartan-request-by-id-v1"
 
 func StartClient(conn *websocket.Conn, addr net.Addr) (err error) {
 	var m clientMessage
@@ -969,8 +1091,9 @@ func clientLoop(c *webClient, ws *websocket.Conn, versionError bool) error {
 	defer ticker.Stop()
 
 	err := c.write(clientMessage{
-		Type:    "handshake",
-		Version: []string{protocolVersion},
+		Type:         "handshake",
+		Version:      []string{protocolVersion},
+		Capabilities: []string{capRequestByIdV1},
 	})
 	if err != nil {
 		return err
@@ -1033,16 +1156,23 @@ func clientLoop(c *webClient, ws *websocket.Conn, versionError bool) error {
 func pushDownConn(c *webClient, id string, up conn.Up, tracks []conn.UpTrack, replace string) error {
 	var requested []conn.UpTrack
 	limitSid := false
+	var req []string
+	sourceId := ""
 	if up != nil {
+		sourceId, _ = up.User()
 		var old *rtpDownConnection
 		if replace != "" {
 			old = getDownConn(c, replace)
 		} else {
 			old = getDownConn(c, up.Id())
 		}
-		var req []string
 		if old != nil {
 			req = old.requested
+		}
+		if req == nil {
+			c.mu.Lock()
+			req = lookupDirectedRequest(c.streamRequested, sourceId, up.Id(), replace)
+			c.mu.Unlock()
 		}
 		if req == nil {
 			var ok bool
@@ -1079,6 +1209,14 @@ func pushDownConn(c *webClient, id string, up conn.Up, tracks []conn.UpTrack, re
 			return nil
 		}
 		return err
+	}
+	if req != nil {
+		down.requested = copyStringSlice(req)
+	}
+	if replace != "" {
+		c.mu.Lock()
+		migrateDirectedRequest(c.streamRequested, sourceId, replace, id)
+		c.mu.Unlock()
 	}
 	done, err := replaceTracks(down, requested, limitSid)
 	if err != nil || !done {
@@ -1128,7 +1266,11 @@ func handleAction(c *webClient, a any) error {
 		if down := getDownConn(c, a.id); down != nil {
 			err := negotiate(c, down, true, "")
 			if err != nil {
-				return err
+				// Comum ao cancelar live: o cliente já fechou a PC e o
+				// ICE falha aqui. NÃO derruba o WS do espectador.
+				log.Printf("connectionFailed: negotiate %s: %v", a.id, err)
+				_ = closeDownConn(c, a.id, "")
+				return nil
 			}
 			tracks := make(
 				[]conn.UpTrack, len(down.tracks),
@@ -1330,6 +1472,9 @@ func leaveGroup(c *webClient) {
 	c.permissions = nil
 	c.data = nil
 	c.requested = make(map[string][]string)
+	c.mu.Lock()
+	c.streamRequested = make(map[string][]string)
+	c.mu.Unlock()
 	c.group = nil
 }
 
@@ -1468,13 +1613,24 @@ func handleClientMessage(c *webClient, m clientMessage) error {
 	case "requestStream":
 		down := getDownConn(c, m.Id)
 		if down == nil {
-			return ErrUnknownId
+			// Comum ao cancelar live (requestStreamById já fechou a down):
+			// não derruba o WS do espectador.
+			log.Printf("requestStream: id %s já fechado", m.Id)
+			return nil
 		}
 		requested, err := toStringArray(m.Request)
 		if err != nil {
 			return err
 		}
-		c.setRequestedStream(down, requested)
+		return c.setRequestedStream(down, requested)
+	case "requestStreamById":
+		// Dest = publisher (outro peer). NÃO usar Source: o Galene
+		// trata Source != c.Id() como "spoofed client id" e fecha o WS.
+		requested, err := toStringArray(m.Request)
+		if err != nil {
+			return err
+		}
+		return c.setRequestedById(m.Dest, m.Id, requested)
 	case "offer":
 		if m.Id == "" {
 			return errEmptyId
@@ -1509,7 +1665,8 @@ func handleClientMessage(c *webClient, m clientMessage) error {
 		}
 		down := getDownConn(c, m.Id)
 		if down == nil {
-			return ErrUnknownId
+			// Answer atrasado após cancel da live — ignora.
+			return nil
 		}
 		if down.negotiationNeeded > negotiationUnneeded {
 			err := negotiate(
