@@ -1,5 +1,7 @@
 # Não grave senha em claro nos JSON finais.
 
+Para instalar do zero use `./scripts/subir.sh` (copia `factory-reset/`). O bloco abaixo é o caminho **manual**, se você não for usar o script.
+
 ```bash
 cp .env.example .env
 cp data/config.example.json data/config.json

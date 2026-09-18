@@ -126,7 +126,7 @@ docker compose restart
 docker restart spartan-reg
 ```
 
-HTML/CSS/JS da sala: copiar para `static/`, **sem** restart. Confira o `?v=` no HTML (`galene.js?v=94`, `admin.js?v=33`).
+HTML/CSS/JS da sala: copiar para `static/`, **sem** restart. Confira o `?v=` no HTML (`galene.js?v=136`, `spartan-servers.js?v=27`, `admin.js?v=56`, `admin.css?v=39`).
 
 ---
 
@@ -144,8 +144,9 @@ HTML/CSS/JS da sala: copiar para `static/`, **sem** restart. Confira o `?v=` no 
 - [ ] `.env` com IP **público** no TURN  
 - [ ] Portas **1194** tcp/udp e **50000–50100** udp liberadas (internet)  
 - [ ] `proxyURL` / `canonicalHost` batem com o domínio  
+- [ ] Engrenagem da casca troca foto de perfil (png/jpg/gif/webp, até 5 MB); Painel tem só o botão verde **Imagem do servidor**  
 
-Usuários antigos **não** voltam sem backup zip da pasta `data/` + `groups/`. Instalação zerada = sala limpa, app configurado.
+Usuários antigos **não** voltam sem backup zip da pasta `data/` + `groups/`. Instalação zerada = sala limpa, app configurado. Fotos ficam em `data/avatars/` e `data/server-icons/` (nascem no primeiro envio).
 
 ---
 
@@ -155,7 +156,7 @@ Usuários antigos **não** voltam sem backup zip da pasta `data/` + `groups/`. I
 |---|---|---|
 | Senhas de produção | Não (gitignore) | Não |
 | Código / UI / imagem | Sim | Sim (pacote “pronto”) |
-| Um comando `./scripts/subir.sh` | Em geral não (fluxo manual/docs) | Sim |
+| Um comando `./scripts/subir.sh` | Sim | Sim |
 | Para o dono desenvolver | Sim | Espelho público |
 | Para qualquer um clonar | Não | Sim |
 

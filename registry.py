@@ -16,6 +16,10 @@ NET_LOG=Path("/data/net.log")
 SERVERS=Path("/data/servers.json")
 CHAT_FILES=Path("/data/chat-files")
 CHAT_FILE_MAX=100*1024*1024
+AVATARS=Path("/data/avatars")
+SERVER_ICONS=Path("/data/server-icons")
+AVATAR_MAX=5*1024*1024
+_IMAGE_MIME={"png":"image/png","jpg":"image/jpeg","gif":"image/gif","webp":"image/webp"}
 TZ = ZoneInfo("America/Sao_Paulo")
 BAN_IP = False
 _ACCESS_WRITE = 0
@@ -484,6 +488,31 @@ def sniff_chat_file(data, ctype, filename):
     if name.endswith(".mp4"): return "video/mp4", "mp4", "video"
     if name.endswith(".mp3"): return "audio/mpeg", "mp3", "audio"
     return None
+def sniff_image_only(data, ctype, filename):
+    sniffed=sniff_chat_file(data, ctype, filename)
+    if not sniffed or sniffed[2]!="image":
+        return None
+    return sniffed
+def _clear_stem_files(folder, stem):
+    if not folder.exists(): return
+    for p in folder.glob(str(stem)+".*"):
+        try: p.unlink()
+        except Exception: pass
+def account_avatar_ver(rec):
+    if not rec: return 0
+    try: return int(rec.get("avatar") or 0)
+    except Exception: return 0
+def accounts_avatar_map():
+    d=load_accounts()
+    out={}
+    by_id=d.get("by_id") or {}
+    for nick, uid in (d.get("by_nick") or {}).items():
+        nick=norm_nick(nick)
+        rec=by_id.get(str(uid)) or {}
+        if not rec or rec.get("active", True) is False: continue
+        v=account_avatar_ver(rec)
+        if v: out[nick]=v
+    return out
 def parse_multipart(handler):
     ctype=handler.headers.get("Content-Type") or ""
     if "multipart/form-data" not in ctype: return None, None
@@ -583,6 +612,105 @@ def servers_http_file_post(handler):
         here[user]={"channel":cid,"at":now(),"kind":"text"}
         return {"ok":True,"message":msg}
     out=mutate_servers(_save)
+    if isinstance(out, dict) and out.get("_http"):
+        code,payload=out["_http"]; handler.send_json(code, payload); return
+    handler.send_json(200, out)
+def _read_image_upload(handler):
+    n=int(handler.headers.get("Content-Length") or 0)
+    if n<=0:
+        return None, None, "arquivo obrigatorio"
+    if n>AVATAR_MAX+65536:
+        return None, None, "imagem grande demais"
+    fields, filepart = parse_multipart(handler)
+    if not fields or not filepart:
+        return None, None, "arquivo obrigatorio"
+    data=filepart.get("data") or b""
+    if len(data)>AVATAR_MAX:
+        return None, None, "imagem grande demais"
+    sniffed=sniff_image_only(data, filepart.get("ctype"), filepart.get("filename"))
+    if not sniffed:
+        return None, None, "so imagem png, jpg, gif ou webp"
+    return fields, {"data":data,"mime":sniffed[0],"ext":sniffed[1]}, None
+def avatar_http_get(handler, q):
+    nick=norm_nick((q.get("nick") or q.get("user") or [""])[0])
+    if not ok_nick(nick):
+        handler.send_json(400, {"error":"nick invalido"}); return True
+    rec=account_get(nick)
+    if not rec:
+        handler.send_json(404, {"error":"sem foto"}); return True
+    ext=(rec.get("avatar_ext") or "").strip().lower()
+    if ext not in _IMAGE_MIME or not account_avatar_ver(rec):
+        handler.send_json(404, {"error":"sem foto"}); return True
+    d=load_accounts()
+    uid=d["by_nick"].get(nick)
+    if uid is None:
+        handler.send_json(404, {"error":"sem foto"}); return True
+    fp=AVATARS/f"{int(uid)}.{ext}"
+    if not fp.exists():
+        handler.send_json(404, {"error":"sem foto"}); return True
+    handler.send_raw(200, fp.read_bytes(), _IMAGE_MIME[ext]); return True
+def avatar_http_post(handler):
+    fields, img, err = _read_image_upload(handler)
+    if err:
+        handler.send_json(400, {"error":err}); return
+    user=norm_nick(fields.get("user") or "")
+    pw=fields.get("password") if "password" in fields else (fields.get("pass") or "")
+    if not ok_nick(user) or not server_cred_ok(user, pw):
+        handler.send_json(401, {"error":"nao autorizado"}); return
+    account_ensure(user)
+    d=load_accounts()
+    uid=d["by_nick"].get(user)
+    if uid is None:
+        handler.send_json(404, {"error":"conta nao existe"}); return
+    uid=int(uid)
+    AVATARS.mkdir(parents=True, exist_ok=True)
+    _clear_stem_files(AVATARS, str(uid))
+    (AVATARS/f"{uid}.{img['ext']}").write_bytes(img["data"])
+    ver=int(time.time())
+    rec=d["by_id"].setdefault(str(uid), {"nick":user,"active":True})
+    rec["avatar"]=ver
+    rec["avatar_ext"]=img["ext"]
+    save_accounts(d)
+    handler.send_json(200, {"ok":True,"avatar":ver})
+def server_icon_http_get(handler, q):
+    sid=((q.get("id") or q.get("server") or [""])[0] or "").strip().lower()
+    s=get_server(sid)
+    if not s:
+        handler.send_json(404, {"error":"servidor nao existe"}); return True
+    ext=(s.get("icon_ext") or "").strip().lower()
+    try: ver=int(s.get("icon") or 0)
+    except Exception: ver=0
+    if ext not in _IMAGE_MIME or not ver:
+        handler.send_json(404, {"error":"sem imagem"}); return True
+    fp=SERVER_ICONS/f"{sid}.{ext}"
+    if not fp.exists():
+        handler.send_json(404, {"error":"sem imagem"}); return True
+    handler.send_raw(200, fp.read_bytes(), _IMAGE_MIME[ext]); return True
+def server_icon_http_post(handler):
+    fields, img, err = _read_image_upload(handler)
+    if err:
+        handler.send_json(400, {"error":err}); return
+    user=norm_nick(fields.get("user") or "")
+    pw=fields.get("password") if "password" in fields else (fields.get("pass") or "")
+    if not ok_nick(user) or not server_cred_ok(user, pw):
+        handler.send_json(401, {"error":"nao autorizado"}); return
+    sid=(fields.get("server") or fields.get("id") or "").strip().lower()
+    s=get_server(sid)
+    if not s:
+        handler.send_json(404, {"error":"servidor nao existe"}); return
+    if not server_can_manage(s, user):
+        handler.send_json(403, {"error":"so moderador ou admin"}); return
+    SERVER_ICONS.mkdir(parents=True, exist_ok=True)
+    _clear_stem_files(SERVER_ICONS, sid)
+    (SERVER_ICONS/f"{sid}.{img['ext']}").write_bytes(img["data"])
+    ver=int(time.time())
+    def _icon(doc):
+        srv=(doc.get("servers") or {}).get(sid)
+        if not srv: return {"_http":(404,{"error":"servidor nao existe"})}
+        srv["icon"]=ver
+        srv["icon_ext"]=img["ext"]
+        return {"ok":True,"icon":ver}
+    out=mutate_servers(_icon)
     if isinstance(out, dict) and out.get("_http"):
         code,payload=out["_http"]; handler.send_json(code, payload); return
     handler.send_json(200, out)
@@ -1037,6 +1165,9 @@ def server_presence_people(s):
         seen[nick]={"nick":nick,"channel":ch.get("id"),"kind":"text","title":ch.get("title") or ch.get("id")}
     out=list(seen.values())
     out.sort(key=lambda x: x.get("nick") or "")
+    avmap=accounts_avatar_map()
+    for p in out:
+        p["avatar"]=int(avmap.get(p.get("nick") or "") or 0)
     return out
 def server_roster(s, people):
     people=people or []
@@ -1052,6 +1183,7 @@ def server_roster(s, people):
         names.add(norm_nick(nick))
     for nick in (s.get("mods") or []):
         names.add(norm_nick(nick))
+    avmap=accounts_avatar_map()
     out=[]
     for nick in names:
         nick=norm_nick(nick)
@@ -1064,6 +1196,7 @@ def server_roster(s, people):
             "title": p.get("title") or "",
             "kind": p.get("kind") or "",
             "role": server_member_role(s, nick) or ("guest" if nick in online else "member"),
+            "avatar": int(avmap.get(nick) or 0),
         })
     out.sort(key=lambda x: (0 if x.get("online") else 1, (x.get("nick") or "").lower()))
     return out
@@ -1089,11 +1222,14 @@ def server_public_view(s, nick=None, include_invite=False, include_presence=Fals
         chans.append(item)
     members=s.get("members") or {}
     member_n=len({norm_nick(n) for n in members})
+    try: icon=int(s.get("icon") or 0)
+    except Exception: icon=0
     out={
         "id": s.get("id"),
         "title": s.get("title") or s.get("id"),
         "official": bool(s.get("official")),
         "owner": s.get("owner") or "",
+        "icon": icon,
         "categories": cats,
         "channels": chans,
         "member_count": member_n,
@@ -1140,6 +1276,7 @@ def servers_http_get(handler, path, q):
                 continue
             out.append({"id":view["id"],"title":view["title"],"official":view["official"],
                         "member_count":view["member_count"],"my_role":view["my_role"],
+                        "icon":view.get("icon") or 0,
                         "text_heads":server_text_heads(s)})
         out.sort(key=lambda r: (0 if r.get("official") else 1, (r.get("title") or "").lower()))
         handler.send_json(200, {"servers": out}); return True
@@ -1258,7 +1395,7 @@ def servers_http_post(handler, path, body):
         dest=(home or {}).get("id") or ""
         scope=panel_scope_for(user, pw)
         rec=account_get(user) or {}
-        handler.send_json(200, {"ok":True,"user":user,"servers":mine,"home":dest,"channel":"geral","panel_scope":scope,"must_change":bool(rec.get("must_change")),"first_setup_admin":bool(rec.get("must_change")) and needs_admin_first_setup(user, pw)}); return True
+        handler.send_json(200, {"ok":True,"user":user,"servers":mine,"home":dest,"channel":"geral","panel_scope":scope,"must_change":bool(rec.get("must_change")),"first_setup_admin":bool(rec.get("must_change")) and needs_admin_first_setup(user, pw),"avatar":account_avatar_ver(rec)}); return True
     if path=="/server-here":
         if not ok_nick(user) or not server_cred_ok(user, pw):
             handler.send_json(401, {"error":"nao autorizado"}); return True
@@ -2484,6 +2621,10 @@ class H(BaseHTTPRequestHandler):
                 out.update({"user_live_s": ul, "user_active": ua, "user_online": uo,
                             "live_s": ul, "active": ua})
             self.send_json(200, out); return
+        if path=="/avatar":
+            avatar_http_get(self, q); return
+        if path=="/server-icon":
+            server_icon_http_get(self, q); return
         if servers_http_get(self, path, q): return
         if path=="/registry":
             ok,_=self.admin_ok(); self.send_json(200 if ok else 401, load() if ok else {"error":"nao autorizado"}); return
@@ -2501,6 +2642,10 @@ class H(BaseHTTPRequestHandler):
         if path.startswith("/gapi"): self.handle_gapi("POST"); return
         if path=="/server-file":
             servers_http_file_post(self); return
+        if path=="/avatar":
+            avatar_http_post(self); return
+        if path=="/server-icon":
+            server_icon_http_post(self); return
         body=self.read_json()
         g=(body.get("group") or "spartan").strip() or "spartan"; user=norm_nick(body.get("user") or "")
         if servers_http_post(self, path, body): return

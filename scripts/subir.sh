@@ -32,7 +32,7 @@ if [[ ! -f .env ]]; then
 fi
 
 # dados prontos (fábrica) — não sobrescreve se já existirem
-mkdir -p data groups recordings
+mkdir -p data groups recordings data/avatars data/server-icons data/chat-files
 [[ -f data/config.json ]] || cp factory-reset/config.json data/config.json
 [[ -f data/site.json ]] || cp factory-reset/site.json data/site.json
 [[ -f data/accounts.json ]] || cp factory-reset/accounts.json data/accounts.json

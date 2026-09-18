@@ -18,6 +18,114 @@
   var talkByNick = {};
   var liveByNick = {};
   var volOpenNick = '';
+  var avatarAtByNick = {};
+
+  function letterOf(name) {
+    return ((String(name || '').trim().charAt(0)) || '?').toUpperCase();
+  }
+  function rememberAvatar(nick, ver) {
+    nick = String(nick || '').toLowerCase();
+    if(!nick) return;
+    var n = ver | 0;
+    if(n) {
+      avatarAtByNick[nick] = n;
+      try {
+        if(nick === (cred().user || '').toLowerCase())
+          localStorage.setItem('spartanAvatar:' + nick, String(n));
+      } catch(e) {}
+    }
+  }
+  function ingestAvatars(list) {
+    (list || []).forEach(function(p) {
+      if(p && p.nick && (p.avatar | 0)) rememberAvatar(p.nick, p.avatar);
+    });
+  }
+  function avatarVerOf(nick) {
+    nick = String(nick || '').toLowerCase();
+    if(!nick) return 0;
+    if(avatarAtByNick[nick]) return avatarAtByNick[nick];
+    try {
+      if(nick === (cred().user || '').toLowerCase())
+        return parseInt(localStorage.getItem('spartanAvatar:' + nick) || '0', 10) || 0;
+    } catch(e) {}
+    return 0;
+  }
+  function avatarSrc(nick, ver) {
+    if(!nick || !ver) return '';
+    return API + '/avatar?nick=' + encodeURIComponent(String(nick).toLowerCase()) + '&v=' + encodeURIComponent(ver);
+  }
+  function serverIconSrc(sid, ver) {
+    if(!sid || !ver) return '';
+    return API + '/server-icon?id=' + encodeURIComponent(sid) + '&v=' + encodeURIComponent(ver);
+  }
+  function fillPhoto(el, src) {
+    if(!el) return;
+    var safe = src ? String(src).replace(/"/g, '') : '';
+    if(!safe) {
+      el.classList.remove('has-photo');
+      el.style.backgroundImage = '';
+      return;
+    }
+    var want = 'url("' + safe + '")';
+    el.classList.add('has-photo');
+    if(el.style.backgroundImage !== want) el.style.backgroundImage = want;
+  }
+  function prepareImageFile(file, done) {
+    if(!file) { done(null, 'Escolha uma imagem.'); return; }
+    if(file.size > 5 * 1024 * 1024) { done(null, 'Imagem passa de 5 MB.'); return; }
+    var r = new FileReader();
+    r.onload = function() {
+      var u8 = new Uint8Array(r.result || []);
+      var ok = false;
+      if(u8.length >= 8 && u8[0]===0x89 && u8[1]===0x50 && u8[2]===0x4E && u8[3]===0x47) ok = true;
+      else if(u8.length >= 3 && u8[0]===0xFF && u8[1]===0xD8 && u8[2]===0xFF) ok = true;
+      else if(u8.length >= 6 && u8[0]===0x47 && u8[1]===0x49 && u8[2]===0x46 && u8[3]===0x38) ok = true;
+      else if(u8.length >= 12 && u8[0]===0x52 && u8[1]===0x49 && u8[2]===0x46 && u8[3]===0x46 &&
+              u8[8]===0x57 && u8[9]===0x45 && u8[10]===0x42 && u8[11]===0x50) ok = true;
+      if(!ok) { done(null, 'Só png, jpg, gif ou webp.'); return; }
+      done(file);
+    };
+    r.onerror = function() { done(null, 'Não leu o arquivo.'); };
+    r.readAsArrayBuffer(file.slice(0, 16));
+  }
+  function paintSelfAvatarPreview() {
+    var c = cred();
+    var nick = mediaState.nick || c.user || '';
+    var prev = $('spartan-shell-avatar-preview');
+    if(!prev) return;
+    prev.textContent = letterOf(nick);
+    fillPhoto(prev, avatarSrc(nick, avatarVerOf(nick)));
+  }
+  function uploadUserAvatar(file) {
+    var hint = $('spartan-shell-avatar-hint');
+    function say(msg) { if(hint) hint.textContent = msg; }
+    prepareImageFile(file, function(ready, err) {
+      if(err || !ready) { say(err || 'Não enviou a imagem.'); return; }
+      var c = cred();
+      if(!c.user || !c.pass) { say('Faça login para salvar a foto.'); return; }
+      var fd = new FormData();
+      fd.append('user', c.user);
+      fd.append('password', c.pass);
+      fd.append('file', ready, file.name || 'foto.png');
+      say('Enviando…');
+      fetch(API + '/avatar', { method: 'POST', body: fd, credentials: 'omit', cache: 'no-store' })
+        .then(function(r) {
+          return r.json().then(function(j) {
+            if(!r.ok) throw new Error((j && j.error) || 'Não enviou a imagem.');
+            return j;
+          });
+        })
+        .then(function(j) {
+          rememberAvatar(c.user, j.avatar);
+          paintUserBar();
+          paintChannels();
+          paintPeople();
+          paintSelfAvatarPreview();
+          say('Foto atualizada. Aparece no lugar da letra do seu nome.');
+        })
+        .catch(function(e) { say(e.message || 'Não enviou a imagem.'); });
+    });
+  }
 
   function $(id) { return document.getElementById(id); }
 
@@ -382,6 +490,9 @@
     if(b) b.checked = snd.sair !== false;
     if(c) c.checked = snd.mensagem !== false;
     refreshShellAdminBtn();
+    paintSelfAvatarPreview();
+    var hint = $('spartan-shell-avatar-hint');
+    if(hint) hint.textContent = 'Aparece no lugar da letra do seu nome, para todo mundo.';
   }
 
   function bindShellSettings() {
@@ -444,6 +555,17 @@
         });
       });
     });
+    var avPick = $('spartan-shell-avatar-pick');
+    var avInp = $('spartan-shell-avatar');
+    if(avPick && avInp && !avPick.dataset.bound) {
+      avPick.dataset.bound = '1';
+      avPick.addEventListener('click', function() { avInp.click(); });
+      avInp.addEventListener('change', function() {
+        var f = avInp.files && avInp.files[0];
+        avInp.value = '';
+        if(f) uploadUserAvatar(f);
+      });
+    }
   }
 
   function paintUserBar() {
@@ -457,7 +579,10 @@
     var mic = $('spartan-user-mic');
     var share = $('spartan-user-share');
     var cam = $('spartan-user-cam');
-    if(av) av.textContent = ((nick.charAt(0) || '?')).toUpperCase();
+    if(av) {
+      av.textContent = letterOf(nick);
+      fillPhoto(av, avatarSrc(nick, avatarVerOf(nick)));
+    }
     if(nm) nm.textContent = nick || 'você';
     if(vs) {
       if(current.voiceTitle && current.voiceServer && current.voiceServer !== current.server)
@@ -491,7 +616,7 @@
     });
     if(cid && cid === current.voice && current.voiceServer === current.server) {
       var me = cred().user;
-      if(me && !seen[me]) out.unshift({ nick: me });
+      if(me && !seen[me]) out.unshift({ nick: me, avatar: avatarVerOf(me) });
     }
     return out;
   }
@@ -695,7 +820,8 @@
       if(serverHasUnread(s.id)) extra += isServerMuted(s.id) ? ' unread-quiet' : ' unread';
       b.className = 'spartan-guild-btn' + extra;
       b.title = (s.title || s.id) + (isServerMuted(s.id) ? ' (silenciado)' : '') + ' — botão direito silencia o servidor';
-      b.textContent = ((s.title || s.id || '?').trim().charAt(0) || '?').toUpperCase();
+      b.textContent = letterOf(s.title || s.id);
+      fillPhoto(b, serverIconSrc(s.id, s.icon));
       b.addEventListener('click', function() {
         if(s.id === current.server) return;
         if(window.SpartanApp) window.SpartanApp.goServer(s.id, defaultChannel(s._full || s));
@@ -756,6 +882,7 @@
         if(ch.kind === 'voice') {
           peopleIn(ch.id).forEach(function(p) {
             var nick = p.nick || '';
+            if(p.avatar) rememberAvatar(nick, p.avatar);
             var who = document.createElement('div');
             who.className = 'spartan-chan-user';
             who.setAttribute('data-nick', nick.toLowerCase());
@@ -763,7 +890,8 @@
             if(cls) who.classList.add(cls);
             var av = document.createElement('span');
             av.className = 'spartan-chan-avatar';
-            av.textContent = ((nick.charAt(0) || '?')).toUpperCase();
+            av.textContent = letterOf(nick);
+            fillPhoto(av, avatarSrc(nick, p.avatar || avatarVerOf(nick)));
             var dot = document.createElement('span');
             dot.className = 'spartan-talk-dot';
             dot.setAttribute('aria-hidden', 'true');
@@ -807,6 +935,8 @@
       box.appendChild(empty);
       return;
     }
+    ingestAvatars(roster);
+    ingestAvatars((detail && detail.people) || []);
     var on = roster.filter(function(p) { return p.online !== false; });
     var off = roster.filter(function(p) { return p.online === false; });
     function head(label) {
@@ -821,7 +951,8 @@
       el.draggable = false;
       var av = document.createElement('span');
       av.className = 'spartan-people-av';
-      av.textContent = ((p.nick || '?').charAt(0) || '?').toUpperCase();
+      av.textContent = letterOf(p.nick);
+      fillPhoto(av, avatarSrc(p.nick, p.avatar || avatarVerOf(p.nick)));
       var name = document.createElement('strong');
       name.textContent = p.nick || '';
       el.appendChild(av);
@@ -993,6 +1124,9 @@
     if(yes) yes.hidden = !pending;
     bindInviteAsk();
     if(el) el.hidden = false;
+    paintSelfAvatarPreview();
+    var hint = $('spartan-shell-avatar-hint');
+    if(hint) hint.textContent = 'Aparece no lugar da letra do seu nome, para todo mundo.';
   }
 
   function handleInvite(code) {
@@ -1296,6 +1430,8 @@
           return;
         }
         detail = d;
+        ingestAvatars(d.people);
+        ingestAvatars(d.roster);
         paintChannels();
         paintPeople();
         paintUserBar();

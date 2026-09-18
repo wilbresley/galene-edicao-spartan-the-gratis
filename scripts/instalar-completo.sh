@@ -173,7 +173,7 @@ ask GO "Tudo certo? Digite sim para gravar e subir" "sim"
 
 # --- gravar arquivos ---
 title "Gravando configuração…"
-mkdir -p data groups recordings .plain-bak
+mkdir -p data groups recordings data/avatars data/server-icons data/chat-files .plain-bak
 
 HASH_ADMIN="$(hash_pw "$ADMIN_PASS")"
 HASH_FRIENDS="$(hash_pw "$FRIENDS_PASS")"

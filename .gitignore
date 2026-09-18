@@ -23,6 +23,8 @@ data/config.json
 data/registry.json
 data/servers.json
 data/chat-files/
+data/avatars/
+data/server-icons/
 data/sidecar.auth
 data/site.json
 groups/abiguinhos.json

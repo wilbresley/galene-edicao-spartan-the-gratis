@@ -969,10 +969,56 @@ function bindMemDlgs(){
  if($('user-srv-q')) $('user-srv-q').addEventListener('input', function(){ paintUserSrvList(userSrvDlg.servers||[]); });
  if($('mem-dlg-add')) $('mem-dlg-add').hidden=true;
 }
+function prepareImageFile(file, done){
+ if(!file){ done(null,'Escolha uma imagem.'); return; }
+ if(file.size>5*1024*1024){ done(null,'Imagem passa de 5 MB.'); return; }
+ var r=new FileReader();
+ r.onload=function(){
+  var u8=new Uint8Array(r.result||[]);
+  var ok=false;
+  if(u8.length>=8 && u8[0]===0x89 && u8[1]===0x50 && u8[2]===0x4E && u8[3]===0x47) ok=true;
+  else if(u8.length>=3 && u8[0]===0xFF && u8[1]===0xD8 && u8[2]===0xFF) ok=true;
+  else if(u8.length>=6 && u8[0]===0x47 && u8[1]===0x49 && u8[2]===0x46 && u8[3]===0x38) ok=true;
+  else if(u8.length>=12 && u8[0]===0x52 && u8[1]===0x49 && u8[2]===0x46 && u8[3]===0x46 &&
+          u8[8]===0x57 && u8[9]===0x45 && u8[10]===0x42 && u8[11]===0x50) ok=true;
+  if(!ok){ done(null,'Só png, jpg, gif ou webp.'); return; }
+  done(file);
+ };
+ r.onerror=function(){ done(null,'Não leu o arquivo.'); };
+ r.readAsArrayBuffer(file.slice(0,16));
+}
+function fillServerIcon(el, sid, ver, title){
+ if(!el) return;
+ var letter=((String(title||sid||'?').trim().charAt(0))||'?').toUpperCase();
+ el.textContent=letter;
+ if(!ver){ el.classList.remove('has-photo'); el.style.backgroundImage=''; return; }
+ var src=REG+'/server-icon?id='+encodeURIComponent(sid)+'&v='+encodeURIComponent(ver);
+ el.classList.add('has-photo');
+ el.style.backgroundImage='url("'+src.replace(/"/g,'')+'")';
+}
+function uploadServerIcon(sid, file, after){
+ prepareImageFile(file, function(ready, err){
+  if(err||!ready){ uiMsg(err||'Não enviou a imagem.'); return; }
+  var fd=new FormData();
+  fd.append('user', user);
+  fd.append('password', pass);
+  fd.append('server', sid);
+  fd.append('file', ready, file.name||'icon.png');
+  fetch(REG+'/server-icon',{method:'POST',body:fd,credentials:'omit',cache:'no-store'}).then(function(r){
+   return r.json().then(function(j){
+    if(!r.ok) throw new Error((j&&j.error)||'Não enviou a imagem.');
+    return j;
+   });
+  }).then(function(){
+   uiMsg('Imagem do servidor atualizada.');
+   if(typeof after==='function') after();
+  }).catch(function(e){ uiMsg(e.message||'Não enviou a imagem.'); });
+ });
+}
 function serverViewKey(d){
  return JSON.stringify({
   id:d.id, title:d.title, official:!!d.official, my_role:d.my_role||'',
-  member_count:d.member_count||0, invite:d.invite||'',
+  member_count:d.member_count||0, invite:d.invite||'', icon:d.icon||0,
   pending:(d.pending||[]).map(function(p){ return p.nick; }).sort(),
   members:(d.members||[]).map(function(m){ return [m.nick,m.role]; }).sort(),
   channels:(d.channels||[]).map(function(c){ return [c.id,c.title,c.kind,c.category||'',c.group||'',!!c.locked]; })
@@ -1072,6 +1118,10 @@ async function loadServers(){
     card.className='server-card';
     var head=document.createElement('div');
     head.className='server-card-head';
+    var icon=document.createElement('span');
+    icon.className='server-card-icon';
+    fillServerIcon(icon, d.id, d.icon, d.title);
+    head.appendChild(icon);
     var h=document.createElement('h3');
     h.textContent=d.title||d.id;
     head.appendChild(h);
@@ -1136,6 +1186,27 @@ async function loadServers(){
     var usersBtn=document.createElement('button'); usersBtn.type='button'; usersBtn.className='okbtn'; usersBtn.textContent='Adicionar e remover usuários';
     usersBtn.onclick=function(){ openMemDlg(d); };
     tools.appendChild(usersBtn);
+    var iconRow=document.createElement('div');
+    iconRow.className='server-tool-row';
+    var iconFile=document.createElement('input');
+    iconFile.type='file';
+    iconFile.accept='image/png,image/jpeg,image/gif,image/webp,.png,.jpg,.jpeg,.gif,.webp';
+    iconFile.className='server-icon-file';
+    iconFile.setAttribute('hidden','');
+    iconFile.tabIndex=-1;
+    var iconBtn=document.createElement('button');
+    iconBtn.type='button';
+    iconBtn.className='okbtn';
+    iconBtn.textContent=d.icon?'Trocar imagem do servidor':'Imagem do servidor';
+    iconBtn.onclick=function(){ iconFile.click(); };
+    iconFile.onchange=function(){
+     var f=iconFile.files&&iconFile.files[0];
+     iconFile.value='';
+     if(f) uploadServerIcon(d.id, f, reloadServers);
+    };
+    iconRow.appendChild(iconBtn);
+    tools.appendChild(iconRow);
+    tools.appendChild(iconFile);
     var row1=document.createElement('div'); row1.className='server-tool-row';
     var chTitle=document.createElement('input'); chTitle.type='text'; chTitle.placeholder='Nome da nova sala';
     var chKind=document.createElement('select');

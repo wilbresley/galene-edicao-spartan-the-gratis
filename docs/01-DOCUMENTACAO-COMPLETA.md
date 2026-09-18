@@ -1,7 +1,7 @@
 # Spartan Chat (Galene) — documentação completa da implantação
 
 **Data da implantação:** 20 de agosto de 2026  
-**Última revisão deste documento:** 18 de setembro de 2026 (padrão ouro de lives/reconexão; painel do moderador; criar canal só no Painel)  
+**Última revisão deste documento:** 18 de setembro de 2026 (só o botão verde de imagem do servidor no Painel)  
 **Objetivo deste arquivo:** registrar *como o stack ficou no teu servidor*, para operação, backup e GitHub.  
 **Segredos:** nenhuma senha de produção, hash real do servidor, `sidecar.auth` vivo ou credencial operacional aparece aqui. Contas e senhas **da instalação** ficam só no servidor (`groups/*.json`, `data/config.json`, `data/sidecar.auth`).  
 **Exceção documentada:** o pacote `factory-reset/` traz a senha de fábrica `Mudar@123` (admin, contas novas e convidados) de propósito — só para zerar o Docker; no primeiro login **todo mundo** troca a senha. Admin também troca a senha dos convidados da sala.
@@ -223,6 +223,8 @@ Arquivo: `registry.py`. Endpoints úteis (prefixo `/spartan-api` opcional):
 | GET | `/server` | membro | detalhe + presença; **401** sem nick, **403** sem acesso |
 | GET | `/server-text` | membro | últimas mensagens do canal só-texto |
 | GET | `/server-file` | membro (`?id=&server=&user=`) | baixa imagem/mp4/mp3 do chat (até 100 MB) |
+| GET | `/avatar` | público (`?nick=`) | foto de perfil da conta (png/jpg/gif/webp, até 5 MB, em `data/avatars/`) |
+| GET | `/server-icon` | público (`?id=`) | imagem do servidor (mesmo tipo, em `data/server-icons/`) |
 | GET | `/server-invite` | público | prévia do convite (`?code=`) |
 | POST | `/server-create` | admin global | cria servidor extra (não aninha servidor) |
 | POST | `/server-channel` | admin ou moderador daquele servidor | canal voz (grupo Galene) ou só-texto |
@@ -237,6 +239,8 @@ Arquivo: `registry.py`. Endpoints úteis (prefixo `/spartan-api` opcional):
 | POST | `/server-here` | membro | presença em canal de texto |
 | POST | `/server-text` | membro (não ouvinte) | mensagem no chat do servidor |
 | POST | `/server-file` | membro (não ouvinte) | multipart: imagem, mp4 ou mp3 até 100 MB em `data/chat-files/` |
+| POST | `/avatar` | a própria conta (nick+senha) | multipart: png/jpg/gif/webp até 5 MB; some a letra da bolinha |
+| POST | `/server-icon` | admin/mod daquele servidor | multipart: imagem do PC na bolinha da rail e no cartão do painel |
 | POST | `/server-view` | membro (nick+senha) | detalhe com convite/pendentes/`members` se puder gerir; **403** sem acesso |
 | POST | `/account-login` | conta | valida senha; devolve só os servidores com acesso, `home` vazio se não tiver nenhum, `panel_scope` |
 | POST | `/server-guest` | nick + senha 2× + convite (código ou link `#/i/…`) | cria conta e entra no servidor na hora |
@@ -276,7 +280,7 @@ Comportamentos de sessão:
 - Contador 24h (`#spartan-ttl`) reconstitui no `start()` (não só no submit do login): `spartanTtlRestore` + `GET /temp-status`. Anfitrião/op também faz poll.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: senha do painel **só** em `sessionStorage` (`spartanAdmin`). O `localStorage.spartanAdminHandoff` antigo é apagado se ainda existir. Preferências de qualidade (HUD, 720p, modo jogo) ficam em `localStorage.spartanPrefs` **sem** senha.
-- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=136`, `spartan-quality.js?v=1`, `spartan-net.js?v=1`, `spartan-watch.js?v=1`, `settings.js?v=2`, `galene-spartan.css?v=104`, `protocol.js?v=9`, `toastify.js?v=3`, `spartan-boot.js?v=11`). Home shell: `spartan-shell.js?v=9`, `spartan-shell.css?v=32`, `spartan-servers.js?v=24`, `custom-home.js?v=10`. Painel: `admin.js?v=52`, `admin.css?v=37`, `spartan.css?v=24`. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar. Painel canónico em **`/admin/`** (`static/admin/index.html`). `/painel/` e `painel.html` só redirecionam para `/admin/`. Nunca copiar o painel por cima de `index.html` da raiz.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=136`, `spartan-quality.js?v=1`, `spartan-net.js?v=1`, `spartan-watch.js?v=1`, `settings.js?v=2`, `galene-spartan.css?v=104`, `protocol.js?v=9`, `toastify.js?v=3`, `spartan-boot.js?v=11`). Home shell: `spartan-shell.js?v=9`, `spartan-shell.css?v=33`, `spartan-servers.js?v=27`, `custom-home.js?v=10`. Painel: `admin.js?v=56`, `admin.css?v=39`, `spartan.css?v=24`. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar. Painel canónico em **`/admin/`** (`static/admin/index.html`). `/painel/` e `painel.html` só redirecionam para `/admin/`. Nunca copiar o painel por cima de `index.html` da raiz.
 
 Painel admin:
 
@@ -291,7 +295,7 @@ Painel admin:
 - Logs: filtros por tipo, nick e IP; horário Brasília.
 - **Oscilações:** aba própria; `data/net.log` 30 dias; filtros nick/sala/IP; cada queda conta.
 - **Criar sala:** convite definitiva (padrão); checkbox **Sala temporária (24h)**; pública sempre 24h; bloco anfitrião só aparece com ttl.
-- **Servidores:** aba no painel. **Admin global** vê tudo. **Moderador** só esta aba e só os servidores em que é membro. Spartan oficial também exige convite/inclusão (não entra todo verificado). Cartão tem **Usuários** (busca, remover, adicionar cadastrado que ainda não tem acesso). Aba Usuários (só admin) tem **Servidores** por pessoa. Campo de moderador lista quem já tem acesso. Convite é **link eterno** (`origem/#/i/<código>`); **Trocar link** invalida o antigo. Quem abre o link cria a conta já naquele servidor, ou (se já tem conta) loga e entra; logado confirma num cartão. Categorias só Texto / Voz. Quatro colunas: ícones, canais, grid (espaço exclusivo), membros (ocultos, cada um numa caixinha). Clicar em texto abre janela **por cima do grid** (não troca a call). Chat Geral aceita colar print e enviar imagem / mp4 / mp3 até **100 MB** (`POST /server-file`, arquivos em `data/chat-files/`). O overlay do chat **abre na mensagem mais nova**. Só outra voz ou Ausentes desconecta. No canal de voz: quadrados **Tela/Câmera** (sempre visíveis se a pessoa estiver transmitindo — inclusive a live do outro); **Mudo** nas cores antigas (cinza / amarelo no teu fone / vermelho o mic dele / os dois); **volume** só ao clicar na pessoa (0–400%, passo 5%, % na barra, rodinha do mouse). **Não** arrasta usuário/canal na lista — mover gente entre vozes e ordem de canais só no **Painel Admin**. Aba **Salas** do painel: sala principal + extras de verdade; canal de voz de servidor **não** entra em Temporárias (24h) e **não** some sozinho. Barra: mic, tela, câmera, engrenagem, Sair. Paleta cinza estilo Fluxer; vermelho só acento.
+- **Servidores:** aba no painel. **Admin global** vê tudo. **Moderador** só esta aba e só os servidores em que é membro. Spartan oficial também exige convite/inclusão (não entra todo verificado). Cartão tem **Usuários** (busca, remover, adicionar cadastrado que ainda não tem acesso) e **Imagem do servidor** (foto do PC no lugar da letra da bolinha da rail). Aba Usuários (só admin) tem **Servidores** por pessoa. Campo de moderador lista quem já tem acesso. Convite é **link eterno** (`origem/#/i/<código>`); **Trocar link** invalida o antigo. Quem abre o link cria a conta já naquele servidor, ou (se já tem conta) loga e entra; logado confirma num cartão. Categorias só Texto / Voz. Quatro colunas: ícones, canais, grid (espaço exclusivo), membros (ocultos, cada um numa caixinha). Clicar em texto abre janela **por cima do grid** (não troca a call). Chat Geral aceita colar print e enviar imagem / mp4 / mp3 até **100 MB** (`POST /server-file`, arquivos em `data/chat-files/`). O overlay do chat **abre na mensagem mais nova**. Só outra voz ou Ausentes desconecta. No canal de voz: quadrados **Tela/Câmera** (sempre visíveis se a pessoa estiver transmitindo — inclusive a live do outro); **Mudo** nas cores antigas (cinza / amarelo no teu fone / vermelho o mic dele / os dois); **volume** só ao clicar na pessoa (0–400%, passo 5%, % na barra, rodinha do mouse). **Não** arrasta usuário/canal na lista — mover gente entre vozes e ordem de canais só no **Painel Admin**. Aba **Salas** do painel: sala principal + extras de verdade; canal de voz de servidor **não** entra em Temporárias (24h) e **não** some sozinho. Barra: mic, tela, câmera, engrenagem, Sair. Nas **Configurações** da casca cada um manda uma **foto do perfil** do PC (`POST /avatar`); a letra da bolinha some e a foto aparece na barra, na lista de voz e em “No servidor”. Paleta cinza estilo Fluxer; vermelho só acento.
 
 ---
 
@@ -434,6 +438,10 @@ A pasta Windows `S:\Downloads\galene-spartan-docs\` tem as mesmas docs + export 
 59. 18/09/2026: **preset Spartan + painel** — `Ausentes` (fixo) volta a ser criado se faltar mesmo com servidor já existente; instalação do zero mantém Chat Geral + Voz 1/2/3 + Ausentes. Painel: nomes das salas centralizados (espaço reservado sem Apagar). Cache `admin.js?v=51`, `admin.css?v=36`. Reiniciar `spartan-reg`.
 60. 18/09/2026: **X da própria live + painel/moderador** — X na sua tela/câmera encerra o compartilhamento (X nos outros só para de assistir); engrenagem mostra Painel também para moderador; lista alfabética de mods com Remover; criar canal mantém Texto/Voz; layout nome/botões + Apagar opaco nas fixas; vermelho só exclusão. Cache `galene.js?v=136`, `spartan-servers.js?v=23`, `spartan-shell.css?v=32`, `admin.js?v=52`, `admin.css?v=37`.
 61. 18/09/2026: **sem atalho de criar canal na lista** — a coluna de canais do servidor não tem mais campo “Novo canal”; criar texto/voz fica só no cartão do servidor no Painel. Cache `spartan-servers.js?v=24`.
+62. 18/09/2026: **foto de perfil e imagem do servidor** — engrenagem da casca escolhe imagem do PC (`POST /avatar`, `data/avatars/`); some a letra e a foto vai para a barra, a lista de voz e “No servidor”. No cartão do servidor no Painel, **Imagem do servidor** (`POST /server-icon`, `data/server-icons/`) pinta a bolinha da rail. Cache `spartan-servers.js?v=25`, `spartan-shell.css?v=33`, `admin.js?v=53`, `admin.css?v=38`. Reiniciar `spartan-reg`.
+63. 18/09/2026: **foto de perfil não recusava PNG** — o Galene tem `img-src 'self'` (bloqueia `blob:`), então o recorte no canvas dizia “não é uma imagem”. Agora confere o arquivo pelos bytes e sobe png/jpg/gif/webp até **5 MB**. Cache `spartan-servers.js?v=26`, `admin.js?v=54`. Reiniciar `spartan-reg`.
+64. 18/09/2026: **foto sem piscar** — o poll recriava a bolinha com a letra e só pintava a foto no `onload`; a letra e a imagem brigavam. Agora a foto entra na hora. Cache `spartan-servers.js?v=27`, `admin.js?v=55`.
+65. 18/09/2026: **só o botão verde de imagem do servidor** — o seletor nativo “Escolher arquivo” no cartão do Painel some; o `<input type=file>` continua escondido e o verde abre o diálogo. Cache `admin.js?v=56`, `admin.css?v=39`.
 
 ---
 

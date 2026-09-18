@@ -59,7 +59,7 @@ class ShareFpsTests(unittest.TestCase):
         self.assertIn("spartanEffectiveShareBps", body)
 
     def test_cache_bust(self):
-        self.assertIn("galene.js?v=134", self.html)
+        self.assertIn("galene.js?v=136", self.html)
         self.assertIn("spartan-quality.js?v=1", self.html)
 
     def test_remb_bypass_for_screenshare(self):

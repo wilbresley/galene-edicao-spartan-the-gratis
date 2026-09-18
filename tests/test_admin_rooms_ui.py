@@ -38,8 +38,8 @@ class AdminRoomsUiTests(unittest.TestCase):
         self.assertIn("background:#000", block)
 
     def test_cache_bust_admin_css(self):
-        self.assertIn("admin.css?v=35", self.html)
-        self.assertIn("admin.js?v=50", self.html)
+        self.assertIn("admin.css?v=39", self.html)
+        self.assertIn("admin.js?v=56", self.html)
 
     def test_server_voice_hidden_and_open_uses_shell(self):
         self.assertIn("server_voice", self.js)
@@ -50,6 +50,14 @@ class AdminRoomsUiTests(unittest.TestCase):
 
     def test_embed_hides_inner_header(self):
         self.assertIn("html.admin-in-shell .admin-top{display:none!important}", self.css)
+
+    def test_server_icon_hides_native_file_picker(self):
+        self.assertIn(".server-icon-file", self.css)
+        hide = self.css.split(".server-icon-file", 1)[1].split("}", 1)[0]
+        self.assertIn("display:none!important", hide)
+        self.assertIn("iconFile.className='server-icon-file'", self.js)
+        self.assertIn("tools.appendChild(iconFile)", self.js)
+        self.assertNotIn("iconRow.appendChild(iconFile)", self.js)
 
 
 if __name__ == "__main__":

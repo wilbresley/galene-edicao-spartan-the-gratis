@@ -67,9 +67,9 @@ Logs: `docker compose logs -f`
 |---|---|
 | **Galene** | SFU + TURN: áudio/vídeo/tela entre várias pessoas |
 | **static/** | Interface Spartan (home, salas, admin, sala ao vivo, `sounds/*.mp3`, `spartan-quality.js` / `spartan-net.js` / `spartan-watch.js`) |
-| **registry.py** | Sidecar (`spartan-reg`): convites, temporários, logs, IDs, beacon, **presença/timers** |
+| **registry.py** | Sidecar (`spartan-reg`): convites, temporários, logs, IDs, beacon, **presença/timers**, foto de perfil, imagem do servidor |
 | **groups/spartan.json** | Sala principal (modo **convite** na fábrica) |
-| **data/** | Config, contas, registry, sidecar.auth |
+| **data/** | Config, contas, registry, sidecar.auth; `avatars/` e `server-icons/` nascem no primeiro upload |
 
 ### O que você vê na prática
 
@@ -84,6 +84,7 @@ Várias pessoas no mesmo canal, com microfone, câmera e compartilhamento de tel
 - **Timers (servidor)** — header = tempo da sala (`HH:MM:SS`); menu do nick = tempo individual. Sala vazia **5 min** zera o da sala.
 - **Reconexão** — corte em **60 s**: abaixo disso, religa em silêncio e mantém mic/tela/câmera; acima, overlay e mídia desligada (precisa religar).
 - **Tela** — FPS-alvo **60**; teto auto **12 Mbps** / 1080p **10** / 720p **5**, com escada se o upload apertar. HUD **só na live que você envia**. Mic com supressão pede `voiceIsolation`. Quem assiste clica em **Tela** no nick.
+- **Foto** — na engrenagem da casca você escolhe png/jpg/gif/webp (até 5 MB) no lugar da letra do nick. No Painel, o botão verde **Imagem do servidor** pinta a bolinha da lista de servidores.
 - **Painel** (`/admin/`) — cadastrados, convites, salas, logs. Só admin da sala principal. `/painel/` redireciona para cá. Anfitrião de sala 24 h não entra.
 
 ### Cargos (3)
@@ -195,7 +196,7 @@ Cliente (browser)
 
 | Host | Container | Notas |
 |---|---|---|
-| `./data` | `/data` | config, sidecar.auth, registry, accounts, access.log |
+| `./data` | `/data` | config, sidecar.auth, registry, accounts, access.log, avatars, server-icons |
 | `./groups` | `/groups` | JSON das salas |
 | `./static` | `/app/static:ro` | UI Spartan por cima do static da imagem |
 | `./recordings` | `/recordings` | gravações (se habilitar) |
@@ -208,6 +209,7 @@ Cliente (browser)
 | `data/config.json` / `groups/spartan.json` | **Sim** | hashes da senha de fábrica |
 | `.env` | **Não** (gitignore) | IP TURN da sua máquina |
 | `data/access.log` / `registry` com gente real | **Não** | gerados em runtime |
+| `data/avatars/` / `data/server-icons/` | **Não** | fotos que cada instalação sobe |
 
 Em produção: troque senhas, restrinja o repo se for fork privado, `chmod 600 data/sidecar.auth`.
 
@@ -215,7 +217,7 @@ Em produção: troque senhas, restrinja o repo se for fork privado, `chmod 600 d
 
 Prefixo típico via proxy: `/spartan-api/…`
 
-Principais: `health`, `rooms`, `site`, `beacon`, `status`, `temp-status`, `access-log`, `registry`, `panel-login`, `first-setup`, `rename-user`, `create-room` (`ttl` no convite; pública sempre 24h; anfitrião só com ttl), `join-named`, convites (`register`, `approve`, …), proxy `gapi/*` da API Galene.
+Principais: `health`, `rooms`, `site`, `beacon`, `status`, `temp-status`, `access-log`, `registry`, `panel-login`, `first-setup`, `rename-user`, `create-room` (`ttl` no convite; pública sempre 24h; anfitrião só com ttl), `join-named`, convites (`register`, `approve`, …), **`/avatar`** e **`/server-icon`** (png/jpg/gif/webp até 5 MB), proxy `gapi/*` da API Galene.
 
 Sala pública: `ensure_open_ouvinte` no beacon alinha wildcard para Ouvinte (`["present"]`).
 

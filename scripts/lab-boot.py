@@ -72,9 +72,10 @@ def ensure_layout():
             p = f"{APP}/data/{extra}"
             if os.path.isfile(p):
                 os.remove(p)
-        chat = f"{APP}/data/chat-files"
-        if os.path.isdir(chat):
-            shutil.rmtree(chat, ignore_errors=True)
+        for folder in ("chat-files", "avatars", "server-icons"):
+            p = f"{APP}/data/{folder}"
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
     for src, dst in pairs:
         if not os.path.isfile(src):
             continue

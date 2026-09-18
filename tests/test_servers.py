@@ -2,6 +2,7 @@
 """Servidores do sidecar: modelo, presença agregada, moderador, canais."""
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import unittest
@@ -24,11 +25,16 @@ class FakeHandler:
         self.code = code
         self.payload = payload
 
+    def send_raw(self, code, body, ctype="text/plain; charset=utf-8"):
+        self.code = code
+        self.raw = body
+        self.ctype = ctype
+
 
 class ServersModelTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
-        self._old = (reg.SERVERS, reg.GROUPS, reg.DATA, reg.SITE, reg.ACCOUNTS)
+        self._old = (reg.SERVERS, reg.GROUPS, reg.DATA, reg.SITE, reg.ACCOUNTS, reg.AVATARS, reg.SERVER_ICONS)
         self._ia = reg.internal_auth
         reg.internal_auth = lambda: ""
         reg.SERVERS = self.tmp / "servers.json"
@@ -36,6 +42,8 @@ class ServersModelTests(unittest.TestCase):
         reg.DATA = self.tmp / "registry.json"
         reg.SITE = self.tmp / "site.json"
         reg.ACCOUNTS = self.tmp / "accounts.json"
+        reg.AVATARS = self.tmp / "avatars"
+        reg.SERVER_ICONS = self.tmp / "server-icons"
         reg.GROUPS.mkdir()
         (reg.GROUPS / "spartan.json").write_text(
             json.dumps({
@@ -60,7 +68,7 @@ class ServersModelTests(unittest.TestCase):
         reg.account_set_password("bruno", "brunopass", role="present")
 
     def tearDown(self):
-        reg.SERVERS, reg.GROUPS, reg.DATA, reg.SITE, reg.ACCOUNTS = self._old
+        reg.SERVERS, reg.GROUPS, reg.DATA, reg.SITE, reg.ACCOUNTS, reg.AVATARS, reg.SERVER_ICONS = self._old
         reg.internal_auth = self._ia
 
     def _post(self, path, body):
@@ -579,6 +587,89 @@ class ServersModelTests(unittest.TestCase):
         self.assertEqual(addable.code, 200)
         self.assertIn("dora", addable.payload["users"])
 
+    def _multipart(self, fields, filename, data, ctype="image/jpeg"):
+        b = "----spartan"
+        chunks = []
+        for k, v in fields.items():
+            chunks.append(
+                ("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n" % (b, k, v)).encode()
+            )
+        chunks.append(
+            ("--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\nContent-Type: %s\r\n\r\n" % (b, filename, ctype)).encode()
+            + data
+            + b"\r\n"
+        )
+        chunks.append(("--%s--\r\n" % b).encode())
+        raw = b"".join(chunks)
+        return raw, "multipart/form-data; boundary=" + b
+
+    def _bin(self, body=b"", headers=None):
+        h = FakeHandler()
+        h.rfile = io.BytesIO(body)
+        h.headers = headers or {}
+        h.raw = None
+        h.ctype = None
+        return h
+
+    def test_user_avatar_upload_get_and_login(self):
+        jpeg = b"\xff\xd8\xff" + b"\x00" * 48
+        body, ctype = self._multipart({"user": "ana", "password": "anapass12"}, "eu.jpg", jpeg)
+        h = self._bin(body, {"Content-Type": ctype, "Content-Length": str(len(body))})
+        reg.avatar_http_post(h)
+        self.assertEqual(h.code, 200)
+        self.assertTrue((h.payload or {}).get("avatar"))
+        rec = reg.account_get("ana")
+        self.assertTrue(rec.get("avatar"))
+        self.assertEqual(rec.get("avatar_ext"), "jpg")
+        g = self._bin()
+        self.assertTrue(reg.avatar_http_get(g, {"nick": ["ana"]}))
+        self.assertEqual(g.code, 200)
+        self.assertEqual(g.raw[:3], b"\xff\xd8\xff")
+        self.assertIn("jpeg", g.ctype)
+        login = self._post("/account-login", {"user": "ana", "password": "anapass12"})
+        self.assertEqual(login.code, 200)
+        self.assertEqual(login.payload.get("avatar"), rec.get("avatar"))
+        self._post("/server-member-add", {
+            "user": "admin", "password": "adminpass", "server": "spartan", "nick": "ana",
+        })
+        view = reg.server_public_view(reg.get_server("spartan"), "admin", include_presence=True)
+        by = {p["nick"]: p for p in (view.get("roster") or [])}
+        self.assertEqual(by["ana"].get("avatar"), rec.get("avatar"))
+
+    def test_avatar_rejects_non_image(self):
+        mp3 = b"ID3" + b"\x00" * 48
+        body, ctype = self._multipart({"user": "ana", "password": "anapass12"}, "x.mp3", mp3, "audio/mpeg")
+        h = self._bin(body, {"Content-Type": ctype, "Content-Length": str(len(body))})
+        reg.avatar_http_post(h)
+        self.assertEqual(h.code, 400)
+
+    def test_server_icon_upload_and_get(self):
+        created = self._post("/server-create", {"user": "admin", "password": "adminpass", "title": "FotoSrv"})
+        self.assertEqual(created.code, 200)
+        sid = created.payload["id"]
+        jpeg = b"\xff\xd8\xff" + b"\x00" * 48
+        body, ctype = self._multipart({"user": "admin", "password": "adminpass", "server": sid}, "icon.jpg", jpeg)
+        h = self._bin(body, {"Content-Type": ctype, "Content-Length": str(len(body))})
+        reg.server_icon_http_post(h)
+        self.assertEqual(h.code, 200)
+        self.assertTrue((h.payload or {}).get("icon"))
+        s = reg.get_server(sid)
+        self.assertTrue(s.get("icon"))
+        g = self._bin()
+        self.assertTrue(reg.server_icon_http_get(g, {"id": [sid]}))
+        self.assertEqual(g.code, 200)
+        self.assertEqual(g.raw[:3], b"\xff\xd8\xff")
+        listed = self._get("/servers", {"user": ["admin"]})
+        item = [x for x in listed.payload["servers"] if x["id"] == sid][0]
+        self.assertEqual(item.get("icon"), s.get("icon"))
+        self._post("/server-member-add", {
+            "user": "admin", "password": "adminpass", "server": sid, "nick": "bruno",
+        })
+        body2, ctype2 = self._multipart({"user": "bruno", "password": "brunopass", "server": sid}, "icon.jpg", jpeg)
+        h2 = self._bin(body2, {"Content-Type": ctype2, "Content-Length": str(len(body2))})
+        reg.server_icon_http_post(h2)
+        self.assertEqual(h2.code, 403)
+
 
 class ServersUiTests(unittest.TestCase):
     @classmethod
@@ -597,9 +688,9 @@ class ServersUiTests(unittest.TestCase):
         self.assertIn('id="spartan-text-pane"', self.index)
         self.assertIn("#/s/", self.shell)
         self.assertIn("goServer", self.shell)
-        self.assertIn("spartan-servers.js?v=24", self.index)
+        self.assertIn("spartan-servers.js?v=27", self.index)
         self.assertIn("spartan-shell.js?v=9", self.index)
-        self.assertIn("spartan-shell.css?v=32", self.index)
+        self.assertIn("spartan-shell.css?v=33", self.index)
         self.assertIn('id="spartan-login-form"', self.index)
         self.assertIn("#/convidado", self.index)
         self.assertIn("#/i/", self.shell)
@@ -648,6 +739,17 @@ class ServersUiTests(unittest.TestCase):
         self.assertIn('id="spartan-user-settings"', self.index)
         self.assertIn('id="spartan-first-modal"', self.index)
         self.assertIn('id="spartan-shell-settings"', self.index)
+        self.assertIn('id="spartan-shell-avatar"', self.index)
+        self.assertIn("Foto do perfil", self.index)
+        self.assertIn("Imagem do servidor", (ROOT / "static" / "admin.js").read_text(encoding="utf-8"))
+        self.assertIn("/avatar", (ROOT / "static" / "spartan-servers.js").read_text(encoding="utf-8"))
+        js = (ROOT / "static" / "spartan-servers.js").read_text(encoding="utf-8")
+        self.assertIn("prepareImageFile", js)
+        self.assertNotIn("cropSquareFile", js)
+        fill = js.split("function fillPhoto", 1)[1].split("function prepareImageFile", 1)[0]
+        self.assertNotIn("new Image()", fill)
+        self.assertIn("has-photo", fill)
+        self.assertIn("5 * 1024 * 1024", js)
         self.assertIn("openShellSettings", js)
         openSet = js.split("function openSettings()", 1)[1].split("function closeShellSettings", 1)[0]
         self.assertNotIn("openAdmin", openSet)
@@ -737,8 +839,8 @@ class ServersUiTests(unittest.TestCase):
     def test_admin_servers_tab(self):
         self.assertIn('data-tab="servers"', self.admin)
         self.assertIn('id="tab-servers"', self.admin)
-        self.assertIn("admin.js?v=50", self.admin)
-        self.assertIn("admin.css?v=35", self.admin)
+        self.assertIn("admin.js?v=56", self.admin)
+        self.assertIn("admin.css?v=39", self.admin)
         js = (ROOT / "static" / "admin.js").read_text(encoding="utf-8")
         self.assertIn("server-cols", js)
         self.assertIn("Salas de texto", js)

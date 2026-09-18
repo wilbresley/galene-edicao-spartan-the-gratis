@@ -10,14 +10,14 @@
 <link rel="stylesheet" href="/mainpage.css"/>
 <link rel="stylesheet" href="/spartan.css?v=24"/>
 <link rel="stylesheet" href="/galene-spartan.css?v=104"/>
-<link rel="stylesheet" href="/spartan-shell.css?v=32"/>
+<link rel="stylesheet" href="/spartan-shell.css?v=33"/>
 <link rel="prefetch" href="/galene.js?v=136"/>
 <link rel="prefetch" href="/protocol.js?v=9"/>
 <link rel="prefetch" href="/spartan-quality.js?v=1"/>
 <link rel="prefetch" href="/spartan-net.js?v=1"/>
 <link rel="prefetch" href="/spartan-watch.js?v=1"/>
 <script src="/custom-home.js?v=10" defer></script>
-<script src="/spartan-servers.js?v=24" defer></script>
+<script src="/spartan-servers.js?v=27" defer></script>
 <script src="/spartan-shell.js?v=9" defer></script>
 </head>
 <body>
@@ -192,6 +192,15 @@
 <div id="spartan-shell-settings" hidden>
   <div class="spartan-shell-settings-card" role="dialog" aria-modal="true" aria-labelledby="spartan-shell-settings-title">
     <h2 id="spartan-shell-settings-title">Configurações</h2>
+    <div class="spartan-shell-avatar-row">
+      <span id="spartan-shell-avatar-preview" aria-hidden="true">?</span>
+      <div class="spartan-shell-avatar-meta">
+        <label for="spartan-shell-avatar">Foto do perfil</label>
+        <input id="spartan-shell-avatar" type="file" accept="image/png,image/jpeg,image/gif,image/webp,.png,.jpg,.jpeg,.gif,.webp" hidden/>
+        <button type="button" id="spartan-shell-avatar-pick">Escolher imagem</button>
+        <p id="spartan-shell-avatar-hint">Aparece no lugar da letra do seu nome, para todo mundo.</p>
+      </div>
+    </div>
     <label for="spartan-shell-shareq">Tela compartilhada</label>
     <select id="spartan-shell-shareq">
       <option value="auto">máxima (rede boa)</option>
