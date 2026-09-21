@@ -301,6 +301,11 @@ function spartanPeerAudioStoreKey() {
     try {
         if(serverConnection && serverConnection.username)
             me = String(serverConnection.username).trim().toLowerCase();
+        if(!me) {
+            let s = spartanLoadStoredSession(group);
+            if(s && s.user)
+                me = String(s.user).trim().toLowerCase();
+        }
         if(!me)
             me = spartanSoundNick();
     } catch(e) {}
@@ -324,6 +329,29 @@ function spartanPeerNickOf(userId) {
     return spartanNickKey(u && u.username);
 }
 
+/** Mute/volume por nick (localStorage) — sobrevive a troca de peer-id. */
+function spartanPeerAudioEnt(userId) {
+    let nick = spartanPeerNickOf(userId);
+    if(!nick)
+        return null;
+    let map = spartanLoadPeerAudioMap();
+    return map[nick] || null;
+}
+
+function spartanIsLocalMuted(userId) {
+    if(userId && spartanUserMuted[userId])
+        return true;
+    let ent = spartanPeerAudioEnt(userId);
+    return !!(ent && ent.muteLocal);
+}
+
+function spartanIsMuteForPeer(userId) {
+    if(userId && spartanMuteFor[userId])
+        return true;
+    let ent = spartanPeerAudioEnt(userId);
+    return !!(ent && ent.muteFor);
+}
+
 function spartanPersistPeerAudio(userId) {
     let nick = spartanPeerNickOf(userId);
     if(!nick)
@@ -332,8 +360,8 @@ function spartanPersistPeerAudio(userId) {
     let ent = map[nick] || {};
     if(spartanUserVol[userId] != null)
         ent.vol = spartanUserVol[userId];
-    ent.muteLocal = !!spartanUserMuted[userId];
-    ent.muteFor = !!spartanMuteFor[userId];
+    ent.muteLocal = !!spartanIsLocalMuted(userId);
+    ent.muteFor = !!spartanIsMuteForPeer(userId);
     map[nick] = ent;
     spartanSavePeerAudioMap(map);
 }
@@ -353,10 +381,14 @@ function spartanRestorePeerAudio(userId) {
     }
     if(ent.muteLocal)
         spartanUserMuted[userId] = true;
+    else
+        delete spartanUserMuted[userId];
     if(ent.muteFor) {
         spartanMuteFor[userId] = true;
         spartanLastMicPublishAt = 0;
         try { spartanPublishMicMuted(); } catch(e4) {}
+    } else {
+        delete spartanMuteFor[userId];
     }
     try { spartanApplyUserVolume(userId); } catch(e) {}
     if(serverConnection) {
@@ -367,6 +399,16 @@ function spartanRestorePeerAudio(userId) {
         }
     }
     try { spartanRefreshMuteButtons(userId); } catch(e3) {}
+}
+
+function spartanReapplyAllPeerAudio() {
+    if(!serverConnection || !serverConnection.users)
+        return;
+    for(let id in serverConnection.users) {
+        if(id === serverConnection.id)
+            continue;
+        try { spartanRestorePeerAudio(id); } catch(e) {}
+    }
 }
 let spartanHideOwnStream = {};
 /** Som da tela que o usuário ligou (nick + rótulo). F5 começa mudo; desconexão reconstitui. */
@@ -457,7 +499,7 @@ function spartanApplyUserMute(c) {
         spartanApplyLiveSound(c);
         return;
     }
-    let muted = !!(c.source && (spartanUserMuted[c.source] || spartanPeerMutedTowardMe(c.source)));
+    let muted = !!(c.source && (spartanIsLocalMuted(c.source) || spartanPeerMutedTowardMe(c.source)));
     c.stream.getAudioTracks().forEach(function(t) {
         t.enabled = !muted;
     });
@@ -492,7 +534,7 @@ function spartanApplyDownRequest(c) {
         if(c.label === 'screenshare') {
             let key = spartanLiveSoundKey(c);
             let wantSound = !!(key && spartanLiveSound[key]);
-            if(c.source && spartanUserMuted[c.source])
+            if(c.source && spartanIsLocalMuted(c.source))
                 wantSound = false;
             c.request(wantSound ? ['audio', 'video'] : ['video']);
         } else {
@@ -682,9 +724,9 @@ function spartanNotifyShellRosterNow() {
             talk: spartanPeerTalkMode(id),
             me: !!(serverConnection.id && id === serverConnection.id),
             lives: lives,
-            muteLocal: !!spartanUserMuted[id],
+            muteLocal: spartanIsLocalMuted(id),
             muteRemote: spartanRemoteMuted(id),
-            muteFor: !!spartanMuteFor[id],
+            muteFor: spartanIsMuteForPeer(id),
             vol: (spartanUserVol[id] == null ? 100 : spartanUserVol[id]),
         });
     }
@@ -1306,7 +1348,7 @@ function spartanSubscribeRequest(ref, watching) {
         let stream = ref.stream || (serverConnection && serverConnection.down[ref.streamId || ref.id]);
         let key = stream ? spartanLiveSoundKey(stream) : spartanIntentKey(ref.userId, ref.liveKey);
         let wantSound = !!(key && spartanLiveSound[key]);
-        if(ref.userId && spartanUserMuted[ref.userId])
+        if(ref.userId && spartanIsLocalMuted(ref.userId))
             wantSound = false;
         return wantSound ? ['audio', 'video'] : ['video'];
     }
@@ -1460,7 +1502,11 @@ function spartanToggleLiveFromShell(d) {
 function spartanToggleUserMute(userId) {
     if(!serverConnection || userId === serverConnection.id)
         return;
-    spartanUserMuted[userId] = !spartanUserMuted[userId];
+    let next = !spartanIsLocalMuted(userId);
+    if(next)
+        spartanUserMuted[userId] = true;
+    else
+        delete spartanUserMuted[userId];
     if(serverConnection) {
         for(let id in serverConnection.down) {
             let c = serverConnection.down[id];
@@ -1560,6 +1606,16 @@ function spartanPublishMicMuted() {
 function spartanMuteForNickList() {
     let out = [];
     let seen = {};
+    let map = spartanLoadPeerAudioMap();
+    for(let nick in map) {
+        if(!map[nick] || !map[nick].muteFor)
+            continue;
+        nick = spartanNickKey(nick);
+        if(nick && !seen[nick]) {
+            seen[nick] = true;
+            out.push(nick);
+        }
+    }
     for(let id in spartanMuteFor) {
         if(!spartanMuteFor[id])
             continue;
@@ -1593,7 +1649,11 @@ function spartanPeerMutedTowardMe(userId) {
 function spartanToggleMuteFor(userId) {
     if(!serverConnection || userId === serverConnection.id)
         return;
-    spartanMuteFor[userId] = !spartanMuteFor[userId];
+    let next = !spartanIsMuteForPeer(userId);
+    if(next)
+        spartanMuteFor[userId] = true;
+    else
+        delete spartanMuteFor[userId];
     spartanPersistPeerAudio(userId);
     spartanLastMicPublishAt = 0;
     try { spartanPublishMicMuted(); } catch(e) {}
@@ -1717,9 +1777,9 @@ function spartanRemoteMicOn(userId) {
 function spartanPaintMuteBtn(btn, userId) {
     if(!btn)
         return;
-    let loc = !!spartanUserMuted[userId];
+    let loc = spartanIsLocalMuted(userId);
     let rem = spartanRemoteMuted(userId);
-    let toward = !!spartanMuteFor[userId];
+    let toward = spartanIsMuteForPeer(userId);
     btn.classList.remove('on', 'mute-local', 'mute-remote', 'mute-both', 'mute-toward',
         'mute-local-toward', 'mute-remote-toward', 'mute-all');
     let parts = [];
@@ -1778,7 +1838,7 @@ function spartanEnsurePeerUiTimer() {
 }
 
 function spartanVolLin(userId) {
-    if(spartanUserMuted[userId] || spartanPeerMutedTowardMe(userId))
+    if(spartanIsLocalMuted(userId) || spartanPeerMutedTowardMe(userId))
         return 0;
     let p = spartanUserVol[userId];
     if(p == null)
@@ -2015,6 +2075,39 @@ function spartanSnapshotMediaState() {
     };
 }
 
+function spartanSnapshotHideOwn() {
+    /** @type {Record<string, boolean>} */
+    let out = {};
+    if(!serverConnection)
+        return out;
+    for(let id in serverConnection.up) {
+        let c = serverConnection.up[id];
+        if(!c || !spartanHideOwnStream[c.id])
+            continue;
+        let key = (c.userdata && c.userdata.liveKey) || spartanLiveKind(c);
+        if(key)
+            out[key] = true;
+        out[spartanLiveKind(c)] = true;
+    }
+    return out;
+}
+
+function spartanRestoreHideOwn() {
+    let snap = window._spartanHideOwnSnap;
+    if(!snap || !serverConnection)
+        return;
+    for(let id in serverConnection.up) {
+        let c = serverConnection.up[id];
+        if(!c)
+            continue;
+        let key = (c.userdata && c.userdata.liveKey) || '';
+        let kind = spartanLiveKind(c);
+        if((key && snap[key]) || snap[kind])
+            spartanHideOwnStream[c.id] = true;
+    }
+    try { spartanRefreshAllMedia(); } catch(e) {}
+}
+
 function spartanSnapshotWatch() {
     let out = [];
     for(let k in spartanWatchIntent) {
@@ -2074,34 +2167,48 @@ function spartanRestoreDirectedWatches() {
     for(let uid in serverConnection.users) {
         if(uid === serverConnection.id)
             continue;
-        let lives = spartanUserLives(uid);
-        let nick = (serverConnection.users[uid] || {}).username || '';
-        for(let i = 0; i < lives.length; i++) {
-            let ref = lives[i];
-            let keys = [
-                nick + '\t' + ref.liveKey,
-                nick + '\t' + (ref.type || ''),
-                nick + '\t' + (ref.label || ''),
-            ];
-            let hit = false;
-            for(let k = 0; k < keys.length; k++) {
-                if(snap.indexOf(keys[k]) >= 0) {
-                    hit = true;
-                    break;
-                }
+        spartanRestoreDirectedWatchesFor(uid, snap);
+    }
+}
+
+function spartanRestoreDirectedWatchesFor(uid, snap) {
+    if(!serverConnection || !uid || uid === serverConnection.id)
+        return;
+    snap = snap || window._spartanWatchSnap;
+    if(!snap || !snap.length)
+        return;
+    let lives = spartanUserLives(uid);
+    let nick = (serverConnection.users[uid] || {}).username || '';
+    for(let i = 0; i < lives.length; i++) {
+        let ref = lives[i];
+        let keys = [
+            nick + '\t' + ref.liveKey,
+            nick + '\t' + (ref.type || ''),
+            nick + '\t' + (ref.label || ''),
+        ];
+        let hit = false;
+        for(let k = 0; k < keys.length; k++) {
+            if(snap.indexOf(keys[k]) >= 0) {
+                hit = true;
+                break;
             }
-            if(!hit)
-                continue;
-            if(ref.liveKey)
-                spartanWatchIntent[nick + '\t' + ref.liveKey] = true;
-            if(ref.streamId)
-                spartanWatch[ref.streamId] = true;
-            if(ref.up)
-                continue;
-            if(ref.streamId && serverConnection.down[ref.streamId])
-                continue;
-            spartanSendLiveRequest(ref, true);
         }
+        // Também respeita intenção viva (pós-restore parcial).
+        if(!hit && ref.liveKey && spartanWatchIntent[nick + '\t' + ref.liveKey])
+            hit = true;
+        if(!hit)
+            continue;
+        if(ref.liveKey)
+            spartanWatchIntent[nick + '\t' + ref.liveKey] = true;
+        if(ref.streamId)
+            spartanWatch[ref.streamId] = true;
+        if(ref.up)
+            continue;
+        let have = ref.streamId && serverConnection.down[ref.streamId];
+        let watchingOk = have && spartanWatch[ref.streamId];
+        if(watchingOk)
+            continue;
+        spartanSendLiveRequest(ref, true);
     }
 }
 
@@ -2152,7 +2259,7 @@ function spartanApplyLiveSound(c, media) {
     let key = spartanLiveSoundKey(c);
     if(key && spartanLiveSound[key])
         want = true;
-    if(c.source && spartanUserMuted[c.source])
+    if(c.source && spartanIsLocalMuted(c.source))
         want = false;
     if(c.stream && c.stream.getAudioTracks) {
         c.stream.getAudioTracks().forEach(function(t) {
@@ -5281,7 +5388,7 @@ function userMenu(elt) {
                 '<div class="contextualJs user-vol-menu">' +
                 '<button type="button" class="contextualJs user-mute-btn" data-uid="' + id + '">Mudo</button>' +
                 '<button type="button" class="contextualJs user-mute-for-btn" data-uid="' + id + '">' +
-                (spartanMuteFor[id] ? 'Ouvir de novo' : 'Não me ouvir') + '</button>' +
+                (spartanIsMuteForPeer(id) ? 'Ouvir de novo' : 'Não me ouvir') + '</button>' +
                 '<span class="contextualJs user-vol-menu-title">Volume (seu fone)</span>' +
                 '<div class="contextualJs user-vol-row">' +
                 '<input class="contextualJs user-vol-slider" type="range" min="0" max="400" step="5" value="' + p + '">' +
@@ -5456,7 +5563,7 @@ function spartanEnsureMuteBelowName(elt, id) {
             wrap.remove();
         return;
     }
-    let show = !!(spartanUserMuted[id] || spartanRemoteMuted(id) || spartanMuteFor[id]);
+    let show = !!(spartanIsLocalMuted(id) || spartanRemoteMuted(id) || spartanIsMuteForPeer(id));
     if(!show) {
         if(wrap)
             wrap.remove();
@@ -5740,8 +5847,7 @@ function spartanRemoveUserRow(id) {
     let user = document.getElementById('user-' + id);
     if(user && user.parentNode)
         user.parentNode.removeChild(user);
-    delete spartanUserMuted[id];
-    delete spartanUserVol[id];
+    // Mute/volume ficam no localStorage por nick — não apaga intenção aqui.
     delete spartanTalkingNow[id];
     delete spartanLastMicSeq[id];
     delete spartanHeardOn[id];
@@ -5800,6 +5906,8 @@ function spartanCaptureBeforeClose(sc) {
     spartanFreezeSnap('_spartanKeepUp', spartanSnapshotUps(sc));
     spartanFreezeSnap('_spartanWatchSnap', spartanSnapshotWatch());
     spartanFreezeSnap('_spartanSoundSnap', spartanSnapshotLiveSound());
+    spartanFreezeSnap('_spartanHideOwnSnap', spartanSnapshotHideOwn());
+    // Intenções de assistir ficam vivas no ciclo de reconexão (não zerar).
     if(!spartanDropSince)
         spartanDropSince = Date.now();
     if(!spartanGraceTimer) {
@@ -5814,6 +5922,7 @@ function spartanCaptureBeforeClose(sc) {
             window._spartanKeepUp = [];
             window._spartanWatchSnap = null;
             window._spartanSoundSnap = null;
+            window._spartanHideOwnSnap = null;
             spartanResetRoomState();
             spartanShowDropOverlay();
             spartanNetEvent({
@@ -6075,8 +6184,6 @@ function delUser(id) {
         return;
     let user = document.getElementById('user-' + id);
     if(!user) {
-        delete spartanUserMuted[id];
-        delete spartanUserVol[id];
         delete spartanTalkingNow[id];
         delete spartanLastMicSeq[id];
         delete spartanHeardOn[id];
@@ -6090,8 +6197,8 @@ function delUser(id) {
         div.removeChild(user);
     else if(user.parentNode)
         user.parentNode.removeChild(user);
-    delete spartanUserMuted[id];
-    delete spartanUserVol[id];
+    // Mantém mute/volume em memória até o nick voltar com outro id;
+    // a autoridade é o mapa por nick no localStorage.
     delete spartanTalkingNow[id];
     delete spartanLastMicSeq[id];
     delete spartanHeardOn[id];
@@ -6109,6 +6216,7 @@ function gotUser(id, kind) {
     case 'add':
         addUser(id, serverConnection.users[id]);
         try { spartanRestorePeerAudio(id); } catch(e) {}
+        try { spartanRestoreDirectedWatchesFor(id); } catch(e2) {}
         if(Object.keys(serverConnection.users).length === 3)
             reconsiderSendParameters();
         break;
@@ -6132,6 +6240,8 @@ function gotUser(id, kind) {
                 }
             }
             spartanRefreshMuteButtons(id);
+            // Catálogo de lives pode chegar depois do join — reinscreve.
+            spartanRestoreDirectedWatchesFor(id);
         } catch(e) {}
         break;
     default:
@@ -6345,6 +6455,7 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
         await spartanRepublishUps(window._spartanKeepUp);
     } catch(e) {}
     window._spartanKeepUp = [];
+    try { spartanRestoreHideOwn(); } catch(eHide) {}
     if(recovering) {
         // Se ainda falta o up de câmera/mic, reopen abaixo re-restaura o mute.
         if(findUpMedia('camera') || !(mediaSnap && (mediaSnap.hadCamera || mediaSnap.hadMicOnly)))
@@ -6353,6 +6464,7 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
         setLocalMute(true, true);
     }
     try { spartanRestoreDirectedWatches(); } catch(e) {}
+    try { spartanReapplyAllPeerAudio(); } catch(eAudio) {}
     try { spartanPublishMicMuted(); } catch(e) {}
     if(this._joinResolve && !this._joinSettled) {
         this._joinSettled = true;
@@ -6362,9 +6474,20 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
     setTimeout(function() {
         if(doneGen !== spartanConnGen)
             return;
+        // Só limpa o snap depois que as lives tiveram chance de republicar o catálogo.
+        try { spartanRestoreDirectedWatches(); } catch(e2) {}
+        try { spartanRestoreHideOwn(); } catch(e3) {}
+        try { spartanReapplyAllPeerAudio(); } catch(e4) {}
+    }, 1500);
+    setTimeout(function() {
+        if(doneGen !== spartanConnGen)
+            return;
+        if(spartanDropShown)
+            return;
         window._spartanWatchSnap = null;
         window._spartanSoundSnap = null;
-    }, 4000);
+        window._spartanHideOwnSnap = null;
+    }, 12000);
     spartanArmRoomSounds();
     spartanPurgeStaleSelf();
     spartanRefreshWatchedQuality();
@@ -6381,6 +6504,7 @@ async function gotJoined(kind, group, perms, status, data, error, message) {
                 await addLocalMedia(undefined, !mediaSnap.hadCamera);
             } catch(e) {}
             spartanRestoreMediaAfterReconnect(mediaSnap);
+            try { spartanRestoreHideOwn(); } catch(eH) {}
         } else if(present) {
             if(present === 'mike')
                 updateSettings({video: ''});
@@ -8121,6 +8245,9 @@ async function serverConnect() {
             spartanFreezeSnap('_spartanKeepUp', spartanSnapshotUps(old));
             if(!window._spartanMediaSnap)
                 window._spartanMediaSnap = spartanSnapshotMediaState();
+            spartanFreezeSnap('_spartanWatchSnap', spartanSnapshotWatch());
+            spartanFreezeSnap('_spartanSoundSnap', spartanSnapshotLiveSound());
+            spartanFreezeSnap('_spartanHideOwnSnap', spartanSnapshotHideOwn());
         }
         spartanAbandonConnection(old, silent);
     }

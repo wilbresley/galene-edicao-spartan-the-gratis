@@ -1,6 +1,6 @@
 # Galene + interface Spartan — guia para replicar (limpo)
 
-**Última revisão deste documento:** 21 de setembro de 2026 (contas unificadas, desativação com ID permanente, mute seletivo, volume persistente, TTL chat 15d, preview/thumbs, IPs de exemplo IANA)
+**Última revisão deste documento:** 21 de setembro de 2026 (mute por nick estável, lives restauram no reconnect, contas unificadas, desativação com ID permanente, mute seletivo, volume persistente, TTL chat 15d, preview/thumbs, IPs de exemplo IANA)
 
 Este texto **não contém** domínio, IP, senha nem nick da implantação original. Serve para instalar **do zero** no teu servidor, com as **tuas** contas, cores e imagens.
 

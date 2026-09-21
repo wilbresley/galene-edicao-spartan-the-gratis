@@ -1,7 +1,7 @@
 # Spartan Chat (Galene) — documentação completa da implantação
 
 **Data da implantação:** 20 de agosto de 2026  
-**Última revisão deste documento:** 21 de setembro de 2026 (contas unificadas no Painel, desativação com ID permanente, mute seletivo, volume por nick, TTL chat 15d)  
+**Última revisão deste documento:** 21 de setembro de 2026 (mute por nick estável, lives/ocultar própria restauram no reconnect, contas unificadas, mute seletivo, volume por nick, TTL chat 15d)  
 **Objetivo deste arquivo:** registrar *como o stack ficou no teu servidor*, para operação, backup e GitHub.  
 **Segredos:** nenhuma senha de produção, hash real do servidor, `sidecar.auth` vivo ou credencial operacional aparece aqui. Contas e senhas **da instalação** ficam só no servidor (`groups/*.json`, `data/config.json`, `data/sidecar.auth`).  
 **Exceção documentada:** o pacote `factory-reset/` traz a senha de fábrica `Mudar@123` (admin, contas novas e convidados) de propósito — só para zerar o Docker; no primeiro login **todo mundo** troca a senha. Admin também troca a senha dos convidados da sala.
@@ -280,7 +280,7 @@ Comportamentos de sessão:
 - Contador 24h (`#spartan-ttl`) reconstitui no `start()` (não só no submit do login): `spartanTtlRestore` + `GET /temp-status`. Anfitrião/op também faz poll.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: senha do painel **só** em `sessionStorage` (`spartanAdmin`). O `localStorage.spartanAdminHandoff` antigo é apagado se ainda existir. Preferências de qualidade (HUD, 720p, modo jogo) ficam em `localStorage.spartanPrefs` **sem** senha.
-- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=138`, `spartan-quality.js?v=1`, `spartan-net.js?v=2`, `spartan-watch.js?v=1`, `settings.js?v=2`, `galene-spartan.css?v=105`, `protocol.js?v=9`, `toastify.js?v=3`, `spartan-boot.js?v=11`). Home shell: `spartan-shell.js?v=9`, `spartan-shell.css?v=34`, `spartan-servers.js?v=28`, `custom-home.js?v=10`. Painel: `admin.js?v=59`, `admin.css?v=39`, `spartan.css?v=24`. **Contas:** uma conta só (Admin/Usuário), sempre com ID; aba Convidados removida do Painel; Detalhes mostra servidores; Desativar preserva ID. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar. Painel canónico em **`/admin/`** (`static/admin/index.html`). `/painel/` e `painel.html` só redirecionam para `/admin/`. Nunca copiar o painel por cima de `index.html` da raiz.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=139`, `spartan-quality.js?v=1`, `spartan-net.js?v=2`, `spartan-watch.js?v=1`, `settings.js?v=2`, `galene-spartan.css?v=105`, `protocol.js?v=9`, `toastify.js?v=3`, `spartan-boot.js?v=11`). Home shell: `spartan-shell.js?v=9`, `spartan-shell.css?v=34`, `spartan-servers.js?v=28`, `custom-home.js?v=10`. Painel: `admin.js?v=59`, `admin.css?v=39`, `spartan.css?v=24`. **Mute local** e volume ficam por nick (localStorage); blip de peer não desmuta. **Reconnect:** reinscreve lives que você já assistia; própria live oculta volta oculta (`liveKey`). **Contas:** uma conta só (Admin/Usuário), sempre com ID; aba Convidados removida do Painel; Detalhes mostra servidores; Desativar preserva ID. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar. Painel canónico em **`/admin/`** (`static/admin/index.html`). `/painel/` e `painel.html` só redirecionam para `/admin/`. Nunca copiar o painel por cima de `index.html` da raiz.
 
 Painel admin:
 

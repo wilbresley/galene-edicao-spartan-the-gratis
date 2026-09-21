@@ -37,7 +37,7 @@ class MuteForTests(unittest.TestCase):
         self.assertIn("spartanMuteFor[userId] = true", self.g)
 
     def test_cache_bust(self):
-        self.assertIn("galene.js?v=138", self.html)
+        self.assertIn("galene.js?v=139", self.html)
 
 
 if __name__ == "__main__":

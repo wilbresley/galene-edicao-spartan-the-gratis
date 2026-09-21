@@ -22,6 +22,9 @@ for name in (
     "admin.js",
     "admin.html",
     "admin.css",
+    "galene.js",
+    "galene.html",
+    "index.html",
 ):
     src = ROOT / "static" / name
     if src.exists():
@@ -30,13 +33,13 @@ admin_dir = static_dst / "admin"
 admin_dir.mkdir()
 shutil.copy2(ROOT / "static" / "admin" / "index.html", admin_dir / "index.html")
 
-leia = """Pacote: contas unificadas + desativacao (ID permanente)
+leia = """Pacote: contas unificadas + mute estavel + lives no reconnect
 
-No Debian (pasta solta em ~/docker/galene-spartan/galene-sala-static):
+No Debian (pasta em ~/docker/galene-spartan/galene-sala-static):
 
 cd ~/docker/galene-spartan && cp -f galene-sala-static/registry.py ./registry.py && cp -a galene-sala-static/static/. ./static/ && docker restart spartan-reg
 
-Depois: Ctrl+F5 no navegador. Confira admin.js?v=59.
+Depois: Ctrl+F5. Confira admin.js?v=59 e galene.js?v=139.
 """
 (DST / "LEIA-ME.txt").write_text(leia, encoding="utf-8")
 print("ok", DST)

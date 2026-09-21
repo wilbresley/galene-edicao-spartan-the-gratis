@@ -214,7 +214,7 @@ class QualityHudAndMicTests(unittest.TestCase):
         self.assertIn("spartan-quality.js?v=1", self.html)
         self.assertIn("spartan-net.js?v=2", self.html)
         self.assertIn("spartan-watch.js?v=1", self.html)
-        self.assertIn("galene.js?v=138", self.html)
+        self.assertIn("galene.js?v=139", self.html)
         self.assertIn("protocol.js?v=9", self.html)
         self.assertIn('id="filterform" hidden', self.html)
 
