@@ -1,5 +1,7 @@
 # Galene + interface Spartan — guia para replicar (limpo)
 
+**Última revisão deste documento:** 21 de setembro de 2026 (mute seletivo, volume persistente, TTL chat 15d, preview/thumbs, IPs de exemplo IANA)
+
 Este texto **não contém** domínio, IP, senha nem nick da implantação original. Serve para instalar **do zero** no teu servidor, com as **tuas** contas, cores e imagens.
 
 Software de base: **[Galene](https://galene.org)** (Juliusz Chroboczek). “Spartan” é a casca: HTML/CSS/JS + sidecar Python.
@@ -154,7 +156,7 @@ sudo ufw allow from 192.168.0.0/16 to any port 8443 proto tcp
 sudo ufw allow from 192.168.0.0/16 to any port 8091 proto tcp
 ```
 
-Ajusta a rede LAN à tua (`192.168.100.0/24`, etc.).
+Ajusta a rede LAN à tua (`192.168.0.0/24`, etc.).
 
 ### 4.5 Carregar a imagem e subir
 

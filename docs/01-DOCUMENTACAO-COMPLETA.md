@@ -1,7 +1,7 @@
 # Spartan Chat (Galene) — documentação completa da implantação
 
 **Data da implantação:** 20 de agosto de 2026  
-**Última revisão deste documento:** 18 de setembro de 2026 (só o botão verde de imagem do servidor no Painel)  
+**Última revisão deste documento:** 21 de setembro de 2026 (mute seletivo azul, volume por nick, lista unificada de contas, TTL chat 15d, preview foto, thumbs chat)  
 **Objetivo deste arquivo:** registrar *como o stack ficou no teu servidor*, para operação, backup e GitHub.  
 **Segredos:** nenhuma senha de produção, hash real do servidor, `sidecar.auth` vivo ou credencial operacional aparece aqui. Contas e senhas **da instalação** ficam só no servidor (`groups/*.json`, `data/config.json`, `data/sidecar.auth`).  
 **Exceção documentada:** o pacote `factory-reset/` traz a senha de fábrica `Mudar@123` (admin, contas novas e convidados) de propósito — só para zerar o Docker; no primeiro login **todo mundo** troca a senha. Admin também troca a senha dos convidados da sala.

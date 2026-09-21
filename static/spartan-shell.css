@@ -438,15 +438,72 @@ html.spartan-shell.spartan-in-room #spartan-view-room.on {
 #spartan-text-log .spartan-chat-img,
 #spartan-text-log .spartan-chat-vid {
   display: block;
+  width: 240px;
+  height: 160px;
   max-width: 100%;
+  object-fit: cover;
   margin-top: 0.4rem;
   border-radius: 8px;
   background: #1e1f22;
+  cursor: pointer;
+}
+#spartan-text-log .spartan-chat-vid-wrap {
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  margin-top: 0.4rem;
+}
+#spartan-text-log .spartan-chat-vid-wrap .spartan-chat-vid {
+  width: 100%;
+  height: 160px;
+  margin-top: 0;
+  cursor: default;
 }
 #spartan-text-log audio {
   display: block;
   width: 100%;
   margin-top: 0.4rem;
+}
+
+#spartan-media-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483600;
+  background: rgba(0,0,0,0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+#spartan-media-lightbox[hidden] {
+  display: none !important;
+}
+.spartan-media-lightbox-inner {
+  position: relative;
+  max-width: min(92vw, 960px);
+  max-height: 90vh;
+}
+.spartan-media-lightbox-inner img {
+  display: block;
+  max-width: 92vw;
+  max-height: 88vh;
+  object-fit: contain;
+  border-radius: 10px;
+  background: #111;
+}
+.spartan-media-lightbox-close {
+  position: absolute;
+  top: -0.6rem;
+  right: -0.6rem;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
 }
 
 #spartan-server-people {
@@ -919,6 +976,45 @@ html.spartan-settings-up #spartan-text-pane {
   background: linear-gradient(90deg, #eab308 0 50%, #dc2626 50% 100%);
   color: #111;
   text-shadow: 0 0 2px #fff;
+}
+.spartan-chan-ident .user-mute-btn.mute-toward,
+.spartan-user-audio .user-mute-btn.mute-toward {
+  background: #2563eb;
+  color: #fff;
+}
+.spartan-chan-ident .user-mute-btn.mute-local-toward,
+.spartan-user-audio .user-mute-btn.mute-local-toward {
+  background: linear-gradient(90deg, #eab308 0 50%, #2563eb 50% 100%);
+  color: #111;
+  text-shadow: 0 0 2px #fff;
+}
+.spartan-chan-ident .user-mute-btn.mute-remote-toward,
+.spartan-user-audio .user-mute-btn.mute-remote-toward {
+  background: linear-gradient(90deg, #dc2626 0 50%, #2563eb 50% 100%);
+  color: #fff;
+}
+.spartan-chan-ident .user-mute-btn.mute-all,
+.spartan-user-audio .user-mute-btn.mute-all {
+  background: linear-gradient(90deg, #eab308 0 33%, #dc2626 33% 66%, #2563eb 66% 100%);
+  color: #111;
+  text-shadow: 0 0 2px #fff;
+}
+.spartan-user-audio .user-mute-for-btn {
+  flex: 0 0 auto;
+  width: 100%;
+  margin-top: 4px;
+  background: #3f4147;
+  color: #e5e7eb;
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.spartan-user-audio .user-mute-for-btn.on {
+  background: #2563eb;
+  color: #fff;
 }
 .spartan-user-audio .user-vol-slider {
   flex: 0 0 auto;

@@ -116,7 +116,7 @@ say "Onde achar: painel do VPS, ou no servidor rode: curl -4 ifconfig.me"
 ask PUBLIC_IP "Digite o IP público" "${SUG_PUB:-}"
 
 title "2) Rede — IP local (LAN)"
-say "O que é: IP do servidor na rede interna (ex.: 192.168.100.16)."
+say "O que é: IP do servidor na rede interna (ex.: 192.168.0.10)."
 say "Para quê: no Nginx Proxy Manager você aponta para http://ESTE_IP:8443"
 say "Onde achar: no servidor: hostname -I"
 ask LAN_IP "Digite o IP da LAN" "$SUG_LAN"

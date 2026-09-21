@@ -136,17 +136,29 @@ async function refreshReg(){try{registry=await reg('/registry')||{};}catch(e){re
 async function loadUsers(){
  const boxOps=$('users-ops'), box=$('users');
  try{await refreshReg();}catch(e){}
- let accounts={by_nick:{}};
+ let accounts={by_nick:{}, users:[]};
  try{accounts=await reg('/accounts')||accounts;}catch(e){}
  const b=bucket(), skip=new Set(Object.keys(b.denied).concat(Object.keys(b.blocked),Object.keys(b.pending)));
- let names=(await api('/.groups/'+GROUP+'/.users/')||[]).filter(n=>!skip.has(n));
- names.sort((a,c)=>a.localeCompare(c,'pt',{sensitivity:'base'}));
+ let galeneNames=[];
+ try{galeneNames=(await api('/.groups/'+GROUP+'/.users/')||[]).filter(n=>!skip.has(n));}catch(e){}
+ const galeneSet=new Set(galeneNames.map(function(n){ return String(n).toLowerCase(); }));
  const rows=[];
- for(const name of names){
+ const seen={};
+ for(const name of galeneNames){
+  const key=String(name).toLowerCase();
+  seen[key]=true;
   let info={}; try{info=await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name));}catch(e){}
-  const uid=(accounts.by_nick&&accounts.by_nick[String(name).toLowerCase()]);
-  rows.push({name, perm:roleFromPerm((info&&info.permissions)||'present'), rec:(b.seen||{})[name]||{}, id:uid});
+  const uid=(accounts.by_nick&&accounts.by_nick[key]);
+  rows.push({name:key, perm:roleFromPerm((info&&info.permissions)||'present'), rec:(b.seen||{})[key]||(b.seen||{})[name]||{}, id:uid, inMain:true});
  }
+ (accounts.users||[]).forEach(function(u){
+  const key=String((u&&u.nick)||'').toLowerCase();
+  if(!key || skip.has(key) || seen[key]) return;
+  seen[key]=true;
+  const uid=(u.id!=null?u.id:(accounts.by_nick&&accounts.by_nick[key]));
+  rows.push({name:key, perm:roleFromPerm((u&&u.role)||'present'), rec:(b.seen||{})[key]||{}, id:uid, inMain:false});
+ });
+ rows.sort(function(a,c){ return String(a.name).localeCompare(String(c.name),'pt',{sensitivity:'base'}); });
  sortItems(rows,'users');
  const uk='u:'+SORT.users+':'+rows.map(r=>r.id+':'+r.name+':'+r.perm+':'+(r.rec.ip||'')).join('|');
  if(uk===loadUsers._k) return; loadUsers._k=uk;
@@ -162,8 +174,15 @@ async function loadUsers(){
    const card=document.createElement('div'); card.className='user-card';
    const row=document.createElement('div'); row.className='user-row';
    row.innerHTML='<div class="who"><b></b></div><div class="user-tools"><button type="button" class="det">Detalhes</button><button type="button" class="srvs">Servidores</button><div class="role-wrap"><button type="button" class="role-btn"></button><div class="role-menu"></div></div><div class="user-acts"><button type="button" class="ren">Renomear</button><button type="button" class="rst">Redefinir senha</button></div><div class="user-acts"><button type="button" class="del">Excluir</button><button type="button" class="blk">Bloquear</button></div></div>';
-   const title=(uid!=null?('ID '+uid+' · '):'')+name;
+   const title=(uid!=null?('ID '+uid+' · '):'')+name+(item.inMain?'':' · só conta/servidor');
    row.querySelector('b').textContent=title;
+   if(!item.inMain){
+    const tag=document.createElement('span');
+    tag.className='sala-tag';
+    tag.textContent='Só conta Spartan';
+    tag.title='Tem conta ou está em outro servidor; ainda não está na sala principal Galene.';
+    row.querySelector('.who').appendChild(tag);
+   }
    const curPerm=['op','present','ouvinte'].indexOf(perm)>=0?perm:'present';
    const roleBtn=row.querySelector('.role-btn');
    const roleMenu=row.querySelector('.role-menu');
@@ -1079,6 +1098,23 @@ function paintServerChanRow(d, ch){
   });
  };
  acts.appendChild(ren);
+ if(ch.kind==='text'){
+  var clr=document.createElement('button');
+  clr.type='button';
+  clr.className='btn-amber';
+  clr.textContent='Limpar chat';
+  clr.title='Apaga todas as mensagens e arquivos deste canal';
+  clr.onclick=function(){
+   uiConfirm('Limpar todo o chat de '+(ch.title||ch.id)+'? Isso apaga mensagens e arquivos.').then(function(ok2){
+    if(!ok2) return;
+    reg('/server-text-clear',{user:user,password:pass,server:d.id,channel:ch.id}).then(function(){
+     uiMsg('Chat limpo.');
+     reloadServers();
+    }).catch(function(e){ uiMsg(e.message); });
+   });
+  };
+  acts.appendChild(clr);
+ }
  var del=document.createElement('button');
  del.type='button';
  del.className='del';

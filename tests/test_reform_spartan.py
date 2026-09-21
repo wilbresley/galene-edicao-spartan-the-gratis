@@ -41,7 +41,7 @@ class ReformSessionTests(unittest.TestCase):
         self.assertNotIn("painel.js", self.painel)
 
     def test_prefetch_matches_room_cache(self):
-        self.assertIn("galene.js?v=136", self.index)
+        self.assertIn("galene.js?v=138", self.index)
         self.assertIn("protocol.js?v=9", self.index)
         self.assertIn("spartan-shell.js?v=9", self.index)
 

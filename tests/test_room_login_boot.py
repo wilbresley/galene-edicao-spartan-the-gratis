@@ -48,7 +48,7 @@ class RoomLoginBootTests(unittest.TestCase):
         )
 
     def test_galene_js_cache_bust_v105(self):
-        self.assertIn("galene.js?v=136", self.html)
+        self.assertIn("galene.js?v=138", self.html)
         self.assertIn("spartanLiveHeaderTick", self.js)
         self.assertIn("spartanSyncPresence", self.js)
         self.assertIn("spartanStoreGet", self.js)

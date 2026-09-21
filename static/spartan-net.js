@@ -30,3 +30,7 @@ function spartanPostToParent(data) {
 function spartanNotifyPanel(ok) {
     spartanPostToParent({t: 'spartan-panel', ok: !!ok});
 }
+
+window.spartanMicConstraints = spartanMicConstraints;
+window.spartanPostToParent = spartanPostToParent;
+window.spartanNotifyPanel = spartanNotifyPanel;

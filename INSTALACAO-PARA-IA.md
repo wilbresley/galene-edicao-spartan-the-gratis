@@ -42,8 +42,8 @@ TURN/portas = “caminho do áudio/vídeo”. Sem isso, a sala abre mas a call f
 
 ### B) Rede e domínio
 
-3. Qual o **IP público** do servidor? (o da internet; não o Wi‑Fi tipo 192.168.x.x)  
-4. Qual o **IP da LAN** do servidor? (ex.: 192.168.100.16) — usado no Nginx Proxy Manager  
+3. Qual o **IP público** do servidor? (ex.: 203.0.113.10 — o da internet; não o Wi‑Fi tipo 192.168.x.x)  
+4. Qual o **IP da LAN** do servidor? (ex.: 192.168.0.10) — usado no Nginx Proxy Manager  
 5. Vai usar **domínio** agora?  
    - Se sim: qual? (ex.: `chat.seudominio.com`)  
    - Se não: vamos usar só IP por enquanto (`http://IP:8443`)

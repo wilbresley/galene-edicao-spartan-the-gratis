@@ -458,6 +458,7 @@ def mutate_registry(fn):
         return r
 SERVER_VOICE_LIMIT=12
 SERVER_TEXT_KEEP=200
+SERVER_TEXT_TTL_DAYS=15
 CHAT_FILE_KINDS={
     "image/png": ("png", "image"),
     "image/jpeg": ("jpg", "image"),
@@ -606,8 +607,7 @@ def servers_http_file_post(handler):
         msgs=bag.setdefault(cid, [])
         msg={"at":now(),"nick":user,"text":caption,"file":{"id":fid,"name":fname,"mime":mime,"kind":kind,"size":len(data)}}
         msgs.append(msg)
-        if len(msgs)>SERVER_TEXT_KEEP:
-            del msgs[:-SERVER_TEXT_KEEP]
+        prune_server_channel_text(srv, cid)
         here=srv.setdefault("here", {})
         here[user]={"channel":cid,"at":now(),"kind":"text"}
         return {"ok":True,"message":msg}
@@ -1062,8 +1062,47 @@ def list_registered_nicks():
             if nick and nick not in seen:
                 seen.add(nick)
                 out.append(nick)
+    try:
+        doc=ensure_servers()
+        for s in (doc.get("servers") or {}).values():
+            for nick in (s.get("members") or {}):
+                nick=norm_nick(nick)
+                if nick and nick not in seen:
+                    seen.add(nick)
+                    out.append(nick)
+            for nick in (s.get("mods") or []):
+                nick=norm_nick(nick)
+                if nick and nick not in seen:
+                    seen.add(nick)
+                    out.append(nick)
+            owner=norm_nick(s.get("owner") or "")
+            if owner and owner not in seen:
+                seen.add(owner)
+                out.append(owner)
+    except Exception:
+        pass
     out.sort()
     return out
+def accounts_panel_users():
+    """Lista completa para a aba Usuários do Painel (contas + membros de servidores + sala principal)."""
+    rows=[]
+    for nick in list_registered_nicks():
+        rec=account_get(nick) or {}
+        uid=None
+        d=load_accounts()
+        if nick in (d.get("by_nick") or {}):
+            try: uid=int(d["by_nick"][nick])
+            except Exception: uid=None
+        role=account_get_role(nick) or "present"
+        rows.append({
+            "nick": nick,
+            "id": uid,
+            "role": role,
+            "active": rec.get("active", True) is not False,
+            "must_change": bool(rec.get("must_change")),
+            "avatar": account_avatar_ver(rec),
+        })
+    return rows
 def server_kick_nick(srv, nick, by):
     nick=norm_nick(nick)
     if not srv or not nick: return
@@ -1253,6 +1292,78 @@ def server_public_view(s, nick=None, include_invite=False, include_presence=Fals
         kick=(s.get("kicks") or {}).get(nick)
         if kick: out["my_kick"]=kick
     return out
+def server_delete_chat_file(sid, fid, rec=None):
+    if not sid or not fid:
+        return
+    ext = (rec or {}).get("ext") or "bin"
+    try:
+        (CHAT_FILES / sid / f"{fid}.{ext}").unlink(missing_ok=True)
+    except Exception:
+        pass
+    # tenta outras extensões se o registro estiver incompleto
+    try:
+        d = CHAT_FILES / sid
+        if d.is_dir():
+            for fp in d.glob(f"{fid}.*"):
+                try: fp.unlink()
+                except Exception: pass
+    except Exception:
+        pass
+
+def prune_server_channel_text(srv, cid):
+    """Remove mensagens com mais de SERVER_TEXT_TTL_DAYS e aplica teto SERVER_TEXT_KEEP."""
+    if not srv or not cid:
+        return []
+    sid = srv.get("id") or ""
+    bag = srv.setdefault("text", {})
+    msgs = list(bag.get(cid) or [])
+    cut = datetime.now(TZ) - timedelta(days=SERVER_TEXT_TTL_DAYS)
+    kept = []
+    dropped = []
+    for m in msgs:
+        at = parse_iso((m or {}).get("at"))
+        if at and at < cut:
+            fid = ((m or {}).get("file") or {}).get("id")
+            if fid:
+                dropped.append(fid)
+            continue
+        kept.append(m)
+    if len(kept) > SERVER_TEXT_KEEP:
+        for m in kept[:-SERVER_TEXT_KEEP]:
+            fid = ((m or {}).get("file") or {}).get("id")
+            if fid:
+                dropped.append(fid)
+        kept = kept[-SERVER_TEXT_KEEP:]
+    bag[cid] = kept
+    files = srv.setdefault("files", {})
+    for fid in dropped:
+        rec = files.pop(fid, None)
+        server_delete_chat_file(sid, fid, rec)
+    return kept
+
+def clear_server_channel_text(srv, cid):
+    """Apaga todas as mensagens e arquivos de um canal de texto."""
+    if not srv or not cid:
+        return 0
+    sid = srv.get("id") or ""
+    bag = srv.setdefault("text", {})
+    msgs = list(bag.get(cid) or [])
+    files = srv.setdefault("files", {})
+    n = len(msgs)
+    for m in msgs:
+        fid = ((m or {}).get("file") or {}).get("id")
+        if not fid:
+            continue
+        rec = files.pop(fid, None)
+        server_delete_chat_file(sid, fid, rec)
+    bag[cid] = []
+    # limpa registros órfãos deste canal
+    for fid, rec in list(files.items()):
+        if (rec or {}).get("channel") == cid:
+            files.pop(fid, None)
+            server_delete_chat_file(sid, fid, rec)
+    return n
+
 def server_text_heads(s):
     out={}
     text=s.get("text") or {}
@@ -1302,7 +1413,11 @@ def servers_http_get(handler, path, q):
         nick=norm_nick((q.get("user") or [""])[0])
         if not server_can_enter(s, nick, ch):
             handler.send_json(403, {"error":"sem acesso a este canal"}); return True
-        msgs=(s.get("text") or {}).get(cid) or []
+        def _get_txt(doc):
+            srv=(doc.get("servers") or {}).get(sid)
+            if not srv: return []
+            return prune_server_channel_text(srv, cid)
+        msgs=mutate_servers(_get_txt) or []
         handler.send_json(200, {"messages": msgs[-80:]}); return True
     if path=="/server-invite":
         code=((q.get("code") or q.get("invite") or [""])[0] or "").strip()
@@ -1315,7 +1430,7 @@ def servers_http_get(handler, path, q):
     return False
 def servers_http_post(handler, path, body):
     if path not in ("/server-create","/server-channel","/server-join","/server-approve","/server-deny",
-                    "/server-mod","/server-here","/server-text","/server-invite-rotate","/server-delete","/server-view",
+                    "/server-mod","/server-here","/server-text","/server-text-clear","/server-invite-rotate","/server-delete","/server-view",
                     "/account-login","/server-guest","/server-move","/server-moved",
                     "/server-channel-rename","/server-channel-delete","/server-channel-reorder",
                     "/server-member-add","/server-member-remove","/server-addable","/user-servers","/server-kicked"):
@@ -1442,6 +1557,7 @@ def servers_http_post(handler, path, body):
             srv=(doc.get("servers") or {}).get(sid)
             if not srv: return {"_http":(404,{"error":"servidor nao existe"})}
             bag=srv.setdefault("text", {})
+            prune_server_channel_text(srv, cid)
             msgs=bag.setdefault(cid, [])
             msg={"at":now(),"nick":user,"text":text}
             msgs.append(msg)
@@ -1451,6 +1567,27 @@ def servers_http_post(handler, path, body):
             here[user]={"channel":cid,"at":now(),"kind":"text"}
             return {"ok":True,"message":msg}
         out=mutate_servers(_txt)
+        if isinstance(out, dict) and out.get("_http"):
+            code,payload=out["_http"]; handler.send_json(code, payload); return True
+        handler.send_json(200, out); return True
+    if path=="/server-text-clear":
+        if not ok_nick(user) or not server_cred_ok(user, pw):
+            handler.send_json(401, {"error":"nao autorizado"}); return True
+        sid=(body.get("server") or body.get("id") or "").strip().lower()
+        cid=(body.get("channel") or "").strip().lower()
+        s=get_server(sid)
+        ch=find_channel(s, cid) if s else None
+        if not s or not ch or ch.get("kind")!="text":
+            handler.send_json(404, {"error":"canal de texto nao existe"}); return True
+        role=server_member_role(s, user)
+        if role not in ("admin","mod"):
+            handler.send_json(403, {"error":"so admin ou moderador limpa o chat"}); return True
+        def _clr(doc):
+            srv=(doc.get("servers") or {}).get(sid)
+            if not srv: return {"_http":(404,{"error":"servidor nao existe"})}
+            n=clear_server_channel_text(srv, cid)
+            return {"ok":True,"cleared":n}
+        out=mutate_servers(_clr)
         if isinstance(out, dict) and out.get("_http"):
             code,payload=out["_http"]; handler.send_json(code, payload); return True
         handler.send_json(200, out); return True
@@ -2531,7 +2668,9 @@ class H(BaseHTTPRequestHandler):
         if path=="/accounts":
             ok,_=self.admin_ok()
             if not ok: self.send_json(401, {"error":"nao autorizado"}); return
-            self.send_json(200, accounts_public_view(load_accounts())); return
+            view=accounts_public_view(load_accounts())
+            view["users"]=accounts_panel_users()
+            self.send_json(200, view); return
         if path=="/must-change":
             self.send_json(200, {"user":"", "must_change": False}); return
         if path=="/access-log":
@@ -2572,7 +2711,7 @@ class H(BaseHTTPRequestHandler):
                 if (info.get("ttl") or voice_bound) and not all_flag:
                     continue
                 is_main=(stem==main)
-                is_open=(not pw) or (isinstance(pw, dict) and pw.get("type")=="wildcard")
+                is_room_open=(not pw) or (isinstance(pw, dict) and pw.get("type")=="wildcard")
                 b=bucket(d, stem)
                 live_s, live_active=room_live_seconds(b, tnow, gid=stem)
                 if counts is None:
@@ -2581,8 +2720,8 @@ class H(BaseHTTPRequestHandler):
                     online=counts.get(stem, 0)
                 rooms.append({"id":stem,"title":g.get("displayName") or stem,"main":is_main,
                     "public":bool(g.get("public")),
-                    "open": bool(is_open) and not is_main,
-                    "invite": not is_open or is_main,
+                    "open": bool(is_room_open) and not is_main,
+                    "invite": not is_room_open or is_main,
                     "updated": datetime.fromtimestamp(fp.stat().st_mtime, TZ).isoformat(timespec="seconds"),
                     "ttl": bool(info.get("ttl")), "expires_at": info.get("expires_at"),
                     "remaining_s": info.get("remaining_s"), "host": info.get("host"), "kind": info.get("kind"),

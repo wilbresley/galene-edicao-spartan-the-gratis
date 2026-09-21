@@ -70,6 +70,64 @@
     el.classList.add('has-photo');
     if(el.style.backgroundImage !== want) el.style.backgroundImage = want;
   }
+  var previewTimer = 0;
+  function ensureLightbox() {
+    var box = $('spartan-media-lightbox');
+    if(box) return box;
+    box = document.createElement('div');
+    box.id = 'spartan-media-lightbox';
+    box.hidden = true;
+    box.innerHTML = '<div class="spartan-media-lightbox-inner">' +
+      '<img alt="Pré-visualização"/>' +
+      '<button type="button" class="spartan-media-lightbox-close" aria-label="Fechar">×</button>' +
+      '</div>';
+    document.body.appendChild(box);
+    box.addEventListener('click', function(ev) {
+      if(ev.target === box || (ev.target && ev.target.classList &&
+          ev.target.classList.contains('spartan-media-lightbox-close')))
+        hideLightbox();
+    });
+    if(!document.documentElement.dataset.lightboxEsc) {
+      document.documentElement.dataset.lightboxEsc = '1';
+      document.addEventListener('keydown', function(ev) {
+        if(ev.key === 'Escape') hideLightbox();
+      });
+    }
+    return box;
+  }
+  function showLightbox(src) {
+    if(!src) return;
+    var box = ensureLightbox();
+    var img = box.querySelector('img');
+    if(img) img.src = src;
+    box.hidden = false;
+  }
+  function hideLightbox() {
+    var box = $('spartan-media-lightbox');
+    if(!box) return;
+    box.hidden = true;
+    var img = box.querySelector('img');
+    if(img) img.removeAttribute('src');
+  }
+  function bindPhotoPreview(el, src) {
+    if(!el || !src || el.dataset.previewBound) return;
+    el.dataset.previewBound = '1';
+    function arm() {
+      clearTimeout(previewTimer);
+      previewTimer = setTimeout(function() { showLightbox(src); }, 2000);
+    }
+    el.addEventListener('mouseenter', arm);
+    el.addEventListener('mousemove', function() {
+      clearTimeout(previewTimer);
+      hideLightbox();
+      arm();
+    });
+    el.addEventListener('mouseleave', function() {
+      clearTimeout(previewTimer);
+      previewTimer = 0;
+      hideLightbox();
+    });
+  }
   function prepareImageFile(file, done) {
     if(!file) { done(null, 'Escolha uma imagem.'); return; }
     if(file.size > 5 * 1024 * 1024) { done(null, 'Imagem passa de 5 MB.'); return; }
@@ -581,7 +639,9 @@
     var cam = $('spartan-user-cam');
     if(av) {
       av.textContent = letterOf(nick);
-      fillPhoto(av, avatarSrc(nick, avatarVerOf(nick)));
+      var meSrc = avatarSrc(nick, avatarVerOf(nick));
+      fillPhoto(av, meSrc);
+      bindPhotoPreview(av, meSrc);
     }
     if(nm) nm.textContent = nick || 'você';
     if(vs) {
@@ -725,13 +785,21 @@
         });
         ident.appendChild(mute);
       }
-      mute.classList.remove('mute-local', 'mute-remote', 'mute-both');
-      if(st.muteLocal && st.muteRemote) mute.classList.add('mute-both');
-      else if(st.muteLocal) mute.classList.add('mute-local');
-      else if(st.muteRemote) mute.classList.add('mute-remote');
-      mute.title = st.muteRemote
-        ? (st.muteLocal ? 'Você não ouve (amarelo) e o microfone dele está desligado (vermelho)' : 'Microfone desligado (ele ou um admin)')
-        : 'Mudo só no seu fone';
+      mute.classList.remove('mute-local', 'mute-remote', 'mute-both', 'mute-toward',
+        'mute-local-toward', 'mute-remote-toward', 'mute-all');
+      var loc = !!st.muteLocal, rem = !!st.muteRemote, toward = !!st.muteFor;
+      if(loc && rem && toward) mute.classList.add('mute-all');
+      else if(loc && rem) mute.classList.add('mute-both');
+      else if(loc && toward) mute.classList.add('mute-local-toward');
+      else if(rem && toward) mute.classList.add('mute-remote-toward');
+      else if(loc) mute.classList.add('mute-local');
+      else if(rem) mute.classList.add('mute-remote');
+      else if(toward) mute.classList.add('mute-toward');
+      var tips = [];
+      if(loc) tips.push('você não ouve (amarelo)');
+      if(rem) tips.push('mic dele desligado (vermelho)');
+      if(toward) tips.push('ele não te ouve (azul)');
+      mute.title = tips.length ? tips.join(' · ') : 'Mudo só no seu fone';
     }
     if(volOpenNick === nick) {
       who.classList.add('vol-open');
@@ -745,6 +813,7 @@
       vol = Math.max(0, Math.min(400, Math.round(vol / 5) * 5));
       var sl = aud.querySelector('.user-vol-slider');
       var lab = aud.querySelector('.user-vol-lab');
+      var forBtn = aud.querySelector('.user-mute-for-btn');
       if(!sl) {
         aud.innerHTML = '';
         sl = document.createElement('input');
@@ -756,6 +825,16 @@
         sl.title = 'Volume (seu fone)';
         lab = document.createElement('span');
         lab.className = 'user-vol-lab';
+        forBtn = document.createElement('button');
+        forBtn.type = 'button';
+        forBtn.className = 'user-mute-for-btn';
+        forBtn.textContent = 'Não me ouvir';
+        forBtn.addEventListener('click', function(ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          var now = liveByNick[nick] || st;
+          if(now.id) cmdFrame('muteFor', { userId: now.id });
+        });
         function sendVol() {
           var v = parseInt(sl.value, 10) || 0;
           v = Math.max(0, Math.min(400, Math.round(v / 5) * 5));
@@ -785,6 +864,14 @@
         }, { passive: false });
         aud.appendChild(sl);
         aud.appendChild(lab);
+        aud.appendChild(forBtn);
+      }
+      if(forBtn) {
+        forBtn.classList.toggle('on', !!st.muteFor);
+        forBtn.textContent = st.muteFor ? 'Ouvir de novo' : 'Não me ouvir';
+        forBtn.title = st.muteFor
+          ? 'Ele não te ouve agora. Clique para ele te ouvir de novo.'
+          : 'Ele para de te ouvir; você continua ouvindo ele.';
       }
       if(document.activeElement !== sl) {
         sl.value = String(vol);
@@ -821,7 +908,9 @@
       b.className = 'spartan-guild-btn' + extra;
       b.title = (s.title || s.id) + (isServerMuted(s.id) ? ' (silenciado)' : '') + ' — botão direito silencia o servidor';
       b.textContent = letterOf(s.title || s.id);
-      fillPhoto(b, serverIconSrc(s.id, s.icon));
+      var iconSrc = serverIconSrc(s.id, s.icon);
+      fillPhoto(b, iconSrc);
+      bindPhotoPreview(b, iconSrc);
       b.addEventListener('click', function() {
         if(s.id === current.server) return;
         if(window.SpartanApp) window.SpartanApp.goServer(s.id, defaultChannel(s._full || s));
@@ -891,13 +980,16 @@
             var av = document.createElement('span');
             av.className = 'spartan-chan-avatar';
             av.textContent = letterOf(nick);
-            fillPhoto(av, avatarSrc(nick, p.avatar || avatarVerOf(nick)));
+            var avSrc = avatarSrc(nick, p.avatar || avatarVerOf(nick));
+            fillPhoto(av, avSrc);
             var dot = document.createElement('span');
             dot.className = 'spartan-talk-dot';
             dot.setAttribute('aria-hidden', 'true');
             var nm = document.createElement('span');
             nm.className = 'spartan-chan-nick';
             nm.textContent = nick;
+            bindPhotoPreview(av, avSrc);
+            bindPhotoPreview(nm, avSrc);
             var ident = document.createElement('span');
             ident.className = 'spartan-chan-ident';
             ident.appendChild(av);
@@ -952,9 +1044,12 @@
       var av = document.createElement('span');
       av.className = 'spartan-people-av';
       av.textContent = letterOf(p.nick);
-      fillPhoto(av, avatarSrc(p.nick, p.avatar || avatarVerOf(p.nick)));
+      var pSrc = avatarSrc(p.nick, p.avatar || avatarVerOf(p.nick));
+      fillPhoto(av, pSrc);
+      bindPhotoPreview(av, pSrc);
       var name = document.createElement('strong');
       name.textContent = p.nick || '';
+      bindPhotoPreview(name, pSrc);
       el.appendChild(av);
       el.appendChild(name);
       box.appendChild(el);
@@ -1275,15 +1370,20 @@
             img.className = 'spartan-chat-img';
             img.alt = m.file.name || 'imagem';
             img.src = url;
+            img.addEventListener('click', function() { showLightbox(url); });
             p.appendChild(document.createElement('br'));
             p.appendChild(img);
           } else if(kind === 'video') {
+            var wrap = document.createElement('div');
+            wrap.className = 'spartan-chat-vid-wrap';
             var vid = document.createElement('video');
             vid.className = 'spartan-chat-vid';
             vid.controls = true;
+            vid.preload = 'metadata';
             vid.src = url;
+            wrap.appendChild(vid);
             p.appendChild(document.createElement('br'));
-            p.appendChild(vid);
+            p.appendChild(wrap);
           } else if(kind === 'audio') {
             var aud = document.createElement('audio');
             aud.controls = true;

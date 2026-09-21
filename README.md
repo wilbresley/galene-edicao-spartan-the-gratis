@@ -280,3 +280,29 @@ chmod +x scripts/instalar-completo.sh && ./scripts/instalar-completo.sh
 - **Interface Spartan / sidecar / este pacote** — [wilbresley](https://github.com/wilbresley)
 
 Contribuições e issues: abra no GitHub deste repositório.
+
+
+## Lab local (Windows + WSL Debian)
+
+Na pasta do repo:
+
+`powershell
+powershell -File scripts\start-local.ps1
+`
+
+Sobe o Debian WSL, o stack em /home/docker/galene, nginx e reinicia o spartan-reg. Depois abra:
+
+- Home: http://127.0.0.1:8443/
+- Sala: http://127.0.0.1:8443/group/spartan/
+- Admin: http://127.0.0.1:8443/admin/
+
+Use **http** e **127.0.0.1** (não localhost). Hard refresh se o ?v= não bater.
+
+## Ajustes recentes (set/2026)
+
+- Mute seletivo (azul): botão **Não me ouvir** na caixa de volume.
+- Volume/mute local salvos por nick neste computador.
+- Aba Usuários do Painel lista todas as contas (também quem só entrou por outro servidor).
+- Chat de texto: thumbnail + clique para ampliar; TTL 15 dias; Limpar chat para admin/mod.
+- Hover 2 s na foto/ícone abre pré-visualização grande.
+

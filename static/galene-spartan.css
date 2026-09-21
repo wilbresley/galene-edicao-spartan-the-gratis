@@ -1066,10 +1066,37 @@ body.spartan-in #left-sidebar{
  background:#dc2626;
  color:#fff;
 }
-.user-mute-btn.mute-both{
- background:linear-gradient(90deg,#eab308 0 50%,#dc2626 50% 100%);
+.user-mute-btn.mute-toward{
+ background:#2563eb;
+ color:#fff;
+}
+.user-mute-btn.mute-local-toward{
+ background:linear-gradient(90deg,#eab308 0 50%,#2563eb 50% 100%);
+ color:#111;
+}
+.user-mute-btn.mute-remote-toward{
+ background:linear-gradient(90deg,#dc2626 0 50%,#2563eb 50% 100%);
+ color:#fff;
+}
+.user-mute-btn.mute-all{
+ background:linear-gradient(90deg,#eab308 0 33%,#dc2626 33% 66%,#2563eb 66% 100%);
  color:#111;
  text-shadow:0 0 2px #fff;
+}
+.user-mute-for-btn{
+ flex:0 0 auto;
+ background:#3f4147;
+ color:#e5e7eb;
+ border:none;
+ border-radius:6px;
+ padding:4px 8px;
+ font-size:11px;
+ font-weight:700;
+ cursor:pointer;
+}
+.user-mute-for-btn.on{
+ background:#2563eb;
+ color:#fff;
 }
 .user-vol-menu{
  display:flex;

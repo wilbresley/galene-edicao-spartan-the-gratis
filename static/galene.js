@@ -290,9 +290,84 @@ let spartanHasVideo = {};
 /** @type {Record<string, boolean>} */
 let spartanUserMuted = {};
 let spartanUserVol = {};
+/** @type {Record<string, boolean>} mute seletivo: eu me mutei para este peer (ele não me ouve) */
+let spartanMuteFor = {};
 let spartanBoost = {};
 let spartanHideOwn = false;
 /** @type {Record<string, boolean>} ocultar cada live própria (por id) */
+
+function spartanPeerAudioStoreKey() {
+    let me = '';
+    try {
+        if(serverConnection && serverConnection.username)
+            me = String(serverConnection.username).trim().toLowerCase();
+        if(!me)
+            me = spartanSoundNick();
+    } catch(e) {}
+    return me ? ('spartanPeerAudio:' + me) : 'spartanPeerAudio';
+}
+
+function spartanLoadPeerAudioMap() {
+    try { return JSON.parse(localStorage.getItem(spartanPeerAudioStoreKey()) || '{}') || {}; }
+    catch(e) { return {}; }
+}
+
+function spartanSavePeerAudioMap(map) {
+    try { localStorage.setItem(spartanPeerAudioStoreKey(), JSON.stringify(map || {})); }
+    catch(e) {}
+}
+
+function spartanPeerNickOf(userId) {
+    if(!userId || !serverConnection || !serverConnection.users)
+        return '';
+    let u = serverConnection.users[userId];
+    return spartanNickKey(u && u.username);
+}
+
+function spartanPersistPeerAudio(userId) {
+    let nick = spartanPeerNickOf(userId);
+    if(!nick)
+        return;
+    let map = spartanLoadPeerAudioMap();
+    let ent = map[nick] || {};
+    if(spartanUserVol[userId] != null)
+        ent.vol = spartanUserVol[userId];
+    ent.muteLocal = !!spartanUserMuted[userId];
+    ent.muteFor = !!spartanMuteFor[userId];
+    map[nick] = ent;
+    spartanSavePeerAudioMap(map);
+}
+
+function spartanRestorePeerAudio(userId) {
+    let nick = spartanPeerNickOf(userId);
+    if(!nick || userId === (serverConnection && serverConnection.id))
+        return;
+    let ent = spartanLoadPeerAudioMap()[nick];
+    if(!ent)
+        return;
+    if(ent.vol != null) {
+        let v = Number(ent.vol);
+        if(!(v >= 0)) v = 100;
+        if(v > 400) v = 400;
+        spartanUserVol[userId] = v;
+    }
+    if(ent.muteLocal)
+        spartanUserMuted[userId] = true;
+    if(ent.muteFor) {
+        spartanMuteFor[userId] = true;
+        spartanLastMicPublishAt = 0;
+        try { spartanPublishMicMuted(); } catch(e4) {}
+    }
+    try { spartanApplyUserVolume(userId); } catch(e) {}
+    if(serverConnection) {
+        for(let id in serverConnection.down) {
+            let c = serverConnection.down[id];
+            if(c.source === userId)
+                try { spartanApplyUserMute(c); } catch(e2) {}
+        }
+    }
+    try { spartanRefreshMuteButtons(userId); } catch(e3) {}
+}
 let spartanHideOwnStream = {};
 /** Som da tela que o usuário ligou (nick + rótulo). F5 começa mudo; desconexão reconstitui. */
 /** @type {Record<string, boolean>} */
@@ -382,7 +457,7 @@ function spartanApplyUserMute(c) {
         spartanApplyLiveSound(c);
         return;
     }
-    let muted = !!(c.source && spartanUserMuted[c.source]);
+    let muted = !!(c.source && (spartanUserMuted[c.source] || spartanPeerMutedTowardMe(c.source)));
     c.stream.getAudioTracks().forEach(function(t) {
         t.enabled = !muted;
     });
@@ -609,6 +684,7 @@ function spartanNotifyShellRosterNow() {
             lives: lives,
             muteLocal: !!spartanUserMuted[id],
             muteRemote: spartanRemoteMuted(id),
+            muteFor: !!spartanMuteFor[id],
             vol: (spartanUserVol[id] == null ? 100 : spartanUserVol[id]),
         });
     }
@@ -1393,6 +1469,7 @@ function spartanToggleUserMute(userId) {
         }
     }
     spartanApplyUserVolume(userId);
+    spartanPersistPeerAudio(userId);
     let row = document.getElementById('user-' + userId);
     if(row)
         spartanFillUserLives(userId, row);
@@ -1474,9 +1551,54 @@ function spartanPublishMicMuted() {
                 mic: state === 'on',
                 camlive: camlive,
                 spartanLivesV1: lives,
+                spartanMuteForV1: spartanMuteForNickList(),
             },
         );
     } catch(e) {}
+}
+
+function spartanMuteForNickList() {
+    let out = [];
+    let seen = {};
+    for(let id in spartanMuteFor) {
+        if(!spartanMuteFor[id])
+            continue;
+        let n = spartanPeerNickOf(id);
+        if(n && !seen[n]) {
+            seen[n] = true;
+            out.push(n);
+        }
+    }
+    out.sort();
+    return out;
+}
+
+function spartanPeerMutedTowardMe(userId) {
+    if(!userId || !serverConnection || !serverConnection.users)
+        return false;
+    let me = spartanNickKey(serverConnection.username);
+    if(!me)
+        return false;
+    let u = serverConnection.users[userId];
+    let list = (u && u.data && u.data.spartanMuteForV1) || [];
+    if(!Array.isArray(list))
+        return false;
+    for(let i = 0; i < list.length; i++) {
+        if(spartanNickKey(list[i]) === me)
+            return true;
+    }
+    return false;
+}
+
+function spartanToggleMuteFor(userId) {
+    if(!serverConnection || userId === serverConnection.id)
+        return;
+    spartanMuteFor[userId] = !spartanMuteFor[userId];
+    spartanPersistPeerAudio(userId);
+    spartanLastMicPublishAt = 0;
+    try { spartanPublishMicMuted(); } catch(e) {}
+    spartanRefreshMuteButtons(userId);
+    try { spartanNotifyShellRoster(); } catch(e2) {}
 }
 
 function spartanRemoteMicState(userId) {
@@ -1597,21 +1719,30 @@ function spartanPaintMuteBtn(btn, userId) {
         return;
     let loc = !!spartanUserMuted[userId];
     let rem = spartanRemoteMuted(userId);
-    btn.classList.remove('on', 'mute-local', 'mute-remote', 'mute-both');
-    if(loc && rem)
-        btn.classList.add('mute-both');
-    else if(loc)
+    let toward = !!spartanMuteFor[userId];
+    btn.classList.remove('on', 'mute-local', 'mute-remote', 'mute-both', 'mute-toward',
+        'mute-local-toward', 'mute-remote-toward', 'mute-all');
+    let parts = [];
+    if(loc) parts.push('local');
+    if(rem) parts.push('remote');
+    if(toward) parts.push('toward');
+    if(parts.length === 3)
+        btn.classList.add('mute-all');
+    else if(parts.length === 2) {
+        if(loc && rem) btn.classList.add('mute-both');
+        else if(loc && toward) btn.classList.add('mute-local-toward');
+        else btn.classList.add('mute-remote-toward');
+    } else if(loc)
         btn.classList.add('mute-local');
     else if(rem)
         btn.classList.add('mute-remote');
-    if(loc && rem)
-        btn.title = 'Você não ouve (amarelo) e o microfone dele está desligado (vermelho)';
-    else if(loc)
-        btn.title = 'Mudo só no seu fone';
-    else if(rem)
-        btn.title = 'Microfone desligado (ele ou um admin)';
-    else
-        btn.title = 'Mudo só no seu fone';
+    else if(toward)
+        btn.classList.add('mute-toward');
+    let tips = [];
+    if(loc) tips.push('você não ouve (amarelo)');
+    if(rem) tips.push('mic dele desligado (vermelho)');
+    if(toward) tips.push('ele não te ouve (azul)');
+    btn.title = tips.length ? tips.join(' · ') : 'Mudo só no seu fone';
 }
 
 function spartanRefreshMuteButtons(userId) {
@@ -1647,7 +1778,7 @@ function spartanEnsurePeerUiTimer() {
 }
 
 function spartanVolLin(userId) {
-    if(spartanUserMuted[userId])
+    if(spartanUserMuted[userId] || spartanPeerMutedTowardMe(userId))
         return 0;
     let p = spartanUserVol[userId];
     if(p == null)
@@ -1744,14 +1875,14 @@ function spartanChatTooOld(time) {
     let t = time instanceof Date ? time.getTime() : Date.parse(String(time));
     if(!t)
         return false;
-    return (Date.now() - t) > 24 * 60 * 60 * 1000;
+    return (Date.now() - t) > 15 * 24 * 60 * 60 * 1000;
 }
 
 function spartanChatPruneBox() {
     let box = document.getElementById('box');
     if(!box)
         return;
-    let cut = Date.now() - 24 * 60 * 60 * 1000;
+    let cut = Date.now() - 15 * 24 * 60 * 60 * 1000;
     let rows = box.children;
     for(let i = rows.length - 1; i >= 0; i--) {
         let row = rows[i];
@@ -3011,12 +3142,17 @@ window.addEventListener('message', function(ev) {
         try { spartanNotifyShellRoster(); } catch(e) {}
         return;
     }
+    if(d.cmd === 'muteFor' && d.userId) {
+        spartanToggleMuteFor(d.userId);
+        return;
+    }
     if(d.cmd === 'vol' && d.userId) {
         let v = Number(d.vol);
         if(!(v >= 0)) v = 100;
         if(v > 400) v = 400;
         spartanUserVol[d.userId] = v;
         spartanApplyUserVolume(d.userId);
+        spartanPersistPeerAudio(d.userId);
         try { spartanNotifyShellRoster(); } catch(e) {}
     }
 });
@@ -5144,6 +5280,8 @@ function userMenu(elt) {
             markup:
                 '<div class="contextualJs user-vol-menu">' +
                 '<button type="button" class="contextualJs user-mute-btn" data-uid="' + id + '">Mudo</button>' +
+                '<button type="button" class="contextualJs user-mute-for-btn" data-uid="' + id + '">' +
+                (spartanMuteFor[id] ? 'Ouvir de novo' : 'Não me ouvir') + '</button>' +
                 '<span class="contextualJs user-vol-menu-title">Volume (seu fone)</span>' +
                 '<div class="contextualJs user-vol-row">' +
                 '<input class="contextualJs user-vol-slider" type="range" min="0" max="400" step="5" value="' + p + '">' +
@@ -5318,7 +5456,7 @@ function spartanEnsureMuteBelowName(elt, id) {
             wrap.remove();
         return;
     }
-    let show = !!(spartanUserMuted[id] || spartanRemoteMuted(id));
+    let show = !!(spartanUserMuted[id] || spartanRemoteMuted(id) || spartanMuteFor[id]);
     if(!show) {
         if(wrap)
             wrap.remove();
@@ -5370,6 +5508,22 @@ function spartanBindVolumeMenu(userId) {
             spartanToggleUserMute(userId);
         });
     }
+    let forBtn = menu.querySelector('.user-mute-for-btn');
+    if(forBtn instanceof HTMLButtonElement) {
+        forBtn.setAttribute('data-uid', userId);
+        forBtn.classList.toggle('on', !!spartanMuteFor[userId]);
+        forBtn.textContent = spartanMuteFor[userId] ? 'Ouvir de novo' : 'Não me ouvir';
+        forBtn.title = spartanMuteFor[userId]
+            ? 'Ele não te ouve agora. Clique para ele te ouvir de novo.'
+            : 'Ele para de te ouvir; você continua ouvindo ele.';
+        forBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            spartanToggleMuteFor(userId);
+            forBtn.classList.toggle('on', !!spartanMuteFor[userId]);
+            forBtn.textContent = spartanMuteFor[userId] ? 'Ouvir de novo' : 'Não me ouvir';
+        });
+    }
     let sl = menu.querySelector('.user-vol-slider');
     let lab = menu.querySelector('.user-vol-lab');
     if(!(sl instanceof HTMLInputElement) || !lab)
@@ -5391,6 +5545,7 @@ function spartanBindVolumeMenu(userId) {
         spartanUserVol[userId] = v;
         lab.textContent = v + '%';
         spartanApplyUserVolume(userId);
+        spartanPersistPeerAudio(userId);
     });
     sl.addEventListener('wheel', function(e) {
         e.preventDefault();
@@ -5402,6 +5557,7 @@ function spartanBindVolumeMenu(userId) {
         spartanUserVol[userId] = next;
         lab.textContent = next + '%';
         spartanApplyUserVolume(userId);
+        spartanPersistPeerAudio(userId);
     }, {passive: false});
 }
 
@@ -5952,6 +6108,7 @@ function gotUser(id, kind) {
     switch(kind) {
     case 'add':
         addUser(id, serverConnection.users[id]);
+        try { spartanRestorePeerAudio(id); } catch(e) {}
         if(Object.keys(serverConnection.users).length === 3)
             reconsiderSendParameters();
         break;
@@ -5964,6 +6121,18 @@ function gotUser(id, kind) {
         break;
     case 'change':
         changeUser(id, serverConnection.users[id]);
+        try {
+            if(serverConnection) {
+                for(let sid in serverConnection.down) {
+                    let c = serverConnection.down[sid];
+                    if(c.source === id) {
+                        spartanApplyUserMute(c);
+                        spartanApplyUserVolume(id);
+                    }
+                }
+            }
+            spartanRefreshMuteButtons(id);
+        } catch(e) {}
         break;
     default:
         console.warn('Unknown user kind', kind);
