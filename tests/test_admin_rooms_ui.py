@@ -39,7 +39,7 @@ class AdminRoomsUiTests(unittest.TestCase):
 
     def test_cache_bust_admin_css(self):
         self.assertIn("admin.css?v=39", self.html)
-        self.assertIn("admin.js?v=58", self.html)
+        self.assertIn("admin.js?v=59", self.html)
 
     def test_server_voice_hidden_and_open_uses_shell(self):
         self.assertIn("server_voice", self.js)

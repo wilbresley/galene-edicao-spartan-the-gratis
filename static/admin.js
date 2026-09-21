@@ -138,29 +138,37 @@ async function loadUsers(){
  try{await refreshReg();}catch(e){}
  let accounts={by_nick:{}, users:[]};
  try{accounts=await reg('/accounts')||accounts;}catch(e){}
- const b=bucket(), skip=new Set(Object.keys(b.denied).concat(Object.keys(b.blocked),Object.keys(b.pending)));
- let galeneNames=[];
- try{galeneNames=(await api('/.groups/'+GROUP+'/.users/')||[]).filter(n=>!skip.has(n));}catch(e){}
- const galeneSet=new Set(galeneNames.map(function(n){ return String(n).toLowerCase(); }));
+ const b=bucket(), skip=new Set(Object.keys(b.denied||{}).concat(Object.keys(b.blocked||{}),Object.keys(b.pending||{})));
  const rows=[];
  const seen={};
+ (accounts.users||[]).forEach(function(u){
+  if(!u||!u.nick) return;
+  const key=String(u.nick).toLowerCase();
+  if(!key || skip.has(key) || seen[key]) return;
+  if(u.active===false) return;
+  seen[key]=true;
+  rows.push({
+   name:key,
+   perm:roleFromPerm((u.role)||'present'),
+   rec:(b.seen||{})[key]||{},
+   id:u.id!=null?u.id:(accounts.by_nick&&accounts.by_nick[key]),
+   servers:Array.isArray(u.servers)?u.servers:[]
+  });
+ });
+ // Garante quem só exista na sala Galene principal (legado) entre na lista unificada
+ let galeneNames=[];
+ try{galeneNames=(await api('/.groups/'+GROUP+'/.users/')||[]).filter(n=>!skip.has(String(n).toLowerCase()));}catch(e){}
  for(const name of galeneNames){
   const key=String(name).toLowerCase();
+  if(!key || seen[key]) continue;
   seen[key]=true;
   let info={}; try{info=await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name));}catch(e){}
   const uid=(accounts.by_nick&&accounts.by_nick[key]);
-  rows.push({name:key, perm:roleFromPerm((info&&info.permissions)||'present'), rec:(b.seen||{})[key]||(b.seen||{})[name]||{}, id:uid, inMain:true});
+  rows.push({name:key, perm:roleFromPerm((info&&info.permissions)||'present'), rec:(b.seen||{})[key]||{}, id:uid, servers:[]});
  }
- (accounts.users||[]).forEach(function(u){
-  const key=String((u&&u.nick)||'').toLowerCase();
-  if(!key || skip.has(key) || seen[key]) return;
-  seen[key]=true;
-  const uid=(u.id!=null?u.id:(accounts.by_nick&&accounts.by_nick[key]));
-  rows.push({name:key, perm:roleFromPerm((u&&u.role)||'present'), rec:(b.seen||{})[key]||{}, id:uid, inMain:false});
- });
  rows.sort(function(a,c){ return String(a.name).localeCompare(String(c.name),'pt',{sensitivity:'base'}); });
  sortItems(rows,'users');
- const uk='u:'+SORT.users+':'+rows.map(r=>r.id+':'+r.name+':'+r.perm+':'+(r.rec.ip||'')).join('|');
+ const uk='u:'+SORT.users+':'+rows.map(r=>r.id+':'+r.name+':'+r.perm+':'+(r.servers||[]).join(',')+':'+(r.rec.ip||'')).join('|');
  if(uk===loadUsers._k) return; loadUsers._k=uk;
  if(boxOps) boxOps.innerHTML='';
  box.innerHTML='';
@@ -173,16 +181,9 @@ async function loadUsers(){
    const name=item.name, perm=item.perm, uid=item.id;
    const card=document.createElement('div'); card.className='user-card';
    const row=document.createElement('div'); row.className='user-row';
-   row.innerHTML='<div class="who"><b></b></div><div class="user-tools"><button type="button" class="det">Detalhes</button><button type="button" class="srvs">Servidores</button><div class="role-wrap"><button type="button" class="role-btn"></button><div class="role-menu"></div></div><div class="user-acts"><button type="button" class="ren">Renomear</button><button type="button" class="rst">Redefinir senha</button></div><div class="user-acts"><button type="button" class="del">Excluir</button><button type="button" class="blk">Bloquear</button></div></div>';
-   const title=(uid!=null?('ID '+uid+' · '):'')+name+(item.inMain?'':' · só conta/servidor');
+   row.innerHTML='<div class="who"><b></b></div><div class="user-tools"><button type="button" class="det">Detalhes</button><button type="button" class="srvs">Servidores</button><div class="role-wrap"><button type="button" class="role-btn"></button><div class="role-menu"></div></div><div class="user-acts"><button type="button" class="ren">Renomear</button><button type="button" class="rst">Redefinir senha</button></div><div class="user-acts"><button type="button" class="del">Desativar</button><button type="button" class="blk">Bloquear</button></div></div>';
+   const title=(uid!=null?('ID '+uid+' · '):'')+name;
    row.querySelector('b').textContent=title;
-   if(!item.inMain){
-    const tag=document.createElement('span');
-    tag.className='sala-tag';
-    tag.textContent='Só conta Spartan';
-    tag.title='Tem conta ou está em outro servidor; ainda não está na sala principal Galene.';
-    row.querySelector('.who').appendChild(tag);
-   }
    const curPerm=['op','present','ouvinte'].indexOf(perm)>=0?perm:'present';
    const roleBtn=row.querySelector('.role-btn');
    const roleMenu=row.querySelector('.role-menu');
@@ -195,7 +196,7 @@ async function loadUsers(){
      closeAllRoleMenus();
      if(o.v===curPerm) return;
      try{
-      await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:permToApi(o.v)})});
+      await reg('/account-role',{nick:name,role:o.v});
       loadUsers._k=null; uiMsg('Cargo de '+name+' atualizado.');
       await loadUsers();
      }catch(e){uiMsg(e.message);}
@@ -219,7 +220,7 @@ async function loadUsers(){
      const body=uid!=null?{id:uid,nick:nick}:{user:name,nick:nick};
      await reg('/rename-user',body);
      loadUsers._k=null; uiMsg('Renomeado para '+nick+(uid!=null?' (ID '+uid+' intacto)':''));
-     await loadUsers(); await loadGuests();
+     await loadUsers();
     }catch(e){uiMsg(e.message);}
    };
    row.querySelector('.rst').onclick=async()=>{
@@ -228,29 +229,35 @@ async function loadUsers(){
     catch(e){uiMsg(e.message);}
    };
    row.querySelector('.del').onclick=async()=>{
-    if(!await uiConfirm('Excluir '+name+' por completo? A conta some e o nick fica livre, mas o ID'+(uid!=null?(' '+uid):'')+' permanece reservado.')) return;
-    try{await api('/.groups/'+GROUP+'/.users/'+encodeURIComponent(name),{method:'DELETE'}); try{await reg('/forget',{group:GROUP,user:name});}catch(e){} loadUsers._k=null; await loadUsers(); await loadGuests(); await loadBlocked();}
-    catch(e){uiMsg(e.message);}
+    if(!await uiConfirm('Desativar '+name+'? Some da lista, o ID'+(uid!=null?(' '+uid):'')+' fica reservado para sempre e o nick não volta a ser usado.')) return;
+    try{
+     await reg('/deactivate',{nick:name});
+     loadUsers._k=null; await loadUsers(); await loadBlocked();
+     uiMsg(name+' desativado (ID preservado).');
+    }catch(e){uiMsg(e.message);}
    };
    row.querySelector('.blk').onclick=async()=>{
     if(!await uiConfirm('Bloquear '+name+'? Ele cai da sala e não entra mais até você desbloquear. A conta não é apagada.')) return;
-    try{await reg('/block',{group:GROUP,user:name}); loadUsers._k=null; loadBlocked._k=null; await loadUsers(); await loadGuests(); await loadBlocked();}
+    try{await reg('/block',{group:GROUP,user:name}); loadUsers._k=null; loadBlocked._k=null; await loadUsers(); await loadBlocked();}
     catch(e){uiMsg(e.message);}
    };
    row.querySelector('.det').onclick=function(){ card.classList.toggle('open'); };
    row.querySelector('.srvs').onclick=function(){ openUserServers(name); };
    const det=document.createElement('div'); det.className='user-details';
    const rec=item.rec||{};
+   const srvLine=document.createElement('div');
+   const srvNames=(item.servers&&item.servers.length)?item.servers.join(', '):'nenhum servidor ainda';
+   srvLine.textContent='Servidores: '+srvNames;
    const ip=document.createElement('div'); ip.className='ip'; ip.textContent=rec.ip?('IP '+rec.ip):'IP —';
    const meta=document.createElement('div');
-   meta.textContent=(GROUP?('Sala '+GROUP):'Sala —')+' · visto '+(fmtQuando(rec.last||rec.first||rec.at)||'—');
-   det.appendChild(meta); det.appendChild(ip);
+   meta.textContent='visto '+(fmtQuando(rec.last||rec.first||rec.at)||'—');
+   det.appendChild(srvLine); det.appendChild(meta); det.appendChild(ip);
    card.appendChild(row); card.appendChild(det);
    target.appendChild(card);
   });
  }
- render(boxOps, ops, 'Nenhum admin além das contas do servidor.');
- render(box, rest, 'Nenhum usuário próprio.');
+ render(boxOps, ops, 'Nenhum admin.');
+ render(box, rest, 'Nenhum usuário.');
 }
 
 async function loadRooms(){
@@ -635,7 +642,7 @@ function applyPanelScope(){
    b.classList.toggle('on', b.dataset.tab==='servers');
   } else b.hidden=false;
  });
- ['tab-users','tab-guests','tab-blocked','tab-temps','tab-logs','tab-net','tab-rooms','tab-servers'].forEach(function(id){
+ ['tab-users','tab-blocked','tab-temps','tab-logs','tab-net','tab-rooms','tab-servers'].forEach(function(id){
   var el=$(id); if(!el) return;
   if(PANEL_SCOPE==='mod') el.hidden=id!=='tab-servers';
  });
@@ -657,7 +664,6 @@ async function afterLogin(){
  if(PANEL_SCOPE==='admin'){
   try{ await loadUsers(); }catch(e){ uiMsg(e.message); }
   try{ await loadRooms(); }catch(e){}
-  try{ await loadGuests(); }catch(e){}
   try{ await loadBlocked(); }catch(e){}
   try{ await loadTemps(); }catch(e){}
   try{ await loadLogs(); }catch(e){}

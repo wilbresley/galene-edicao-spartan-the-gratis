@@ -1,7 +1,7 @@
 # Spartan Chat (Galene) — documentação completa da implantação
 
 **Data da implantação:** 20 de agosto de 2026  
-**Última revisão deste documento:** 21 de setembro de 2026 (mute seletivo azul, volume por nick, lista unificada de contas, TTL chat 15d, preview foto, thumbs chat)  
+**Última revisão deste documento:** 21 de setembro de 2026 (contas unificadas no Painel, desativação com ID permanente, mute seletivo, volume por nick, TTL chat 15d)  
 **Objetivo deste arquivo:** registrar *como o stack ficou no teu servidor*, para operação, backup e GitHub.  
 **Segredos:** nenhuma senha de produção, hash real do servidor, `sidecar.auth` vivo ou credencial operacional aparece aqui. Contas e senhas **da instalação** ficam só no servidor (`groups/*.json`, `data/config.json`, `data/sidecar.auth`).  
 **Exceção documentada:** o pacote `factory-reset/` traz a senha de fábrica `Mudar@123` (admin, contas novas e convidados) de propósito — só para zerar o Docker; no primeiro login **todo mundo** troca a senha. Admin também troca a senha dos convidados da sala.
@@ -207,7 +207,7 @@ Arquivo: `registry.py`. Endpoints úteis (prefixo `/spartan-api` opcional):
 | GET | `/presence-user` | público | tempo individual do nick |
 | GET | `/must-change` | público | sempre `{must_change: false}` — não vaza se o nick existe |
 | POST | `/must-change` | sala (nick+senha da conta) | `{must_change, admin}` só com senha certa |
-| POST | `/register` `/approve` `/quick` `/deny` `/block` `/unblock` `/forget` `/stamp` | fluxos de convite | cadastro / moderação. `/quick` sem senha usa `Mudar@123` e marca `must_change` |
+| POST | `/register` `/approve` `/quick` `/deny` `/block` `/unblock` `/forget` `/deactivate` `/stamp` `/account-role` | fluxos de conta | `/deactivate` (e `/forget` legado) **desativa** a conta: some da lista, **ID nunca reaproveitado**, nick reservado; tira de salas/servidores. `/account-role` define Admin/Usuário no cofre e sincroniza Galene. `/quick` sem senha usa `Mudar@123` e marca `must_change` |
 | POST | `/reset-factory-password` | admin | volta a senha do nick para `Mudar@123` e exige troca no próximo login |
 | POST | `/panel-login` | painel | admin global (`scope=admin`) **ou** moderador/dono de servidor (`scope=mod`) |
 | POST | `/can-panel` | sala | igual ao panel-login, **sem** gravar log; devolve `{ok, scope}` |
@@ -280,7 +280,7 @@ Comportamentos de sessão:
 - Contador 24h (`#spartan-ttl`) reconstitui no `start()` (não só no submit do login): `spartanTtlRestore` + `GET /temp-status`. Anfitrião/op também faz poll.
 - CSP do Galene bloqueia JS inline: não usar `onfocus="..."` nos inputs.
 - Admin SSO: senha do painel **só** em `sessionStorage` (`spartanAdmin`). O `localStorage.spartanAdminHandoff` antigo é apagado se ainda existir. Preferências de qualidade (HUD, 720p, modo jogo) ficam em `localStorage.spartanPrefs` **sem** senha.
-- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=136`, `spartan-quality.js?v=1`, `spartan-net.js?v=1`, `spartan-watch.js?v=1`, `settings.js?v=2`, `galene-spartan.css?v=104`, `protocol.js?v=9`, `toastify.js?v=3`, `spartan-boot.js?v=11`). Home shell: `spartan-shell.js?v=9`, `spartan-shell.css?v=33`, `spartan-servers.js?v=27`, `custom-home.js?v=10`. Painel: `admin.js?v=56`, `admin.css?v=39`, `spartan.css?v=24`. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar. Painel canónico em **`/admin/`** (`static/admin/index.html`). `/painel/` e `painel.html` só redirecionam para `/admin/`. Nunca copiar o painel por cima de `index.html` da raiz.
+- Cache dos JS/CSS da sala: query `?v=` em `galene.html` (hoje `galene.js?v=138`, `spartan-quality.js?v=1`, `spartan-net.js?v=2`, `spartan-watch.js?v=1`, `settings.js?v=2`, `galene-spartan.css?v=105`, `protocol.js?v=9`, `toastify.js?v=3`, `spartan-boot.js?v=11`). Home shell: `spartan-shell.js?v=9`, `spartan-shell.css?v=34`, `spartan-servers.js?v=28`, `custom-home.js?v=10`. Painel: `admin.js?v=59`, `admin.css?v=39`, `spartan.css?v=24`. **Contas:** uma conta só (Admin/Usuário), sempre com ID; aba Convidados removida do Painel; Detalhes mostra servidores; Desativar preserva ID. **`registry.py`**: reiniciar `spartan-reg` após mudanças no sidecar. Painel canónico em **`/admin/`** (`static/admin/index.html`). `/painel/` e `painel.html` só redirecionam para `/admin/`. Nunca copiar o painel por cima de `index.html` da raiz.
 
 Painel admin:
 

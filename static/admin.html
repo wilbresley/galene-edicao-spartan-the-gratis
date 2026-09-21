@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="/spartan-pages.css?v=5"/>
 <link rel="stylesheet" href="/admin.css?v=39"/>
 <link rel="stylesheet" href="/spartan.css?v=24"/>
-<script src="/admin.js?v=58" defer></script>
+<script src="/admin.js?v=59" defer></script>
 </head>
 <body>
 <header class="admin-top">
@@ -32,7 +32,6 @@
 <div id="panel" hidden>
 <nav class="tabs">
 <button type="button" class="tab on" data-tab="users">Usuários</button>
-<button type="button" class="tab" data-tab="guests">Convidados</button>
 <button type="button" class="tab" data-tab="blocked">Bloqueados</button>
 <button type="button" class="tab" data-tab="temps">Temporários</button>
 <button type="button" class="tab" data-tab="logs">Logs</button>
@@ -43,7 +42,7 @@
 <div id="tab-users" class="tab-page">
 <div class="split">
 <section class="admin-card">
-<h2>Com login próprio</h2>
+<h2>Contas</h2>
 <div class="list-tools" data-tab="users"><button type="button" class="sort-btn on" data-sort="az">A–Z</button><button type="button" class="sort-btn" data-sort="time">Recentes</button></div>
 
 <h3 class="subh">Admins</h3>
@@ -63,19 +62,10 @@
 </select>
 <button type="button" id="btn-create">Criar</button>
 <p id="create-msg" class="ok"></p>
-<p class="hint">Só o nick. Senha inicial de todo mundo: Mudar@123. No primeiro login a pessoa troca. Admin: painel e tudo. Usuário: lives, transmitir e chats.</p>
+<p class="hint">Só o nick. Senha inicial de todo mundo: Mudar@123. No primeiro login a pessoa troca. Admin: painel e tudo. Usuário: lives, transmitir e chats. Uma conta só — o mesmo ID em todos os servidores.</p>
 </section>
 </div>
 </div>
-</div>
-<div id="tab-guests" class="tab-page" hidden>
-<section class="admin-card">
-<h2>Quem entrou com a senha dos amigos</h2>
-<div class="list-tools" data-tab="guests"><button type="button" class="sort-btn on" data-sort="az">A–Z</button><button type="button" class="sort-btn" data-sort="time">Recentes</button></div>
-
-<p class="hint">Pendente: pediu conta. Negado: nick bloqueado até você apagar o histórico. Clique em Cadastrar para criar na hora.</p>
-<div id="guests"></div>
-</section>
 </div>
 <div id="tab-blocked" class="tab-page" hidden>
 <section class="admin-card">
@@ -141,7 +131,7 @@
 </div>
 <div class="rooms-col rooms-col-temp">
 <h3 class="rooms-col-title">Temporárias (24h) <span id="rooms-temp-count" class="rooms-count"></span></h3>
-<p class="hint rooms-section-hint">Só você vê aqui. Somem sozinhas; não entram na lista pública.</p>
+<p class="hint rooms-section-hint">Só você vê aqui. Somem sozinhas; não entram na lista pública. Canais de voz dos servidores não entram nesta lista.</p>
 <div id="rooms-temp" class="rooms-col-scroll"></div>
 </div>
 </div>

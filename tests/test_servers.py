@@ -839,7 +839,7 @@ class ServersUiTests(unittest.TestCase):
     def test_admin_servers_tab(self):
         self.assertIn('data-tab="servers"', self.admin)
         self.assertIn('id="tab-servers"', self.admin)
-        self.assertIn("admin.js?v=58", self.admin)
+        self.assertIn("admin.js?v=59", self.admin)
         self.assertIn("admin.css?v=39", self.admin)
         js = (ROOT / "static" / "admin.js").read_text(encoding="utf-8")
         self.assertIn("server-cols", js)

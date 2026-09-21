@@ -374,14 +374,19 @@ def norm_nick(u):
 def ok_nick(u):
     u=norm_nick(u); return bool(u) and ("/" not in u) and len(u)<=32
 def account_ensure(nick, force_id=None):
-    """Garante conta com ID imutável. force_id=0 para admin."""
+    """Garante conta com ID imutável. force_id=0 para admin.
+    Conta desativada no mesmo nick: devolve o ID sem reativar (ID nunca é reaproveitado)."""
     nick=norm_nick(nick)
     if not nick: return None
     d=load_accounts()
     if nick in d["by_nick"]:
         uid=int(d["by_nick"][nick])
         rec=d["by_id"].setdefault(str(uid), {"nick":nick,"active":True})
-        rec["nick"]=nick; rec["active"]=True
+        rec["nick"]=nick
+        # Não reativa sozinho: desativação é permanente até /reactivate explícito.
+        if rec.get("active", True) is False:
+            save_accounts(d); return uid
+        rec["active"]=True
         save_accounts(d); return uid
     if force_id is not None:
         uid=int(force_id)
@@ -393,25 +398,41 @@ def account_ensure(nick, force_id=None):
     d["by_id"][str(uid)]={"nick":nick,"active":True,"created":now()}
     d["by_nick"][nick]=uid
     save_accounts(d); return uid
-def account_forget_nick(nick):
+def account_deactivate(nick):
+    """Desativa a conta: some da lista ativa, ID e histórico ficam. Nick permanece reservado."""
     nick=norm_nick(nick)
+    if not nick: return False, "nick invalido"
     d=load_accounts()
-    uid=d["by_nick"].pop(nick, None)
+    uid=d["by_nick"].get(nick)
     if uid is None:
-        save_accounts(d); return
+        return False, "conta nao existe"
+    try:
+        if int(uid)==0:
+            return False, "nao desativa o admin id 0"
+    except Exception:
+        pass
     rec=d["by_id"].get(str(uid))
-    if rec:
-        rec["active"]=False
-        rec["freed_at"]=now()
-        rec["last_nick"]=nick
-        rec["nick"]=None
+    if not rec:
+        return False, "id inexistente"
+    rec["active"]=False
+    rec["deactivated_at"]=now()
+    rec["last_nick"]=nick
+    rec["nick"]=nick
+    # by_nick permanece: nick reservado ao ID; next_id nunca volta atrás.
     save_accounts(d)
+    return True, int(uid)
+def account_forget_nick(nick):
+    """Compat: desativa preservando ID (não libera o número para outra pessoa)."""
+    ok,_=account_deactivate(nick)
+    return ok
 def account_rename(uid, new_nick):
     new_nick=norm_nick(new_nick)
     if not ok_nick(new_nick): return False, "nick invalido"
     d=load_accounts()
     rec=d["by_id"].get(str(uid))
     if not rec: return False, "id inexistente"
+    if rec.get("active", True) is False:
+        return False, "conta desativada"
     old=norm_nick(rec.get("nick") or rec.get("last_nick") or "")
     if new_nick in d["by_nick"] and int(d["by_nick"][new_nick])!=int(uid):
         return False, "nick ja em uso"
@@ -1040,16 +1061,17 @@ def server_member_list(s):
         out.append({"nick":nick,"role":server_member_role(s, nick) or "mod"})
     out.sort(key=lambda x: (0 if x.get("role") in ("admin","mod") else 1, x.get("nick") or ""))
     return out
-def list_registered_nicks():
+def _collect_project_nicks():
+    """Todos os nicks do projeto (cofre + sala principal + membros de servidores)."""
     seen=set()
     out=[]
+    def add(nick):
+        nick=norm_nick(nick)
+        if not nick or nick in seen: return
+        seen.add(nick); out.append(nick)
     d=load_accounts()
     for nick in (d.get("by_nick") or {}):
-        nick=norm_nick(nick)
-        rec=account_get(nick)
-        if nick and rec and rec.get("active", True):
-            seen.add(nick)
-            out.append(nick)
+        add(nick)
     main=main_id()
     p=GROUPS/f"{main}.json"
     if p.exists():
@@ -1058,51 +1080,100 @@ def list_registered_nicks():
         except Exception:
             users={}
         for nick in users:
-            nick=norm_nick(nick)
-            if nick and nick not in seen:
-                seen.add(nick)
-                out.append(nick)
+            add(nick)
     try:
         doc=ensure_servers()
         for s in (doc.get("servers") or {}).values():
             for nick in (s.get("members") or {}):
-                nick=norm_nick(nick)
-                if nick and nick not in seen:
-                    seen.add(nick)
-                    out.append(nick)
+                add(nick)
             for nick in (s.get("mods") or []):
-                nick=norm_nick(nick)
-                if nick and nick not in seen:
-                    seen.add(nick)
-                    out.append(nick)
-            owner=norm_nick(s.get("owner") or "")
-            if owner and owner not in seen:
-                seen.add(owner)
-                out.append(owner)
+                add(nick)
+            add(s.get("owner") or "")
     except Exception:
         pass
+    return out
+def nick_server_titles(nick):
+    """Títulos dos servidores em que o nick tem acesso (admin/mod/membro)."""
+    nick=norm_nick(nick)
+    titles=[]
+    if not nick: return titles
+    try:
+        doc=ensure_servers()
+        for s in (doc.get("servers") or {}).values():
+            if not server_member_role(s, nick): continue
+            titles.append(s.get("title") or s.get("id") or "")
+    except Exception:
+        pass
+    titles=[t for t in titles if t]
+    titles.sort(key=lambda x: x.lower())
+    return titles
+def list_registered_nicks():
+    """Só contas ativas. Garante ID único para quem ainda estava só na Galene/servidor."""
+    out=[]
+    for nick in _collect_project_nicks():
+        uid=account_ensure(nick)
+        if uid is None: continue
+        rec=account_get(nick)
+        if not rec: continue  # desativado
+        out.append(nick)
     out.sort()
     return out
 def accounts_panel_users():
-    """Lista completa para a aba Usuários do Painel (contas + membros de servidores + sala principal)."""
+    """Lista unificada do Painel: uma conta por nick, sempre com ID, sem tipos misturados."""
     rows=[]
     for nick in list_registered_nicks():
         rec=account_get(nick) or {}
-        uid=None
         d=load_accounts()
+        uid=None
         if nick in (d.get("by_nick") or {}):
             try: uid=int(d["by_nick"][nick])
             except Exception: uid=None
+        if uid is None:
+            uid=account_ensure(nick)
         role=account_get_role(nick) or "present"
         rows.append({
             "nick": nick,
             "id": uid,
             "role": role,
-            "active": rec.get("active", True) is not False,
+            "active": True,
             "must_change": bool(rec.get("must_change")),
             "avatar": account_avatar_ver(rec),
+            "servers": nick_server_titles(nick),
         })
     return rows
+def account_strip_everywhere(nick, auth=None):
+    """Tira o nick de salas Galene, servidores e bags do registry (conta já desativada)."""
+    nick=norm_nick(nick)
+    if not nick: return
+    ia=auth or internal_auth()
+    if ia:
+        for fp in GROUPS.glob("*.json"):
+            real,_=find_group_user(fp.stem, nick)
+            if real:
+                galene("DELETE", f"/galene-api/v0/.groups/{quote(fp.stem,safe='')}/.users/{quote(real,safe='')}", ia)
+                harden_group(fp.stem)
+    def _drop(doc):
+        for srv in (doc.get("servers") or {}).values():
+            if not isinstance(srv, dict): continue
+            (srv.get("members") or {}).pop(nick, None)
+            srv["mods"]=[x for x in (srv.get("mods") or []) if norm_nick(x)!=nick]
+            (srv.get("here") or {}).pop(nick, None)
+            (srv.get("reloc") or {}).pop(nick, None)
+            (srv.get("pending") or {}).pop(nick, None)
+            if norm_nick(srv.get("owner") or "")==nick:
+                pass  # dono desativado fica registrado; acesso já sumiu dos members
+        return {"ok":True}
+    try: mutate_servers(_drop)
+    except Exception: pass
+    def _bags(d):
+        for gid,b in list(d.items()):
+            if not isinstance(b, dict): continue
+            for k in ("pending","denied","blocked","guests","temps","created","seen"):
+                bag=b.get(k)
+                if isinstance(bag, dict): bag.pop(nick, None)
+        return {"ok":True}
+    try: mutate_registry(_bags)
+    except Exception: pass
 def server_kick_nick(srv, nick, by):
     nick=norm_nick(nick)
     if not srv or not nick: return
@@ -1475,6 +1546,11 @@ def servers_http_post(handler, path, body):
             handler.send_json(400, {"error":"as senhas nao conferem"}); return True
         if account_get(user) and account_has_password(user):
             handler.send_json(409, {"error":"esse nick ja tem conta"}); return True
+        dacc=load_accounts()
+        if user in (dacc.get("by_nick") or {}):
+            urec=(dacc.get("by_id") or {}).get(str(dacc["by_nick"][user])) or {}
+            if urec.get("active", True) is False:
+                handler.send_json(409, {"error":"esse nick esta desativado e o ID permanece reservado"}); return True
         code=(body.get("invite") or body.get("code") or "").strip()
         s=find_server_by_invite(code)
         if not s:
@@ -2337,8 +2413,12 @@ def account_set_password(nick, password, role=None, must_change=None):
     if not nick or password is None: return False
     account_ensure(nick)
     d=load_accounts()
-    uid=d["by_nick"][nick]
-    rec=d["by_id"][str(uid)]
+    uid=d["by_nick"].get(nick)
+    if uid is None: return False
+    rec=d["by_id"].get(str(uid))
+    if not rec: return False
+    if rec.get("active", True) is False:
+        return False  # desativado: não reativa por reset/senha
     if isinstance(password, dict):
         rec["password"]=password
     else:
@@ -3096,6 +3176,27 @@ class H(BaseHTTPRequestHandler):
                     if old_nick in bag and old_nick!=new_nick:
                         bag[new_nick]=bag.pop(old_nick)
             save(d)
+            if old_nick and old_nick!=new_nick:
+                def _ren_srv(doc):
+                    for srv in (doc.get("servers") or {}).values():
+                        if not isinstance(srv, dict): continue
+                        mem=srv.get("members") or {}
+                        if old_nick in mem and new_nick not in mem:
+                            mem[new_nick]=mem.pop(old_nick)
+                        elif old_nick in mem:
+                            mem.pop(old_nick, None)
+                        srv["mods"]=[new_nick if norm_nick(x)==old_nick else x for x in (srv.get("mods") or [])]
+                        for bagn in ("here","reloc","pending","kicks"):
+                            bag=srv.get(bagn) or {}
+                            if old_nick in bag and new_nick not in bag:
+                                bag[new_nick]=bag.pop(old_nick)
+                            elif old_nick in bag:
+                                bag.pop(old_nick, None)
+                        if norm_nick(srv.get("owner") or "")==old_nick:
+                            srv["owner"]=new_nick
+                    return {"ok":True}
+                try: mutate_servers(_ren_srv)
+                except Exception: pass
             cfgp=Path("/data/config.json")
             if cfgp.exists() and old_nick:
                 try:
@@ -3107,6 +3208,36 @@ class H(BaseHTTPRequestHandler):
                         cfgp.write_text(json.dumps(cfg, indent=2, ensure_ascii=False)+chr(10), encoding="utf-8")
                 except Exception: pass
             self.send_json(200, {"ok":True,"id":uid,"nick":new_nick,"old":old_nick}); return
+        if path=="/account-role":
+            nick=norm_nick(body.get("nick") or body.get("user") or "")
+            role=(body.get("role") or body.get("permissions") or "present").strip()
+            if role in ("admin","op"): role="op"
+            elif role=="ouvinte": role="ouvinte"
+            else: role="present"
+            if not ok_nick(nick):
+                self.send_json(400, {"error":"nick invalido"}); return
+            if not account_get(nick):
+                self.send_json(404, {"error":"conta nao existe"}); return
+            account_set_role(nick, role)
+            site=load_site(); main=site.get("main") or "spartan"
+            galene_sync_account(main, nick, auth=auth)
+            for fp in GROUPS.glob("*.json"):
+                if fp.stem==main: continue
+                real,_=find_group_user(fp.stem, nick)
+                if real:
+                    galene_sync_account(fp.stem, nick, auth=auth)
+            self.send_json(200, {"ok":True,"nick":nick,"role":role}); return
+        if path=="/deactivate" or path=="/forget":
+            nick=norm_nick(body.get("nick") or body.get("user") or user or "")
+            if not ok_nick(nick):
+                self.send_json(400, {"error":"nick invalido"}); return
+            # Admin da sala / id 0: account_deactivate já bloqueia id 0
+            ok_de, info=account_deactivate(nick)
+            if not ok_de:
+                self.send_json(403 if "admin" in str(info) else 404, {"error":info}); return
+            account_strip_everywhere(nick, auth=auth)
+            access_log("conta_desativada", g or main_id(), nick, self.cip())
+            self.send_json(200, {"ok":True,"id":info,"nick":nick,"active":False}); return
         if path=="/reset-factory-password":
             nick=norm_nick(body.get("nick") or body.get("target") or "")
             if not ok_nick(nick):
@@ -3140,7 +3271,7 @@ class H(BaseHTTPRequestHandler):
                 op.write_text(json.dumps(gj, indent=2, ensure_ascii=False)+chr(10), encoding="utf-8")
             save_site(st); self.send_json(200, st); return
         if not ok_nick(user): self.send_json(400, {"error":"nick invalido"}); return
-        if is_op(g,user) and path in ("/deny","/block","/forget"):
+        if is_op(g,user) and path in ("/deny","/block"):
             self.send_json(403, {"error":"nao bloqueia admin"}); return
         d=load(); b=bucket(d,g); qg,qu=quote(g,safe=""), quote(user,safe="")
         if path=="/approve":
@@ -3182,11 +3313,6 @@ class H(BaseHTTPRequestHandler):
             save(d); self.send_json(200, {"ok":True}); return
         if path=="/stamp":
             b.setdefault("created",{})[user]=now(); save(d); self.send_json(200, {"ok":True}); return
-        if path=="/forget":
-            galene("DELETE", f"/galene-api/v0/.groups/{qg}/.users/{qu}", auth)
-            for k in ("pending","denied","blocked","guests","temps"): b[k].pop(user, None)
-            account_forget_nick(user)
-            save(d); self.send_json(200, {"ok":True}); return
         self.send_json(404, {"error":"not found"})
 
 if __name__=="__main__":
